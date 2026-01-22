@@ -29,7 +29,6 @@ function setupCors(app: express.Application) {
 
     const origin = req.header("origin");
 
-    // Allow localhost origins for Expo web development (any port)
     const isLocalhost =
       origin?.startsWith("http://localhost:") ||
       origin?.startsWith("http://127.0.0.1:");
@@ -38,7 +37,7 @@ function setupCors(app: express.Application) {
       res.header("Access-Control-Allow-Origin", origin);
       res.header(
         "Access-Control-Allow-Methods",
-        "GET, POST, PUT, DELETE, OPTIONS",
+        "GET, POST, PUT, DELETE, OPTIONS"
       );
       res.header("Access-Control-Allow-Headers", "Content-Type");
       res.header("Access-Control-Allow-Credentials", "true");
@@ -55,13 +54,14 @@ function setupCors(app: express.Application) {
 function setupBodyParsing(app: express.Application) {
   app.use(
     express.json({
+      limit: "50mb",
       verify: (req, _res, buf) => {
         req.rawBody = buf;
       },
-    }),
+    })
   );
 
-  app.use(express.urlencoded({ extended: false }));
+  app.use(express.urlencoded({ extended: false, limit: "50mb" }));
 }
 
 function setupRequestLogging(app: express.Application) {
@@ -113,7 +113,7 @@ function serveExpoManifest(platform: string, res: Response) {
     process.cwd(),
     "static-build",
     platform,
-    "manifest.json",
+    "manifest.json"
   );
 
   if (!fs.existsSync(manifestPath)) {
@@ -165,7 +165,7 @@ function configureExpoAndLanding(app: express.Application) {
     process.cwd(),
     "server",
     "templates",
-    "landing-page.html",
+    "landing-page.html"
   );
   const landingPageTemplate = fs.readFileSync(templatePath, "utf-8");
   const appName = getAppName();
@@ -245,6 +245,6 @@ function setupErrorHandler(app: express.Application) {
     },
     () => {
       log(`express server serving on port ${port}`);
-    },
+    }
   );
 })();
