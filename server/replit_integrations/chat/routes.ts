@@ -1,11 +1,110 @@
 import type { Express, Request, Response } from "express";
 import OpenAI from "openai";
 import { chatStorage } from "./storage";
+import { storage } from "../../storage";
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
 });
+
+function buildSystemPrompt(profile: {
+  allergies?: { name: string; severity: string }[];
+  healthConditions?: string[];
+  dietType?: string | null;
+  primaryGoal?: string | null;
+  activityLevel?: string | null;
+  cuisinePreferences?: string[];
+  cookingSkillLevel?: string | null;
+  cookingTimeAvailable?: string | null;
+} | null): string {
+  let prompt = `You are NutriScan AI, a helpful nutrition and food assistant. You help users with:
+- Analyzing nutrition information from scanned food labels
+- Suggesting healthy recipes and meal ideas
+- Providing personalized nutrition advice
+- Answering questions about food, ingredients, and dietary needs
+
+Be conversational, supportive, and knowledgeable about nutrition science.`;
+
+  if (profile) {
+    const restrictions: string[] = [];
+    
+    if (profile.allergies && profile.allergies.length > 0) {
+      const allergyList = profile.allergies
+        .map(a => `${a.name} (${a.severity})`)
+        .join(", ");
+      restrictions.push(`IMPORTANT - User has these food allergies: ${allergyList}. NEVER suggest foods containing these allergens. For severe allergies, also warn about cross-contamination.`);
+    }
+
+    if (profile.healthConditions && profile.healthConditions.length > 0) {
+      const conditionMap: Record<string, string> = {
+        diabetes_type1: "Type 1 Diabetes - needs to monitor carbs and blood sugar",
+        diabetes_type2: "Type 2 Diabetes - needs to manage blood sugar levels",
+        heart_disease: "Heart condition - recommend low sodium, heart-healthy foods",
+        high_blood_pressure: "High blood pressure - limit salt/sodium intake",
+        high_cholesterol: "High cholesterol - limit saturated fats and cholesterol",
+        ibs: "IBS - avoid trigger foods, consider low FODMAP",
+        celiac: "Celiac disease - STRICT gluten-free required",
+        kidney_disease: "Kidney condition - may need to limit protein, potassium, phosphorus",
+        pcos: "PCOS - hormone-balancing nutrition, lower glycemic foods",
+        gerd: "GERD/Acid reflux - avoid acidic, spicy, and trigger foods",
+      };
+      const conditions = profile.healthConditions
+        .map(c => conditionMap[c] || c)
+        .join("; ");
+      restrictions.push(`User manages these health conditions: ${conditions}. Tailor advice accordingly.`);
+    }
+
+    if (profile.dietType) {
+      const dietMap: Record<string, string> = {
+        omnivore: "Omnivore (eats everything)",
+        vegetarian: "Vegetarian (no meat or fish)",
+        vegan: "Vegan (no animal products)",
+        pescatarian: "Pescatarian (vegetarian + fish)",
+        keto: "Keto (very low carb, high fat)",
+        paleo: "Paleo (whole foods, no grains)",
+        mediterranean: "Mediterranean (plant-based, healthy fats)",
+        halal: "Halal (Islamic dietary laws)",
+        kosher: "Kosher (Jewish dietary laws)",
+        low_fodmap: "Low FODMAP (for digestive health)",
+      };
+      restrictions.push(`Diet preference: ${dietMap[profile.dietType] || profile.dietType}`);
+    }
+
+    if (profile.primaryGoal) {
+      const goalMap: Record<string, string> = {
+        lose_weight: "lose weight",
+        gain_muscle: "build muscle",
+        maintain: "maintain current weight",
+        eat_healthier: "eat healthier overall",
+        manage_condition: "manage a health condition",
+      };
+      restrictions.push(`Primary goal: ${goalMap[profile.primaryGoal] || profile.primaryGoal}`);
+    }
+
+    if (profile.activityLevel) {
+      restrictions.push(`Activity level: ${profile.activityLevel}`);
+    }
+
+    if (profile.cuisinePreferences && profile.cuisinePreferences.length > 0) {
+      restrictions.push(`Preferred cuisines: ${profile.cuisinePreferences.join(", ")}`);
+    }
+
+    if (profile.cookingSkillLevel) {
+      restrictions.push(`Cooking skill: ${profile.cookingSkillLevel}`);
+    }
+
+    if (profile.cookingTimeAvailable) {
+      restrictions.push(`Cooking time preference: ${profile.cookingTimeAvailable}`);
+    }
+
+    if (restrictions.length > 0) {
+      prompt += `\n\nUSER PROFILE:\n${restrictions.join("\n")}`;
+    }
+  }
+
+  return prompt;
+}
 
 export function registerChatRoutes(app: Express): void {
   // Get all conversations
@@ -68,12 +167,24 @@ export function registerChatRoutes(app: Express): void {
       // Save user message
       await chatStorage.createMessage(conversationId, "user", content);
 
+      // Get user's dietary profile for personalized responses
+      let userProfile = null;
+      if (req.session.userId) {
+        userProfile = await storage.getUserProfile(req.session.userId);
+      }
+
+      // Build system prompt with user profile
+      const systemPrompt = buildSystemPrompt(userProfile);
+
       // Get conversation history for context
       const messages = await chatStorage.getMessagesByConversation(conversationId);
-      const chatMessages = messages.map((m) => ({
-        role: m.role as "user" | "assistant",
-        content: m.content,
-      }));
+      const chatMessages: { role: "system" | "user" | "assistant"; content: string }[] = [
+        { role: "system", content: systemPrompt },
+        ...messages.map((m) => ({
+          role: m.role as "user" | "assistant",
+          content: m.content,
+        })),
+      ];
 
       // Set up SSE
       res.setHeader("Content-Type", "text/event-stream");
