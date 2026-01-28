@@ -29,7 +29,6 @@ export function useAuth() {
     try {
       const stored = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
       if (stored) {
-        const localUser = JSON.parse(stored);
         try {
           const response = await fetch(`${getApiUrl()}/api/auth/me`, {
             credentials: "include",
@@ -39,9 +38,11 @@ export function useAuth() {
             await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(freshUser));
             setState({ user: freshUser, isLoading: false, isAuthenticated: true });
           } else {
-            setState({ user: localUser, isLoading: false, isAuthenticated: true });
+            await AsyncStorage.removeItem(AUTH_STORAGE_KEY);
+            setState({ user: null, isLoading: false, isAuthenticated: false });
           }
         } catch {
+          const localUser = JSON.parse(stored);
           setState({ user: localUser, isLoading: false, isAuthenticated: true });
         }
       } else {
