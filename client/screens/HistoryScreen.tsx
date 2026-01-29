@@ -78,68 +78,70 @@ function HistoryItem({
   };
 
   return (
-    <AnimatedPressable
-      entering={FadeInDown.delay(index * 50).duration(300)}
-      style={animatedStyle}
-      onPress={onPress}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
-    >
-      <Card elevation={1} style={styles.itemCard}>
-        <View style={styles.itemContent}>
-          {item.imageUrl ? (
-            <Image source={{ uri: item.imageUrl }} style={styles.itemImage} />
-          ) : (
-            <View
-              style={[
-                styles.itemPlaceholder,
-                { backgroundColor: theme.backgroundSecondary },
-              ]}
-            >
-              <Feather name="package" size={24} color={theme.textSecondary} />
+    <Animated.View entering={FadeInDown.delay(index * 50).duration(300)}>
+      <Animated.View style={animatedStyle}>
+        <Pressable
+          onPress={onPress}
+          onPressIn={handlePressIn}
+          onPressOut={handlePressOut}
+        >
+          <Card elevation={1} style={styles.itemCard}>
+            <View style={styles.itemContent}>
+              {item.imageUrl ? (
+                <Image source={{ uri: item.imageUrl }} style={styles.itemImage} />
+              ) : (
+                <View
+                  style={[
+                    styles.itemPlaceholder,
+                    { backgroundColor: theme.backgroundSecondary },
+                  ]}
+                >
+                  <Feather name="package" size={24} color={theme.textSecondary} />
+                </View>
+              )}
+
+              <View style={styles.itemInfo}>
+                <ThemedText type="body" style={styles.itemName} numberOfLines={1}>
+                  {item.productName}
+                </ThemedText>
+                {item.brandName ? (
+                  <ThemedText
+                    type="small"
+                    style={{ color: theme.textSecondary }}
+                    numberOfLines={1}
+                  >
+                    {item.brandName}
+                  </ThemedText>
+                ) : null}
+                <ThemedText
+                  type="caption"
+                  style={{ color: theme.textSecondary, marginTop: Spacing.xs }}
+                >
+                  {formatDate(item.scannedAt)}
+                </ThemedText>
+              </View>
+
+              <View style={styles.itemCalories}>
+                <ThemedText
+                  type="h4"
+                  style={{ color: Colors.light.calorieAccent }}
+                >
+                  {item.calories ? Math.round(parseFloat(item.calories)) : "--"}
+                </ThemedText>
+                <ThemedText
+                  type="caption"
+                  style={{ color: theme.textSecondary }}
+                >
+                  kcal
+                </ThemedText>
+              </View>
+
+              <Feather name="chevron-right" size={20} color={theme.textSecondary} />
             </View>
-          )}
-
-          <View style={styles.itemInfo}>
-            <ThemedText type="body" style={styles.itemName} numberOfLines={1}>
-              {item.productName}
-            </ThemedText>
-            {item.brandName ? (
-              <ThemedText
-                type="small"
-                style={{ color: theme.textSecondary }}
-                numberOfLines={1}
-              >
-                {item.brandName}
-              </ThemedText>
-            ) : null}
-            <ThemedText
-              type="caption"
-              style={{ color: theme.textSecondary, marginTop: Spacing.xs }}
-            >
-              {formatDate(item.scannedAt)}
-            </ThemedText>
-          </View>
-
-          <View style={styles.itemCalories}>
-            <ThemedText
-              type="h4"
-              style={{ color: Colors.light.calorieAccent }}
-            >
-              {item.calories ? Math.round(parseFloat(item.calories)) : "--"}
-            </ThemedText>
-            <ThemedText
-              type="caption"
-              style={{ color: theme.textSecondary }}
-            >
-              kcal
-            </ThemedText>
-          </View>
-
-          <Feather name="chevron-right" size={20} color={theme.textSecondary} />
-        </View>
-      </Card>
-    </AnimatedPressable>
+          </Card>
+        </Pressable>
+      </Animated.View>
+    </Animated.View>
   );
 }
 
