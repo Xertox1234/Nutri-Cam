@@ -10,8 +10,8 @@ NutriScan is a mobile nutrition tracking app built with Expo/React Native (front
 
 ```bash
 # Start development (run both in parallel)
-npm run server:dev    # Express backend on port 5000
-npm run expo:dev      # Expo frontend (requires Replit environment vars)
+npm run server:dev    # Express backend on port 3000
+npm run expo:dev      # Expo frontend with tunneling
 
 # Database
 npm run db:push       # Push Drizzle schema to PostgreSQL
@@ -58,7 +58,7 @@ Modal screens: NutritionDetailScreen, ItemDetailScreen
 ### Database Schema (`shared/schema.ts`)
 Key tables: `users`, `userProfiles` (dietary preferences), `scannedItems`, `dailyLogs`, `conversations`/`messages`
 
-### AI Integration (`server/replit_integrations/`)
+### AI Integration (`server/`)
 - `chat/` - OpenAI nutrition assistant with user dietary context
 - `audio/` - Speech-to-text, text-to-speech
 - `image/` - Image generation

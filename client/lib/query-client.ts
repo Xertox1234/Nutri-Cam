@@ -8,11 +8,18 @@ export function getApiUrl(): string {
   let host = process.env.EXPO_PUBLIC_DOMAIN;
 
   if (!host) {
-    // Default to localhost:3000 for local development
-    return "http://192.168.137.175:3000";
+    // Default tunnel URL for development
+    return "https://violet-areas-talk.loca.lt";
   }
 
-  let url = new URL(`https://${host}`);
+  // Check if host starts with http:// or https://
+  if (host.startsWith("http://") || host.startsWith("https://")) {
+    return host;
+  }
+
+  // For localhost, use http, otherwise use https
+  const protocol = host.startsWith("localhost") ? "http" : "https";
+  let url = new URL(`${protocol}://${host}`);
 
   return url.href;
 }
