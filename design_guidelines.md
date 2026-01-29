@@ -15,7 +15,7 @@
 - **History** (Left tab)
 - **Profile** (Right tab)
 
-**Auth Flow**: Users see onboarding → signup/login screen before accessing main app. Since Replit Auth isn't available for mobile, implement Firebase Authentication with:
+**Auth Flow**: Users see onboarding → signup/login screen before accessing main app. Implement session-based authentication with:
 - Apple Sign-In (required for iOS)
 - Google Sign-In
 - Email/Password option

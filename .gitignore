@@ -46,16 +46,6 @@ app-example
 /ios
 /android
 
-# Replit specific
-.replit
-replit.nix
-.config/
-.cache/
-.local/
-.upm/
-.breakpoints
-replit_zip_error_log.txt
-
 # Attached assets (user uploads during development)
 attached_assets/
 
