@@ -23,7 +23,7 @@ export default function MainTabNavigator() {
 
   return (
     <Tab.Navigator
-      initialRouteName="ScanTab"
+      initialRouteName="HistoryTab"
       screenOptions={{
         tabBarActiveTintColor: Colors.light.success,
         tabBarInactiveTintColor: theme.tabIconDefault,

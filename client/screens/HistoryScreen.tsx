@@ -228,7 +228,7 @@ export default function HistoryScreen() {
   const handleItemPress = (item: ScannedItem) => {
     console.log("Card pressed, navigating to item:", item.id);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    navigation.navigate("NutritionDetail", { itemId: item.id });
+    navigation.navigate("ItemDetail", { itemId: item.id });
   };
 
   const renderItem = ({ item, index }: { item: ScannedItem; index: number }) => (
