@@ -8,7 +8,7 @@ import { useScreenOptions } from "@/hooks/useScreenOptions";
 
 export type HistoryStackParamList = {
   History: undefined;
-  NutritionDetail: { itemId: number };
+  ItemDetail: { itemId: number };
 };
 
 const Stack = createNativeStackNavigator<HistoryStackParamList>();
@@ -26,7 +26,7 @@ export default function HistoryStackNavigator() {
         }}
       />
       <Stack.Screen
-        name="NutritionDetail"
+        name="ItemDetail"
         component={ItemDetailScreen}
         options={{
           headerTitle: () => <HeaderTitle title="Item Details" />,

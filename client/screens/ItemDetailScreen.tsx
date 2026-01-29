@@ -21,8 +21,8 @@ import { Spacing, BorderRadius, Colors } from "@/constants/theme";
 import { apiRequest, getApiUrl } from "@/lib/query-client";
 
 type ItemDetailRouteProp = RouteProp<
-  { NutritionDetail: { itemId: number } },
-  "NutritionDetail"
+  { ItemDetail: { itemId: number } },
+  "ItemDetail"
 >;
 
 interface ScannedItem {
