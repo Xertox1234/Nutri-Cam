@@ -219,6 +219,12 @@ export default function ScanScreen() {
               color="#FFFFFF"
             />
           </Pressable>
+          <Pressable
+            onPress={() => navigation.navigate("HistoryTab")}
+            style={[styles.controlButton, { backgroundColor: "rgba(0,0,0,0.4)" }]}
+          >
+            <Feather name="x" size={24} color="#FFFFFF" />
+          </Pressable>
         </View>
 
         <View style={styles.reticleContainer}>
@@ -311,7 +317,7 @@ const styles = StyleSheet.create({
   },
   topControls: {
     flexDirection: "row",
-    justifyContent: "flex-start",
+    justifyContent: "space-between",
     paddingHorizontal: Spacing.lg,
   },
   controlButton: {
