@@ -8,7 +8,8 @@ export function getApiUrl(): string {
   let host = process.env.EXPO_PUBLIC_DOMAIN;
 
   if (!host) {
-    throw new Error("EXPO_PUBLIC_DOMAIN is not set");
+    // Default to localhost:3000 for local development
+    return "http://192.168.137.175:3000";
   }
 
   let url = new URL(`https://${host}`);

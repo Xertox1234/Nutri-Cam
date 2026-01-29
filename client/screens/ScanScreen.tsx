@@ -37,6 +37,7 @@ export default function ScanScreen() {
   const [isScanning, setIsScanning] = useState(false);
   const lastScannedRef = useRef<string | null>(null);
   const scanTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const cameraRef = useRef<any>(null);
 
   const pulseScale = useSharedValue(1);
   const cornerOpacity = useSharedValue(0.6);
@@ -105,12 +106,27 @@ export default function ScanScreen() {
     }
   };
 
-  const handleShutterPress = () => {
+  const handleShutterPress = async () => {
     pulseScale.value = withSequence(
       withSpring(0.9, { damping: 15 }),
       withSpring(1, { damping: 15 })
     );
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    // Take a photo
+    if (cameraRef.current) {
+      try {
+        const photo = await cameraRef.current.takePictureAsync({
+          quality: 1,
+        });
+        
+        if (photo?.uri) {
+          navigation.navigate("NutritionDetail", { imageUri: photo.uri });
+        }
+      } catch (error) {
+        console.error("Error taking picture:", error);
+      }
+    }
   };
 
   if (!permission) {
@@ -185,6 +201,7 @@ export default function ScanScreen() {
   return (
     <View style={styles.container}>
       <CameraView
+        ref={cameraRef}
         style={StyleSheet.absoluteFill}
         facing="back"
         enableTorch={torch}
@@ -244,7 +261,7 @@ export default function ScanScreen() {
           />
 
           <ThemedText type="body" style={styles.reticleText}>
-            {isScanning ? "Scanning..." : "Point at barcode or nutrition label"}
+            {isScanning ? "Scanning..." : "Scan barcode or tap shutter for food photo"}
           </ThemedText>
         </View>
 
