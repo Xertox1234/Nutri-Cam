@@ -17,20 +17,20 @@ declare module "http" {
 function setupCors(app: express.Application) {
   app.use((req, res, next) => {
     const origin = req.header("origin");
-    
+
     // Allow all origins in development
     res.header("Access-Control-Allow-Origin", origin || "*");
     res.header(
       "Access-Control-Allow-Methods",
-      "GET, POST, PUT, DELETE, OPTIONS"
+      "GET, POST, PUT, DELETE, OPTIONS",
     );
     res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
     res.header("Access-Control-Allow-Credentials", "true");
-    
+
     if (req.method === "OPTIONS") {
       return res.sendStatus(200);
     }
-    
+
     next();
   });
 }
@@ -42,7 +42,7 @@ function setupBodyParsing(app: express.Application) {
       verify: (req, _res, buf) => {
         req.rawBody = buf;
       },
-    })
+    }),
   );
 
   app.use(express.urlencoded({ extended: false, limit: "50mb" }));
@@ -97,7 +97,7 @@ function serveExpoManifest(platform: string, res: Response) {
     process.cwd(),
     "static-build",
     platform,
-    "manifest.json"
+    "manifest.json",
   );
 
   if (!fs.existsSync(manifestPath)) {
@@ -149,7 +149,7 @@ function configureExpoAndLanding(app: express.Application) {
     process.cwd(),
     "server",
     "templates",
-    "landing-page.html"
+    "landing-page.html",
   );
   const landingPageTemplate = fs.readFileSync(templatePath, "utf-8");
   const appName = getAppName();
@@ -228,7 +228,7 @@ function setupErrorHandler(app: express.Application) {
     },
     () => {
       log(`express server serving on port ${port}`);
-    }
+    },
   );
 })();
-5
+5;
