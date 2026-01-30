@@ -4,11 +4,163 @@ This document captures established patterns for the NutriScan codebase. Follow t
 
 ## Table of Contents
 
+- [Security Patterns](#security-patterns)
 - [TypeScript Patterns](#typescript-patterns)
 - [API Patterns](#api-patterns)
+- [Database Patterns](#database-patterns)
 - [Client State Patterns](#client-state-patterns)
 - [Performance Patterns](#performance-patterns)
 - [Documentation Patterns](#documentation-patterns)
+
+---
+
+## Security Patterns
+
+### IDOR Protection: Auth + Ownership Check
+
+Always verify both authentication AND resource ownership for single-resource endpoints:
+
+```typescript
+// Good: Prevents users from accessing other users' items
+app.get(
+  "/api/scanned-items/:id",
+  requireAuth,
+  async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id) || id <= 0) {
+      return res.status(400).json({ error: "Invalid item ID" });
+    }
+
+    const item = await storage.getScannedItem(id);
+
+    if (!item || item.userId !== req.userId) {
+      return res.status(404).json({ error: "Item not found" });
+    }
+
+    res.json(item);
+  }
+);
+```
+
+```typescript
+// Bad: IDOR vulnerability - any authenticated user can access any item
+app.get(
+  "/api/scanned-items/:id",
+  requireAuth,
+  async (req: Request, res: Response) => {
+    const item = await storage.getScannedItem(req.params.id);
+    res.json(item); // No ownership check!
+  }
+);
+```
+
+### CORS with Pattern Matching
+
+Use origin pattern matching instead of wildcard `*` for CORS:
+
+```typescript
+const ALLOWED_ORIGIN_PATTERNS = [
+  /^https?:\/\/localhost(:\d+)?$/,
+  /^exp:\/\/.+$/,
+  /^https:\/\/.+\.loca\.lt$/, // localtunnel
+  /^https:\/\/.+\.ngrok\.io$/, // ngrok
+];
+
+const publicDomain = process.env.EXPO_PUBLIC_DOMAIN;
+
+function isAllowedOrigin(origin: string | undefined): boolean {
+  if (!origin) return true; // Allow requests with no origin (mobile apps)
+  if (publicDomain && origin.includes(publicDomain)) return true;
+  return ALLOWED_ORIGIN_PATTERNS.some((pattern) => pattern.test(origin));
+}
+
+app.use((req, res, next) => {
+  const origin = req.header("origin");
+  if (isAllowedOrigin(origin)) {
+    res.header("Access-Control-Allow-Origin", origin || "*");
+  }
+  next();
+});
+```
+
+**Why:** Prevents malicious domains from making authenticated requests to your API.
+
+### Rate Limiting on Auth Endpoints
+
+Apply aggressive rate limiting to prevent brute force attacks:
+
+```typescript
+import rateLimit from "express-rate-limit";
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // 10 attempts per window
+  message: { error: "Too many login attempts, please try again later" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5, // 5 registrations per hour
+  message: { error: "Too many registration attempts, please try again later" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.post("/api/auth/login", loginLimiter, async (req, res) => {
+  // Login logic
+});
+
+app.post("/api/auth/register", registerLimiter, async (req, res) => {
+  // Register logic
+});
+```
+
+### Input Validation with Zod
+
+Validate ALL user input with Zod schemas before processing:
+
+```typescript
+import { z, ZodError } from "zod";
+
+// Define schema
+const registerSchema = z.object({
+  username: z
+    .string()
+    .min(3, "Username must be at least 3 characters")
+    .max(30, "Username must be at most 30 characters")
+    .regex(
+      /^[a-zA-Z0-9_]+$/,
+      "Username can only contain letters, numbers, and underscores",
+    ),
+  password: z.string().min(8, "Password must be at least 8 characters"),
+});
+
+// Validation helper
+function formatZodError(error: ZodError): string {
+  return error.errors
+    .map((e) =>
+      e.path.length ? `${e.path.join(".")}: ${e.message}` : e.message,
+    )
+    .join("; ");
+}
+
+// Usage in route
+app.post("/api/auth/register", async (req, res) => {
+  try {
+    const validated = registerSchema.parse(req.body);
+    // Use validated data...
+  } catch (error) {
+    if (error instanceof ZodError) {
+      return res.status(400).json({ error: formatZodError(error) });
+    }
+    res.status(500).json({ error: "Internal error" });
+  }
+});
+```
+
+**Why:** Prevents injection attacks, ensures data integrity, provides clear error messages.
 
 ---
 
@@ -69,6 +221,49 @@ declare global {
   }
 }
 ```
+
+### Inline Response Types
+
+Define API response types inline where they're consumed, not in shared files:
+
+```typescript
+// Good: Type defined where used (client/screens/HistoryScreen.tsx)
+type ScannedItemResponse = {
+  id: number;
+  productName: string;
+  brandName?: string | null;
+  calories?: string | null;
+  imageUrl?: string | null;
+  scannedAt: string; // Dates come as strings over JSON
+};
+
+type PaginatedResponse = {
+  items: ScannedItemResponse[];
+  total: number;
+};
+
+const { data } = useInfiniteQuery<PaginatedResponse>({
+  queryKey: ["api", "scanned-items"],
+  // ...
+});
+```
+
+```typescript
+// Bad: Shared types in separate file
+// shared/types/models.ts
+export interface ScannedItemResponse { ... }
+
+// Multiple import locations become tightly coupled
+import { ScannedItemResponse } from '@shared/types/models';
+```
+
+**When to use shared types:**
+- Auth types (User, AuthResponse) - used in multiple places
+- Database schema types - shared by ORM
+
+**When NOT to use shared types:**
+- API response shapes - keep local to consuming component
+- One-off request/response types
 
 ---
 
@@ -137,6 +332,169 @@ export function requireAuth(req, res, next) {
   }
 }
 ```
+
+### Pagination with useInfiniteQuery
+
+Use TanStack Query's `useInfiniteQuery` for paginated lists:
+
+```typescript
+const PAGE_SIZE = 50;
+
+async function fetchScannedItems({ pageParam = 0 }): Promise<PaginatedResponse> {
+  const token = await tokenStorage.get();
+  const baseUrl = getApiUrl();
+  const url = new URL("/api/scanned-items", baseUrl);
+  url.searchParams.set("limit", PAGE_SIZE.toString());
+  url.searchParams.set("offset", pageParam.toString());
+
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(url, { headers });
+  if (!res.ok) throw new Error(`${res.status}: ${res.statusText}`);
+  return await res.json();
+}
+
+const {
+  data,
+  fetchNextPage,
+  hasNextPage,
+  isFetchingNextPage,
+  isLoading,
+  refetch,
+} = useInfiniteQuery<PaginatedResponse>({
+  queryKey: ["api", "scanned-items"],
+  queryFn: fetchScannedItems,
+  getNextPageParam: (lastPage, allPages) => {
+    const totalFetched = allPages.reduce((sum, page) => sum + page.items.length, 0);
+    return totalFetched < lastPage.total ? totalFetched : undefined;
+  },
+  initialPageParam: 0,
+});
+
+// Flatten pages for FlatList
+const allItems = data?.pages.flatMap((page) => page.items) ?? [];
+```
+
+**Server-side:** Validate and cap pagination parameters:
+
+```typescript
+app.get("/api/scanned-items", requireAuth, async (req, res) => {
+  const limit = Math.min(
+    Math.max(parseInt(req.query.limit as string) || 50, 1),
+    100 // Maximum 100 items per page
+  );
+  const offset = Math.max(parseInt(req.query.offset as string) || 0, 0);
+
+  const result = await storage.getScannedItems(req.userId!, limit, offset);
+  res.json(result);
+});
+```
+
+---
+
+## Database Patterns
+
+### Indexes for Foreign Keys and Sort Columns
+
+Add indexes to columns used in WHERE clauses and ORDER BY:
+
+```typescript
+export const scannedItems = pgTable(
+  "scanned_items",
+  {
+    id: serial("id").primaryKey(),
+    userId: varchar("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    productName: text("product_name").notNull(),
+    scannedAt: timestamp("scanned_at")
+      .default(sql`CURRENT_TIMESTAMP`)
+      .notNull(),
+    // ... other columns
+  },
+  (table) => ({
+    userIdIdx: index("scanned_items_user_id_idx").on(table.userId),
+    scannedAtIdx: index("scanned_items_scanned_at_idx").on(table.scannedAt),
+  })
+);
+```
+
+**Why:**
+- `userId` index: Fast filtering by user (every query filters by user)
+- `scannedAt` index: Fast sorting for history screen (ORDER BY scannedAt DESC)
+
+### NOT NULL on Foreign Keys
+
+Always mark foreign key columns as NOT NULL unless nulls are explicitly needed:
+
+```typescript
+export const dailyLogs = pgTable("daily_logs", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull(), // NOT NULL - every log must have a user
+  scannedItemId: integer("scanned_item_id")
+    .references(() => scannedItems.id, { onDelete: "cascade" })
+    .notNull(), // NOT NULL - every log must reference an item
+  // ...
+});
+```
+
+**Why:** Prevents orphaned records and enforces referential integrity at the database level.
+
+### Inline Transactions for Multi-Table Operations
+
+Use `db.transaction()` directly when operations must be atomic:
+
+```typescript
+// Good: Inline transaction
+const profile = await db.transaction(async (tx) => {
+  const [existing] = await tx
+    .select()
+    .from(userProfiles)
+    .where(eq(userProfiles.userId, req.userId!));
+
+  let result;
+  if (existing) {
+    [result] = await tx
+      .update(userProfiles)
+      .set({ ...profileData, updatedAt: new Date() })
+      .where(eq(userProfiles.userId, req.userId!))
+      .returning();
+  } else {
+    [result] = await tx
+      .insert(userProfiles)
+      .values({ ...profileData, userId: req.userId! })
+      .returning();
+  }
+
+  await tx
+    .update(users)
+    .set({ onboardingCompleted: true })
+    .where(eq(users.id, req.userId!));
+
+  return result;
+});
+```
+
+```typescript
+// Bad: Over-abstracted transaction helper
+async function withTransaction<T>(
+  callback: (tx: Transaction) => Promise<T>
+): Promise<T> {
+  return await db.transaction(callback);
+}
+
+// Adds indirection with no benefit
+const profile = await withTransaction(async (tx) => {
+  // Same logic as above
+});
+```
+
+**Why:** Inline transactions are clearer, easier to debug, and avoid unnecessary abstraction layers.
 
 ---
 
@@ -222,6 +580,80 @@ if (response.status === 401) {
 ---
 
 ## Performance Patterns
+
+### Memoize FlatList Components
+
+Use `React.memo` and `useCallback` to prevent unnecessary re-renders in lists:
+
+```typescript
+// Memoized list item component
+const HistoryItem = React.memo(function HistoryItem({
+  item,
+  index,
+  onPress,
+}: {
+  item: ScannedItemResponse;
+  index: number;
+  onPress: (item: ScannedItemResponse) => void;
+}) {
+  // Component implementation
+});
+
+// Parent component
+export default function HistoryScreen() {
+  const navigation = useNavigation();
+
+  // Memoize handler to prevent recreating on every render
+  const handleItemPress = useCallback(
+    (item: ScannedItemResponse) => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      navigation.navigate("ItemDetail", { itemId: item.id });
+    },
+    [navigation]
+  );
+
+  const renderItem = useCallback(
+    ({ item, index }: { item: ScannedItemResponse; index: number }) => (
+      <HistoryItem item={item} index={index} onPress={handleItemPress} />
+    ),
+    [handleItemPress]
+  );
+
+  return (
+    <FlatList
+      data={items}
+      renderItem={renderItem}
+      keyExtractor={(item) => item.id.toString()}
+    />
+  );
+}
+```
+
+**Why:** FlatList re-renders items when renderItem function changes. Memoization ensures renders only happen when data changes.
+
+### Cleanup Side Effects in useEffect
+
+Always clean up timeouts, intervals, and subscriptions:
+
+```typescript
+// Good: Cleanup prevents memory leaks
+useEffect(() => {
+  const timer = setTimeout(() => {
+    setShowSomething(true);
+  }, 2000);
+
+  return () => clearTimeout(timer);
+}, []);
+```
+
+```typescript
+// Bad: Timer continues after component unmounts
+useEffect(() => {
+  setTimeout(() => {
+    setShowSomething(true); // Error if component unmounted
+  }, 2000);
+}, []);
+```
 
 ### Avoid Storage Reads in Hot Paths
 
