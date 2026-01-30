@@ -66,17 +66,40 @@ Key tables: `users`, `userProfiles` (dietary preferences), `scannedItems`, `dail
 
 ## Key Patterns
 
-### API Calls
-Client uses `apiRequest()` from `client/lib/query-client.ts` for all server communication with automatic error handling.
+**CRITICAL:** Follow established patterns in `docs/PATTERNS.md` for all code changes. This ensures consistency, prevents common issues, and maintains code quality across the project.
 
-### Theming
+### Pattern Documentation
+
+- **`docs/PATTERNS.md`** - Comprehensive development patterns covering:
+  - TypeScript patterns (type guards, shared types, Express extensions)
+  - API patterns (error responses, auth, fail-fast validation)
+  - Client state patterns (in-memory caching, Authorization headers, 401 handling)
+  - Performance patterns (storage optimization, batching)
+  - React Native patterns (safe areas, haptics, platform-specific code)
+  - Camera patterns (expo-camera, scan debouncing, permissions)
+  - Documentation patterns (todos, design decisions)
+
+**Before implementing:** Check if a pattern exists. **After implementing:** Consider if your solution should become a pattern.
+
+### Quick Pattern Reference
+
+#### API Calls
+Client uses `apiRequest()` from `client/lib/query-client.ts` for all server communication with automatic error handling. Always use Authorization header (not cookies) for auth tokens.
+
+#### Theming
 Use `useTheme()` hook. Colors, spacing, typography defined in `client/constants/theme.ts`. Supports light/dark modes.
 
-### Authentication
-`AuthContext` manages auth state with AsyncStorage persistence. `useAuth()` hook provides login/register/logout.
+#### Authentication
+`AuthContext` manages auth state with AsyncStorage persistence. `useAuth()` hook provides login/register/logout. Token stored via in-memory cached storage (`client/lib/token-storage.ts`).
 
-### Onboarding
+#### Onboarding
 `OnboardingContext` collects dietary info across 6 screens. Data saved to `userProfiles` table on completion.
+
+#### Safe Areas (React Native)
+Always use `useSafeAreaInsets()` for screen layouts to handle iOS notch/dynamic island. Add theme spacing for visual breathing room.
+
+#### Camera Scanning
+Debounce barcode scans using ref tracking and `isScanning` state to prevent duplicate triggers. Always provide haptic feedback on successful scan.
 
 ## Environment Variables
 - `DATABASE_URL` - PostgreSQL connection

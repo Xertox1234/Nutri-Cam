@@ -3,7 +3,6 @@ import {
   StyleSheet,
   View,
   ScrollView,
-  Pressable,
   ActivityIndicator,
   Image,
 } from "react-native";
@@ -22,7 +21,7 @@ import { Button } from "@/components/Button";
 import { useTheme } from "@/hooks/useTheme";
 import { useAuthContext } from "@/context/AuthContext";
 import { apiRequest } from "@/lib/query-client";
-import { Spacing, BorderRadius, Colors, Shadows } from "@/constants/theme";
+import { Spacing, BorderRadius, Colors } from "@/constants/theme";
 import type { NutritionDetailScreenNavigationProp } from "@/types/navigation";
 
 type RouteParams = {
