@@ -29,19 +29,20 @@ import { useNavigation } from "@react-navigation/native";
 import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius, Colors } from "@/constants/theme";
+import type { ScanScreenNavigationProp } from "@/types/navigation";
 
 const AnimatedView = Animated.createAnimatedComponent(View);
 
 export default function ScanScreen() {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
-  const navigation = useNavigation<any>();
+  const navigation = useNavigation<ScanScreenNavigationProp>();
   const [permission, requestPermission] = useCameraPermissions();
   const [torch, setTorch] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
   const lastScannedRef = useRef<string | null>(null);
   const scanTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const cameraRef = useRef<any>(null);
+  const cameraRef = useRef<CameraView>(null);
 
   const pulseScale = useSharedValue(1);
   const cornerOpacity = useSharedValue(0.6);
@@ -56,6 +57,14 @@ export default function ScanScreen() {
       -1,
       true,
     );
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (scanTimeoutRef.current) {
+        clearTimeout(scanTimeoutRef.current);
+      }
+    };
   }, []);
 
   const pulseStyle = useAnimatedStyle(() => ({

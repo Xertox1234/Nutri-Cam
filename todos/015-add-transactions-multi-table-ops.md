@@ -1,6 +1,6 @@
 ---
 title: "Add database transactions for multi-table operations"
-status: ready
+status: complete
 priority: medium
 created: 2026-01-30
 updated: 2026-01-30
@@ -34,10 +34,10 @@ await storage.updateUser(req.userId!, { onboardingCompleted: true });
 
 ## Acceptance Criteria
 
-- [ ] Add transaction support to DatabaseStorage class
-- [ ] Wrap scanned-items POST in transaction
-- [ ] Wrap dietary-profile POST in transaction
-- [ ] Handle rollback on failure
+- [x] Add transaction support to DatabaseStorage class
+- [x] Wrap scanned-items POST in transaction
+- [x] Wrap dietary-profile POST in transaction
+- [x] Handle rollback on failure
 
 ## Implementation Notes
 
@@ -76,3 +76,7 @@ app.post("/api/scanned-items", requireAuth, async (req, res) => {
 
 ### 2026-01-30
 - Initial creation from code review
+- Implemented transaction support with `withTransaction()` helper method
+- Added `createScannedItemWithLog()` for atomic scanned item + daily log creation
+- Added `createOrUpdateProfileWithOnboarding()` for atomic profile + onboarding flag update
+- Updated routes to use new transactional methods

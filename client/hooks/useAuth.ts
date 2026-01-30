@@ -2,14 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { apiRequest, getApiUrl } from "@/lib/query-client";
 import { tokenStorage } from "@/lib/token-storage";
-
-interface User {
-  id: string;
-  username: string;
-  displayName?: string;
-  dailyCalorieGoal?: number;
-  onboardingCompleted?: boolean;
-}
+import { User } from "@shared/types/auth";
 
 interface AuthState {
   user: User | null;
@@ -34,38 +27,40 @@ export function useAuth() {
         return;
       }
 
-      const stored = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
-      if (stored) {
-        try {
-          const response = await fetch(`${getApiUrl()}/api/auth/me`, {
-            credentials: "include",
-          });
-          if (response.ok) {
-            const freshUser = await response.json();
-            await AsyncStorage.setItem(
-              AUTH_STORAGE_KEY,
-              JSON.stringify(freshUser),
-            );
-            setState({
-              user: freshUser,
-              isLoading: false,
-              isAuthenticated: true,
-            });
-          } else {
-            await tokenStorage.clear();
-            await AsyncStorage.removeItem(AUTH_STORAGE_KEY);
-            setState({ user: null, isLoading: false, isAuthenticated: false });
-          }
-        } catch {
-          const localUser = JSON.parse(stored);
+      try {
+        const response = await fetch(`${getApiUrl()}/api/auth/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        if (response.ok) {
+          const freshUser = await response.json();
+          await AsyncStorage.setItem(
+            AUTH_STORAGE_KEY,
+            JSON.stringify(freshUser),
+          );
           setState({
-            user: localUser,
+            user: freshUser,
             isLoading: false,
             isAuthenticated: true,
           });
+        } else {
+          // Token invalid/expired
+          await tokenStorage.clear();
+          await AsyncStorage.removeItem(AUTH_STORAGE_KEY);
+          setState({ user: null, isLoading: false, isAuthenticated: false });
         }
-      } else {
-        setState({ user: null, isLoading: false, isAuthenticated: false });
+      } catch {
+        // Network error - use cached data if available
+        const stored = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
+        if (stored) {
+          setState({
+            user: JSON.parse(stored),
+            isLoading: false,
+            isAuthenticated: true,
+          });
+        } else {
+          setState({ user: null, isLoading: false, isAuthenticated: false });
+        }
       }
     } catch {
       setState({ user: null, isLoading: false, isAuthenticated: false });

@@ -16,15 +16,18 @@ export function isAccessTokenPayload(
   );
 }
 
+// User type for client-side auth
+export interface User {
+  id: string;
+  username: string;
+  displayName?: string;
+  dailyCalorieGoal?: number;
+  onboardingCompleted?: boolean;
+}
+
 // API response types
 export interface AuthResponse {
-  user: {
-    id: string;
-    username: string;
-    displayName?: string;
-    dailyCalorieGoal?: number;
-    onboardingCompleted?: boolean;
-  };
+  user: User;
   token: string;
 }
 

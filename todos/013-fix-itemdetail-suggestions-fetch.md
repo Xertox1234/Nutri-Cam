@@ -1,6 +1,6 @@
 ---
 title: "Fix ItemDetailScreen suggestions fetch (missing auth, manual fetch)"
-status: ready
+status: complete
 priority: medium
 created: 2026-01-30
 updated: 2026-01-30
@@ -39,10 +39,10 @@ const fetchSuggestions = async () => {
 
 ## Acceptance Criteria
 
-- [ ] Convert to TanStack Query useQuery
-- [ ] Add proper Authorization header via apiRequest
-- [ ] Enable caching for suggestions
-- [ ] Fix dependency to use stable itemId instead of item object
+- [x] Convert to TanStack Query useQuery
+- [x] Add proper Authorization header via apiRequest
+- [x] Enable caching for suggestions
+- [x] Fix dependency to use stable itemId instead of item object
 
 ## Implementation Notes
 
@@ -76,3 +76,4 @@ This also fixes the server-side issue where `requireAuth` is present but the end
 
 ### 2026-01-30
 - Initial creation from code review
+- Implemented fix: converted manual fetch to TanStack Query useQuery with apiRequest for proper JWT auth, 10-minute cache, and stable itemId dependency

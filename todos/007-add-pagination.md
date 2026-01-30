@@ -1,6 +1,6 @@
 ---
 title: "Add pagination to getScannedItems query"
-status: ready
+status: complete
 priority: high
 created: 2026-01-30
 updated: 2026-01-30
@@ -34,11 +34,11 @@ async getScannedItems(userId: string): Promise<ScannedItem[]> {
 
 ## Acceptance Criteria
 
-- [ ] Add limit and offset parameters to storage function
-- [ ] Update API endpoint to accept pagination query params
-- [ ] Implement cursor-based pagination or offset pagination
-- [ ] Update client to handle paginated responses
-- [ ] Add total count to response for pagination UI
+- [x] Add limit and offset parameters to storage function
+- [x] Update API endpoint to accept pagination query params
+- [x] Implement cursor-based pagination or offset pagination
+- [x] Update client to handle paginated responses
+- [x] Add total count to response for pagination UI
 
 ## Implementation Notes
 
@@ -84,3 +84,8 @@ app.get("/api/scanned-items", requireAuth, async (req, res) => {
 
 ### 2026-01-30
 - Initial creation from code review
+- Implemented pagination with offset-based approach:
+  - Updated `server/storage.ts`: `getScannedItems()` now accepts `limit` (default 50) and `offset` (default 0) parameters, returns `{ items, total }` using `Promise.all` for parallel count query
+  - Updated `server/routes.ts`: GET `/api/scanned-items` now accepts `limit` and `offset` query params with validation (limit max 100, offset min 0)
+  - Added `PaginatedScannedItemsResponse` type to `shared/types/models.ts`
+  - Updated `client/screens/HistoryScreen.tsx`: Replaced `useQuery` with `useInfiniteQuery` for infinite scroll, added `onEndReached` handler and loading footer

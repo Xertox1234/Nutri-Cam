@@ -1,13 +1,6 @@
 import React, { createContext, useContext, ReactNode } from "react";
 import { useAuth } from "@/hooks/useAuth";
-
-interface User {
-  id: string;
-  username: string;
-  displayName?: string;
-  dailyCalorieGoal?: number;
-  onboardingCompleted?: boolean;
-}
+import { User } from "@shared/types/auth";
 
 interface AuthContextType {
   user: User | null;

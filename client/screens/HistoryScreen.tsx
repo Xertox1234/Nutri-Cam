@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback, useMemo } from "react";
 import {
   StyleSheet,
   View,
@@ -6,12 +6,13 @@ import {
   Pressable,
   RefreshControl,
   Image,
+  ActivityIndicator,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useNavigation } from "@react-navigation/native";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import Animated, {
@@ -26,29 +27,26 @@ import { Card } from "@/components/Card";
 import { useTheme } from "@/hooks/useTheme";
 import { useAuthContext } from "@/context/AuthContext";
 import { Spacing, BorderRadius, Colors } from "@/constants/theme";
+import {
+  ScannedItemResponse,
+  PaginatedScannedItemsResponse,
+} from "@shared/types/models";
+import { getApiUrl } from "@/lib/query-client";
+import { tokenStorage } from "@/lib/token-storage";
+import type { HistoryScreenNavigationProp } from "@/types/navigation";
 
-interface ScannedItem {
-  id: number;
-  productName: string;
-  brandName?: string;
-  calories?: string;
-  protein?: string;
-  carbs?: string;
-  fat?: string;
-  imageUrl?: string;
-  scannedAt: string;
-}
+const PAGE_SIZE = 50;
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
-function HistoryItem({
+const HistoryItem = React.memo(function HistoryItem({
   item,
   index,
   onPress,
 }: {
-  item: ScannedItem;
+  item: ScannedItemResponse;
   index: number;
-  onPress: () => void;
+  onPress: (item: ScannedItemResponse) => void;
 }) {
   const { theme } = useTheme();
   const scale = useSharedValue(1);
@@ -81,7 +79,7 @@ function HistoryItem({
     <Animated.View entering={FadeInDown.delay(index * 50).duration(300)}>
       <Animated.View style={animatedStyle}>
         <Pressable
-          onPress={onPress}
+          onPress={() => onPress(item)}
           onPressIn={handlePressIn}
           onPressOut={handlePressOut}
         >
@@ -158,7 +156,12 @@ function HistoryItem({
       </Animated.View>
     </Animated.View>
   );
-}
+});
+
+// Memoized separator component to prevent re-renders
+const ItemSeparator = React.memo(function ItemSeparator() {
+  return <View style={{ height: Spacing.md }} />;
+});
 
 function EmptyState() {
   const { theme } = useTheme();
@@ -222,43 +225,97 @@ function LoadingSkeleton() {
   );
 }
 
+function LoadingFooter() {
+  const { theme } = useTheme();
+  return (
+    <View style={styles.loadingFooter}>
+      <ActivityIndicator size="small" color={theme.textSecondary} />
+    </View>
+  );
+}
+
 export default function HistoryScreen() {
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const tabBarHeight = useBottomTabBarHeight();
   const { theme } = useTheme();
-  const navigation = useNavigation<any>();
+  const navigation = useNavigation<HistoryScreenNavigationProp>();
   const { user } = useAuthContext();
 
   const {
-    data: items = [],
+    data,
     isLoading,
     refetch,
     isRefetching,
-  } = useQuery<ScannedItem[]>({
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery<
+    PaginatedScannedItemsResponse,
+    Error,
+    { pages: PaginatedScannedItemsResponse[]; pageParams: number[] },
+    string[],
+    number
+  >({
     queryKey: ["/api/scanned-items"],
+    queryFn: async ({ pageParam }) => {
+      const baseUrl = getApiUrl();
+      const url = new URL("/api/scanned-items", baseUrl);
+      url.searchParams.set("limit", PAGE_SIZE.toString());
+      url.searchParams.set("offset", pageParam.toString());
+
+      const headers: Record<string, string> = {};
+      const token = await tokenStorage.get();
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
+      const res = await fetch(url, { headers });
+      if (!res.ok) {
+        const text = (await res.text()) || res.statusText;
+        throw new Error(`${res.status}: ${text}`);
+      }
+      return res.json();
+    },
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      const loadedCount = allPages.reduce(
+        (sum, page) => sum + page.items.length,
+        0,
+      );
+      if (loadedCount < lastPage.total) {
+        return loadedCount;
+      }
+      return undefined;
+    },
     enabled: !!user,
   });
 
-  const handleItemPress = (item: ScannedItem) => {
-    console.log("Card pressed, navigating to item:", item.id);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    navigation.navigate("ItemDetail", { itemId: item.id });
-  };
-
-  const renderItem = ({
-    item,
-    index,
-  }: {
-    item: ScannedItem;
-    index: number;
-  }) => (
-    <HistoryItem
-      item={item}
-      index={index}
-      onPress={() => handleItemPress(item)}
-    />
+  const items = useMemo(
+    () => data?.pages.flatMap((page) => page.items) ?? [],
+    [data],
   );
+
+  const handleItemPress = useCallback(
+    (item: ScannedItemResponse) => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      navigation.navigate("ItemDetail", { itemId: item.id });
+    },
+    [navigation],
+  );
+
+  const renderItem = useCallback(
+    ({ item, index }: { item: ScannedItemResponse; index: number }) => (
+      <HistoryItem item={item} index={index} onPress={handleItemPress} />
+    ),
+    [handleItemPress],
+  );
+
+  const handleEndReached = useCallback(() => {
+    if (hasNextPage && !isFetchingNextPage) {
+      fetchNextPage();
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
 
   return (
     <FlatList
@@ -276,6 +333,7 @@ export default function HistoryScreen() {
       renderItem={renderItem}
       keyExtractor={(item) => item.id.toString()}
       ListEmptyComponent={isLoading ? <LoadingSkeleton /> : <EmptyState />}
+      ListFooterComponent={isFetchingNextPage ? <LoadingFooter /> : null}
       refreshControl={
         <RefreshControl
           refreshing={isRefetching}
@@ -283,7 +341,9 @@ export default function HistoryScreen() {
           tintColor={Colors.light.success}
         />
       }
-      ItemSeparatorComponent={() => <View style={{ height: Spacing.md }} />}
+      ItemSeparatorComponent={ItemSeparator}
+      onEndReached={handleEndReached}
+      onEndReachedThreshold={0.5}
     />
   );
 }
@@ -365,5 +425,9 @@ const styles = StyleSheet.create({
   skeletonLine: {
     height: 16,
     borderRadius: 4,
+  },
+  loadingFooter: {
+    paddingVertical: Spacing.lg,
+    alignItems: "center",
   },
 });

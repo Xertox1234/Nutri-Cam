@@ -23,6 +23,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { useAuthContext } from "@/context/AuthContext";
 import { apiRequest } from "@/lib/query-client";
 import { Spacing, BorderRadius, Colors, Shadows } from "@/constants/theme";
+import type { NutritionDetailScreenNavigationProp } from "@/types/navigation";
 
 type RouteParams = {
   barcode?: string;
@@ -88,7 +89,7 @@ export default function NutritionDetailScreen() {
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const { theme } = useTheme();
-  const navigation = useNavigation<any>();
+  const navigation = useNavigation<NutritionDetailScreenNavigationProp>();
   const route = useRoute<RouteProp<{ params: RouteParams }, "params">>();
   const queryClient = useQueryClient();
   const { user } = useAuthContext();

@@ -1,6 +1,6 @@
 ---
 title: "Add Zod input validation to all API endpoints"
-status: ready
+status: complete
 priority: high
 created: 2026-01-30
 updated: 2026-01-30
@@ -26,12 +26,12 @@ The codebase already defines Zod schemas (`insertUserSchema`, `insertScannedItem
 
 ## Acceptance Criteria
 
-- [ ] Validate registration inputs (username format, password strength)
-- [ ] Validate dietary profile inputs using existing schema
-- [ ] Validate scanned item inputs using existing schema
-- [ ] Validate daily log inputs using existing schema
-- [ ] Add meaningful error messages for validation failures
-- [ ] Validate numeric ID parameters (check for NaN)
+- [x] Validate registration inputs (username format, password strength)
+- [x] Validate dietary profile inputs using existing schema
+- [x] Validate scanned item inputs using existing schema
+- [x] Validate daily log inputs using existing schema
+- [x] Add meaningful error messages for validation failures
+- [x] Validate numeric ID parameters (check for NaN)
 
 ## Implementation Notes
 
@@ -75,3 +75,13 @@ app.post("/api/user/dietary-profile", requireAuth, async (req, res) => {
 
 ### 2026-01-30
 - Initial creation from code review
+
+### 2026-01-30
+- Implementation complete:
+  - Added Zod validation to registration endpoint (username: 3-30 chars, alphanumeric + underscore; password: min 8 chars)
+  - Added validation to profile update endpoint (displayName, dailyCalorieGoal 500-10000, onboardingCompleted)
+  - Added validation to dietary profile endpoints using extended insertUserProfileSchema with allergySchema
+  - Added validation to scanned items POST endpoint with numeric field coercion
+  - Added parseIdParam helper for numeric ID validation (returns 400 for NaN or non-positive)
+  - Added formatZodError helper for consistent, meaningful error responses
+  - All endpoints return 400 with { error: string, details: ZodIssue[] } on validation failure

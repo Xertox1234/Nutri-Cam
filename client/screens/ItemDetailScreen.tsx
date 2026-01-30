@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
 import {
   StyleSheet,
   View,
@@ -10,7 +10,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useRoute, RouteProp } from "@react-navigation/native";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Feather } from "@expo/vector-icons";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 
@@ -18,29 +18,13 @@ import { ThemedText } from "@/components/ThemedText";
 import { Card } from "@/components/Card";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius, Colors } from "@/constants/theme";
-import { apiRequest, getApiUrl } from "@/lib/query-client";
+import { apiRequest } from "@/lib/query-client";
+import { ScannedItemResponse } from "@shared/types/models";
 
 type ItemDetailRouteProp = RouteProp<
   { ItemDetail: { itemId: number } },
   "ItemDetail"
 >;
-
-interface ScannedItem {
-  id: number;
-  productName: string;
-  brandName?: string;
-  barcode?: string;
-  calories?: string;
-  protein?: string;
-  carbs?: string;
-  fat?: string;
-  fiber?: string;
-  sodium?: string;
-  sugar?: string;
-  servingSize?: string;
-  imageUrl?: string;
-  scannedAt: string;
-}
 
 interface Suggestion {
   type: "recipe" | "craft" | "pairing";
@@ -61,7 +45,7 @@ function NutritionRow({
   color,
 }: {
   label: string;
-  value?: string;
+  value?: string | null;
   unit?: string;
   color?: string;
 }) {
@@ -170,53 +154,34 @@ export default function ItemDetailScreen() {
   const { theme } = useTheme();
   const { itemId } = route.params;
 
-  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
-  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
-  const [suggestionsError, setSuggestionsError] = useState<string | null>(null);
-
   const {
     data: item,
     isLoading,
     error,
-  } = useQuery<ScannedItem>({
+  } = useQuery<ScannedItemResponse>({
     queryKey: [`/api/scanned-items/${itemId}`],
   });
 
-  const fetchSuggestions = async () => {
-    if (!item) return;
-
-    setSuggestionsLoading(true);
-    setSuggestionsError(null);
-
-    try {
-      const response = await fetch(
-        new URL(`/api/items/${itemId}/suggestions`, getApiUrl()).toString(),
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ productName: item.productName }),
-        },
+  const {
+    data: suggestionsData,
+    isLoading: suggestionsLoading,
+    error: suggestionsError,
+    refetch: refetchSuggestions,
+  } = useQuery<SuggestionsResponse>({
+    queryKey: [`/api/items/${itemId}/suggestions`],
+    queryFn: async () => {
+      const response = await apiRequest(
+        "POST",
+        `/api/items/${itemId}/suggestions`,
+        { productName: item?.productName }
       );
+      return response.json();
+    },
+    enabled: !!item,
+    staleTime: 10 * 60 * 1000, // Cache for 10 minutes
+  });
 
-      if (!response.ok) {
-        throw new Error("Failed to get suggestions");
-      }
-
-      const data: SuggestionsResponse = await response.json();
-      setSuggestions(data.suggestions);
-    } catch (err) {
-      setSuggestionsError("Unable to load suggestions. Please try again.");
-    } finally {
-      setSuggestionsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (item) {
-      fetchSuggestions();
-    }
-  }, [item]);
+  const suggestions = suggestionsData?.suggestions ?? [];
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -373,7 +338,7 @@ export default function ItemDetailScreen() {
             Ideas & Inspiration
           </ThemedText>
           {suggestionsError ? (
-            <Pressable onPress={fetchSuggestions} style={styles.retryButton}>
+            <Pressable onPress={() => refetchSuggestions()} style={styles.retryButton}>
               <Feather
                 name="refresh-cw"
                 size={16}
@@ -403,7 +368,7 @@ export default function ItemDetailScreen() {
               type="body"
               style={{ color: theme.textSecondary, marginTop: Spacing.sm }}
             >
-              {suggestionsError}
+              Unable to load suggestions. Please try again.
             </ThemedText>
           </Card>
         ) : suggestions.length > 0 ? (
