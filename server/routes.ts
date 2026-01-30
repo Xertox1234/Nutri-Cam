@@ -2,33 +2,115 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "node:http";
 import bcrypt from "bcrypt";
 import OpenAI from "openai";
+import rateLimit from "express-rate-limit";
+import { z, ZodError } from "zod";
 import { storage } from "./storage";
 import { requireAuth, generateToken } from "./middleware/auth";
+import {
+  insertUserProfileSchema,
+  insertScannedItemSchema,
+  insertDailyLogSchema,
+  allergySchema,
+} from "@shared/schema";
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // 10 attempts per window
+  message: { error: "Too many login attempts, please try again later" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5, // 5 registrations per hour
+  message: { error: "Too many registration attempts, please try again later" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
 });
 
+// Registration validation schema with username format and password strength
+const registerSchema = z.object({
+  username: z
+    .string()
+    .min(3, "Username must be at least 3 characters")
+    .max(30, "Username must be at most 30 characters")
+    .regex(
+      /^[a-zA-Z0-9_]+$/,
+      "Username can only contain letters, numbers, and underscores"
+    ),
+  password: z
+    .string()
+    .min(8, "Password must be at least 8 characters"),
+});
+
+// Profile update validation schema
+const profileUpdateSchema = z.object({
+  displayName: z.string().max(100).optional(),
+  dailyCalorieGoal: z.number().int().min(500).max(10000).optional(),
+  onboardingCompleted: z.boolean().optional(),
+});
+
+// Enhanced user profile schema with proper validation for nested objects
+const userProfileInputSchema = insertUserProfileSchema.extend({
+  allergies: z.array(allergySchema).optional(),
+  healthConditions: z.array(z.string()).optional(),
+  foodDislikes: z.array(z.string()).optional(),
+  cuisinePreferences: z.array(z.string()).optional(),
+  householdSize: z.number().int().min(1).max(20).optional(),
+  dietType: z.string().max(50).optional().nullable(),
+  primaryGoal: z.string().max(100).optional().nullable(),
+  activityLevel: z.string().max(50).optional().nullable(),
+  cookingSkillLevel: z.string().max(50).optional().nullable(),
+  cookingTimeAvailable: z.string().max(50).optional().nullable(),
+});
+
+// Helper to parse numeric ID parameters
+function parseIdParam(id: string | string[]): number {
+  const idStr = Array.isArray(id) ? id[0] : id;
+  const parsed = parseInt(idStr, 10);
+  if (isNaN(parsed) || parsed <= 0) {
+    throw new ZodError([
+      {
+        code: "custom",
+        path: ["id"],
+        message: "ID must be a positive integer",
+      },
+    ]);
+  }
+  return parsed;
+}
+
+// Helper to format Zod errors for API response
+function formatZodError(error: ZodError): { error: string; details: z.ZodIssue[] } {
+  const messages = error.errors.map((e) => {
+    const path = e.path.join(".");
+    return path ? `${path}: ${e.message}` : e.message;
+  });
+  return {
+    error: messages.join("; "),
+    details: error.errors,
+  };
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
-  app.post("/api/auth/register", async (req: Request, res: Response) => {
+  app.post("/api/auth/register", registerLimiter, async (req: Request, res: Response) => {
     try {
-      const { username, password } = req.body;
+      const validated = registerSchema.parse(req.body);
 
-      if (!username || !password) {
-        return res
-          .status(400)
-          .json({ error: "Username and password are required" });
-      }
-
-      const existingUser = await storage.getUserByUsername(username);
+      const existingUser = await storage.getUserByUsername(validated.username);
       if (existingUser) {
         return res.status(409).json({ error: "Username already exists" });
       }
 
-      const hashedPassword = await bcrypt.hash(password, 10);
+      const hashedPassword = await bcrypt.hash(validated.password, 10);
       const user = await storage.createUser({
-        username,
+        username: validated.username,
         password: hashedPassword,
       });
 
@@ -45,12 +127,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         token,
       });
     } catch (error) {
+      if (error instanceof ZodError) {
+        return res.status(400).json(formatZodError(error));
+      }
       console.error("Registration error:", error);
       res.status(500).json({ error: "Failed to create account" });
     }
   });
 
-  app.post("/api/auth/login", async (req: Request, res: Response) => {
+  app.post("/api/auth/login", loginLimiter, async (req: Request, res: Response) => {
     try {
       const { username, password } = req.body;
 
@@ -113,13 +198,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requireAuth,
     async (req: Request, res: Response) => {
       try {
-        const { displayName, dailyCalorieGoal, onboardingCompleted } = req.body;
+        const validated = profileUpdateSchema.parse(req.body);
         const updates: Record<string, unknown> = {};
-        if (displayName !== undefined) updates.displayName = displayName;
-        if (dailyCalorieGoal !== undefined)
-          updates.dailyCalorieGoal = dailyCalorieGoal;
-        if (onboardingCompleted !== undefined)
-          updates.onboardingCompleted = onboardingCompleted;
+        if (validated.displayName !== undefined) updates.displayName = validated.displayName;
+        if (validated.dailyCalorieGoal !== undefined)
+          updates.dailyCalorieGoal = validated.dailyCalorieGoal;
+        if (validated.onboardingCompleted !== undefined)
+          updates.onboardingCompleted = validated.onboardingCompleted;
 
         if (Object.keys(updates).length === 0) {
           return res.status(400).json({ error: "No valid fields to update" });
@@ -139,6 +224,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           onboardingCompleted: user.onboardingCompleted,
         });
       } catch (error) {
+        if (error instanceof ZodError) {
+          return res.status(400).json(formatZodError(error));
+        }
         console.error("Profile update error:", error);
         res.status(500).json({ error: "Failed to update profile" });
       }
@@ -164,55 +252,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requireAuth,
     async (req: Request, res: Response) => {
       try {
-        const {
-          allergies,
-          healthConditions,
-          dietType,
-          foodDislikes,
-          primaryGoal,
-          activityLevel,
-          householdSize,
-          cuisinePreferences,
-          cookingSkillLevel,
-          cookingTimeAvailable,
-        } = req.body;
+        const validated = userProfileInputSchema.parse({
+          ...req.body,
+          userId: req.userId!,
+        });
 
-        const existingProfile = await storage.getUserProfile(req.userId!);
-
-        let profile;
-        if (existingProfile) {
-          profile = await storage.updateUserProfile(req.userId!, {
-            allergies,
-            healthConditions,
-            dietType,
-            foodDislikes,
-            primaryGoal,
-            activityLevel,
-            householdSize,
-            cuisinePreferences,
-            cookingSkillLevel,
-            cookingTimeAvailable,
-          });
-        } else {
-          profile = await storage.createUserProfile({
-            userId: req.userId!,
-            allergies,
-            healthConditions,
-            dietType,
-            foodDislikes,
-            primaryGoal,
-            activityLevel,
-            householdSize,
-            cuisinePreferences,
-            cookingSkillLevel,
-            cookingTimeAvailable,
-          });
-        }
-
-        await storage.updateUser(req.userId!, { onboardingCompleted: true });
+        // Use transaction to ensure profile creation/update and onboarding flag are atomic
+        const { profile } = await storage.createOrUpdateProfileWithOnboarding(
+          req.userId!,
+          {
+            allergies: validated.allergies,
+            healthConditions: validated.healthConditions,
+            dietType: validated.dietType,
+            foodDislikes: validated.foodDislikes,
+            primaryGoal: validated.primaryGoal,
+            activityLevel: validated.activityLevel,
+            householdSize: validated.householdSize,
+            cuisinePreferences: validated.cuisinePreferences,
+            cookingSkillLevel: validated.cookingSkillLevel,
+            cookingTimeAvailable: validated.cookingTimeAvailable,
+          },
+        );
 
         res.status(201).json(profile);
       } catch (error) {
+        if (error instanceof ZodError) {
+          return res.status(400).json(formatZodError(error));
+        }
         console.error("Error saving dietary profile:", error);
         res.status(500).json({ error: "Failed to save dietary profile" });
       }
@@ -224,8 +290,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requireAuth,
     async (req: Request, res: Response) => {
       try {
-        const updates = req.body;
-        const profile = await storage.updateUserProfile(req.userId!, updates);
+        // For partial updates, make all fields optional
+        const updateSchema = userProfileInputSchema.partial().omit({ userId: true });
+        const validated = updateSchema.parse(req.body);
+
+        const profile = await storage.updateUserProfile(req.userId!, validated);
 
         if (!profile) {
           return res.status(404).json({ error: "Profile not found" });
@@ -233,6 +302,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         res.json(profile);
       } catch (error) {
+        if (error instanceof ZodError) {
+          return res.status(400).json(formatZodError(error));
+        }
         console.error("Error updating dietary profile:", error);
         res.status(500).json({ error: "Failed to update dietary profile" });
       }
@@ -244,8 +316,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requireAuth,
     async (req: Request, res: Response) => {
       try {
-        const items = await storage.getScannedItems(req.userId!);
-        res.json(items);
+        const limit = Math.min(
+          Math.max(parseInt(req.query.limit as string) || 50, 1),
+          100,
+        );
+        const offset = Math.max(parseInt(req.query.offset as string) || 0, 0);
+
+        const result = await storage.getScannedItems(req.userId!, limit, offset);
+        res.json(result);
       } catch (error) {
         console.error("Error fetching scanned items:", error);
         res.status(500).json({ error: "Failed to fetch items" });
@@ -253,18 +331,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     },
   );
 
-  app.get("/api/scanned-items/:id", async (req: Request, res: Response) => {
+  app.get("/api/scanned-items/:id", requireAuth, async (req: Request, res: Response) => {
     try {
-      const idParam = req.params.id;
-      const id = parseInt(Array.isArray(idParam) ? idParam[0] : idParam);
+      const id = parseIdParam(req.params.id);
+
       const item = await storage.getScannedItem(id);
 
-      if (!item) {
+      if (!item || item.userId !== req.userId) {
         return res.status(404).json({ error: "Item not found" });
       }
 
       res.json(item);
     } catch (error) {
+      if (error instanceof ZodError) {
+        return res.status(400).json(formatZodError(error));
+      }
       console.error("Error fetching scanned item:", error);
       res.status(500).json({ error: "Failed to fetch item" });
     }
@@ -275,46 +356,76 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requireAuth,
     async (req: Request, res: Response) => {
       try {
-        const {
-          barcode,
-          productName,
-          brandName,
-          servingSize,
-          calories,
-          protein,
-          carbs,
-          fat,
-          fiber,
-          sugar,
-          sodium,
-          imageUrl,
-        } = req.body;
-
-        const item = await storage.createScannedItem({
-          userId: req.userId!,
-          barcode,
-          productName: productName || "Unknown Product",
-          brandName,
-          servingSize,
-          calories: calories?.toString(),
-          protein: protein?.toString(),
-          carbs: carbs?.toString(),
-          fat: fat?.toString(),
-          fiber: fiber?.toString(),
-          sugar: sugar?.toString(),
-          sodium: sodium?.toString(),
-          imageUrl,
+        // Extended schema for scanned items with string coercion for numeric fields
+        const scannedItemInputSchema = insertScannedItemSchema.extend({
+          productName: z
+            .string()
+            .min(1, "Product name is required")
+            .default("Unknown Product"),
+          calories: z
+            .union([z.string(), z.number()])
+            .optional()
+            .transform((v) => v?.toString()),
+          protein: z
+            .union([z.string(), z.number()])
+            .optional()
+            .transform((v) => v?.toString()),
+          carbs: z
+            .union([z.string(), z.number()])
+            .optional()
+            .transform((v) => v?.toString()),
+          fat: z
+            .union([z.string(), z.number()])
+            .optional()
+            .transform((v) => v?.toString()),
+          fiber: z
+            .union([z.string(), z.number()])
+            .optional()
+            .transform((v) => v?.toString()),
+          sugar: z
+            .union([z.string(), z.number()])
+            .optional()
+            .transform((v) => v?.toString()),
+          sodium: z
+            .union([z.string(), z.number()])
+            .optional()
+            .transform((v) => v?.toString()),
         });
 
-        await storage.createDailyLog({
+        const validated = scannedItemInputSchema.parse({
+          ...req.body,
           userId: req.userId!,
-          scannedItemId: item.id,
-          servings: "1",
-          mealType: null,
         });
+
+        // Use transaction to ensure scanned item and daily log are created atomically
+        const { item } = await storage.createScannedItemWithLog(
+          {
+            userId: validated.userId,
+            barcode: validated.barcode,
+            productName: validated.productName,
+            brandName: validated.brandName,
+            servingSize: validated.servingSize,
+            calories: validated.calories,
+            protein: validated.protein,
+            carbs: validated.carbs,
+            fat: validated.fat,
+            fiber: validated.fiber,
+            sugar: validated.sugar,
+            sodium: validated.sodium,
+            imageUrl: validated.imageUrl,
+          },
+          {
+            userId: req.userId!,
+            servings: "1",
+            mealType: null,
+          },
+        );
 
         res.status(201).json(item);
       } catch (error) {
+        if (error instanceof ZodError) {
+          return res.status(400).json(formatZodError(error));
+        }
         console.error("Error creating scanned item:", error);
         res.status(500).json({ error: "Failed to save item" });
       }
@@ -343,7 +454,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requireAuth,
     async (req: Request, res: Response) => {
       try {
-        const itemId = parseInt(req.params.id);
+        const itemId = parseIdParam(req.params.id);
         const item = await storage.getScannedItem(itemId);
 
         if (!item) {
@@ -428,6 +539,9 @@ Keep descriptions concise. Make recipes practical and kid activities fun and saf
 
         res.json(suggestions);
       } catch (error) {
+        if (error instanceof ZodError) {
+          return res.status(400).json(formatZodError(error));
+        }
         console.error("Error generating suggestions:", error);
         res.status(500).json({ error: "Failed to generate suggestions" });
       }

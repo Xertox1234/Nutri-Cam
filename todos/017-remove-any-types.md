@@ -1,6 +1,6 @@
 ---
 title: "Replace 'any' types with proper TypeScript types"
-status: ready
+status: complete
 priority: low
 created: 2026-01-30
 updated: 2026-01-30
@@ -27,12 +27,12 @@ Multiple files use `any` type annotations which bypass TypeScript's type safety 
 
 ## Acceptance Criteria
 
-- [ ] Create typed navigation definitions
-- [ ] Type useNavigation hooks properly
-- [ ] Type cameraRef with CameraView ref type
-- [ ] Fix icon name type
-- [ ] Type error catch blocks properly
-- [ ] Fix theme type in Card component
+- [x] Create typed navigation definitions
+- [x] Type useNavigation hooks properly
+- [x] Type cameraRef with CameraView ref type
+- [x] Fix icon name type
+- [x] Type error catch blocks properly
+- [x] Fix theme type in Card component
 
 ## Implementation Notes
 
@@ -85,3 +85,11 @@ catch (err: unknown) {
 
 ### 2026-01-30
 - Initial creation from code review
+- Implemented all type fixes:
+  - Created `/client/types/navigation.ts` with proper navigation types using CompositeNavigationProp
+  - Updated `HistoryScreen.tsx` to use `HistoryScreenNavigationProp`
+  - Updated `ScanScreen.tsx` to use `ScanScreenNavigationProp` and `CameraView` ref type
+  - Updated `NutritionDetailScreen.tsx` to use `NutritionDetailScreenNavigationProp`
+  - Updated `ProfileScreen.tsx` to use `FeatherIconName` type for icon props
+  - Updated `LoginScreen.tsx` to use `err: unknown` with proper type guard
+  - Updated `Card.tsx` to use proper Theme type derived from Colors constant

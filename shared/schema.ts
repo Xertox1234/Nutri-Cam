@@ -9,6 +9,7 @@ import {
   decimal,
   boolean,
   jsonb,
+  index,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -60,42 +61,62 @@ export const userProfiles = pgTable("user_profiles", {
     .notNull(),
 });
 
-export const scannedItems = pgTable("scanned_items", {
-  id: serial("id").primaryKey(),
-  userId: varchar("user_id").references(() => users.id, {
-    onDelete: "cascade",
+export const scannedItems = pgTable(
+  "scanned_items",
+  {
+    id: serial("id").primaryKey(),
+    userId: varchar("user_id")
+      .references(() => users.id, {
+        onDelete: "cascade",
+      })
+      .notNull(),
+    barcode: text("barcode"),
+    productName: text("product_name").notNull(),
+    brandName: text("brand_name"),
+    servingSize: text("serving_size"),
+    calories: decimal("calories", { precision: 10, scale: 2 }),
+    protein: decimal("protein", { precision: 10, scale: 2 }),
+    carbs: decimal("carbs", { precision: 10, scale: 2 }),
+    fat: decimal("fat", { precision: 10, scale: 2 }),
+    fiber: decimal("fiber", { precision: 10, scale: 2 }),
+    sugar: decimal("sugar", { precision: 10, scale: 2 }),
+    sodium: decimal("sodium", { precision: 10, scale: 2 }),
+    imageUrl: text("image_url"),
+    scannedAt: timestamp("scanned_at")
+      .default(sql`CURRENT_TIMESTAMP`)
+      .notNull(),
+  },
+  (table) => ({
+    userIdIdx: index("scanned_items_user_id_idx").on(table.userId),
+    scannedAtIdx: index("scanned_items_scanned_at_idx").on(table.scannedAt),
   }),
-  barcode: text("barcode"),
-  productName: text("product_name").notNull(),
-  brandName: text("brand_name"),
-  servingSize: text("serving_size"),
-  calories: decimal("calories", { precision: 10, scale: 2 }),
-  protein: decimal("protein", { precision: 10, scale: 2 }),
-  carbs: decimal("carbs", { precision: 10, scale: 2 }),
-  fat: decimal("fat", { precision: 10, scale: 2 }),
-  fiber: decimal("fiber", { precision: 10, scale: 2 }),
-  sugar: decimal("sugar", { precision: 10, scale: 2 }),
-  sodium: decimal("sodium", { precision: 10, scale: 2 }),
-  imageUrl: text("image_url"),
-  scannedAt: timestamp("scanned_at")
-    .default(sql`CURRENT_TIMESTAMP`)
-    .notNull(),
-});
+);
 
-export const dailyLogs = pgTable("daily_logs", {
-  id: serial("id").primaryKey(),
-  userId: varchar("user_id").references(() => users.id, {
-    onDelete: "cascade",
+export const dailyLogs = pgTable(
+  "daily_logs",
+  {
+    id: serial("id").primaryKey(),
+    userId: varchar("user_id")
+      .references(() => users.id, {
+        onDelete: "cascade",
+      })
+      .notNull(),
+    scannedItemId: integer("scanned_item_id")
+      .references(() => scannedItems.id, {
+        onDelete: "cascade",
+      })
+      .notNull(),
+    servings: decimal("servings", { precision: 5, scale: 2 }).default("1"),
+    mealType: text("meal_type"),
+    loggedAt: timestamp("logged_at")
+      .default(sql`CURRENT_TIMESTAMP`)
+      .notNull(),
+  },
+  (table) => ({
+    userIdIdx: index("daily_logs_user_id_idx").on(table.userId),
+    loggedAtIdx: index("daily_logs_logged_at_idx").on(table.loggedAt),
   }),
-  scannedItemId: integer("scanned_item_id").references(() => scannedItems.id, {
-    onDelete: "cascade",
-  }),
-  servings: decimal("servings", { precision: 5, scale: 2 }).default("1"),
-  mealType: text("meal_type"),
-  loggedAt: timestamp("logged_at")
-    .default(sql`CURRENT_TIMESTAMP`)
-    .notNull(),
-});
+);
 
 export const usersRelations = relations(users, ({ one, many }) => ({
   scannedItems: many(scannedItems),
@@ -164,5 +185,3 @@ export type InsertDailyLog = z.infer<typeof insertDailyLogSchema>;
 export type DailyLog = typeof dailyLogs.$inferSelect;
 export type InsertUserProfile = z.infer<typeof insertUserProfileSchema>;
 export type UserProfile = typeof userProfiles.$inferSelect;
-
-export * from "./models/chat";

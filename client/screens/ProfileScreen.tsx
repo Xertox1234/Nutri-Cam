@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { ComponentProps, useState } from "react";
 import {
   StyleSheet,
   View,
@@ -14,6 +14,8 @@ import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useQuery } from "@tanstack/react-query";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
+
+type FeatherIconName = ComponentProps<typeof Feather>["name"];
 import Animated, { FadeInDown } from "react-native-reanimated";
 
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
@@ -106,7 +108,7 @@ function SettingsItem({
   showChevron = true,
   danger = false,
 }: {
-  icon: string;
+  icon: FeatherIconName;
   label: string;
   value?: string;
   onPress?: () => void;
@@ -134,7 +136,7 @@ function SettingsItem({
         ]}
       >
         <Feather
-          name={icon as any}
+          name={icon}
           size={20}
           color={danger ? Colors.light.error : theme.text}
         />
