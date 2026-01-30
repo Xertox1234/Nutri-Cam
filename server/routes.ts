@@ -47,11 +47,9 @@ const registerSchema = z.object({
     .max(30, "Username must be at most 30 characters")
     .regex(
       /^[a-zA-Z0-9_]+$/,
-      "Username can only contain letters, numbers, and underscores"
+      "Username can only contain letters, numbers, and underscores",
     ),
-  password: z
-    .string()
-    .min(8, "Password must be at least 8 characters"),
+  password: z.string().min(8, "Password must be at least 8 characters"),
 });
 
 // Profile update validation schema
@@ -78,84 +76,96 @@ const userProfileInputSchema = insertUserProfileSchema.extend({
 // Format Zod validation errors as a simple string
 function formatZodError(error: ZodError): string {
   return error.errors
-    .map((e) => (e.path.length ? `${e.path.join(".")}: ${e.message}` : e.message))
+    .map((e) =>
+      e.path.length ? `${e.path.join(".")}: ${e.message}` : e.message,
+    )
     .join("; ");
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  app.post("/api/auth/register", registerLimiter, async (req: Request, res: Response) => {
-    try {
-      const validated = registerSchema.parse(req.body);
+  app.post(
+    "/api/auth/register",
+    registerLimiter,
+    async (req: Request, res: Response) => {
+      try {
+        const validated = registerSchema.parse(req.body);
 
-      const existingUser = await storage.getUserByUsername(validated.username);
-      if (existingUser) {
-        return res.status(409).json({ error: "Username already exists" });
+        const existingUser = await storage.getUserByUsername(
+          validated.username,
+        );
+        if (existingUser) {
+          return res.status(409).json({ error: "Username already exists" });
+        }
+
+        const hashedPassword = await bcrypt.hash(validated.password, 10);
+        const user = await storage.createUser({
+          username: validated.username,
+          password: hashedPassword,
+        });
+
+        const token = generateToken(user.id.toString());
+
+        res.status(201).json({
+          user: {
+            id: user.id,
+            username: user.username,
+            displayName: user.displayName,
+            dailyCalorieGoal: user.dailyCalorieGoal,
+            onboardingCompleted: user.onboardingCompleted,
+          },
+          token,
+        });
+      } catch (error) {
+        if (error instanceof ZodError) {
+          return res.status(400).json({ error: formatZodError(error) });
+        }
+        console.error("Registration error:", error);
+        res.status(500).json({ error: "Failed to create account" });
       }
+    },
+  );
 
-      const hashedPassword = await bcrypt.hash(validated.password, 10);
-      const user = await storage.createUser({
-        username: validated.username,
-        password: hashedPassword,
-      });
+  app.post(
+    "/api/auth/login",
+    loginLimiter,
+    async (req: Request, res: Response) => {
+      try {
+        const { username, password } = req.body;
 
-      const token = generateToken(user.id.toString());
+        if (!username || !password) {
+          return res
+            .status(400)
+            .json({ error: "Username and password are required" });
+        }
 
-      res.status(201).json({
-        user: {
-          id: user.id,
-          username: user.username,
-          displayName: user.displayName,
-          dailyCalorieGoal: user.dailyCalorieGoal,
-          onboardingCompleted: user.onboardingCompleted,
-        },
-        token,
-      });
-    } catch (error) {
-      if (error instanceof ZodError) {
-        return res.status(400).json({ error: formatZodError(error) });
+        const user = await storage.getUserByUsername(username);
+        if (!user) {
+          return res.status(401).json({ error: "Invalid credentials" });
+        }
+
+        const isValidPassword = await bcrypt.compare(password, user.password);
+        if (!isValidPassword) {
+          return res.status(401).json({ error: "Invalid credentials" });
+        }
+
+        const token = generateToken(user.id.toString());
+
+        res.json({
+          user: {
+            id: user.id,
+            username: user.username,
+            displayName: user.displayName,
+            dailyCalorieGoal: user.dailyCalorieGoal,
+            onboardingCompleted: user.onboardingCompleted,
+          },
+          token,
+        });
+      } catch (error) {
+        console.error("Login error:", error);
+        res.status(500).json({ error: "Failed to login" });
       }
-      console.error("Registration error:", error);
-      res.status(500).json({ error: "Failed to create account" });
-    }
-  });
-
-  app.post("/api/auth/login", loginLimiter, async (req: Request, res: Response) => {
-    try {
-      const { username, password } = req.body;
-
-      if (!username || !password) {
-        return res
-          .status(400)
-          .json({ error: "Username and password are required" });
-      }
-
-      const user = await storage.getUserByUsername(username);
-      if (!user) {
-        return res.status(401).json({ error: "Invalid credentials" });
-      }
-
-      const isValidPassword = await bcrypt.compare(password, user.password);
-      if (!isValidPassword) {
-        return res.status(401).json({ error: "Invalid credentials" });
-      }
-
-      const token = generateToken(user.id.toString());
-
-      res.json({
-        user: {
-          id: user.id,
-          username: user.username,
-          displayName: user.displayName,
-          dailyCalorieGoal: user.dailyCalorieGoal,
-          onboardingCompleted: user.onboardingCompleted,
-        },
-        token,
-      });
-    } catch (error) {
-      console.error("Login error:", error);
-      res.status(500).json({ error: "Failed to login" });
-    }
-  });
+    },
+  );
 
   app.post("/api/auth/logout", (_req: Request, res: Response) => {
     // Stateless JWT - no session to destroy
@@ -184,7 +194,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         const validated = profileUpdateSchema.parse(req.body);
         const updates: Record<string, unknown> = {};
-        if (validated.displayName !== undefined) updates.displayName = validated.displayName;
+        if (validated.displayName !== undefined)
+          updates.displayName = validated.displayName;
         if (validated.dailyCalorieGoal !== undefined)
           updates.dailyCalorieGoal = validated.dailyCalorieGoal;
         if (validated.onboardingCompleted !== undefined)
@@ -300,7 +311,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     async (req: Request, res: Response) => {
       try {
         // For partial updates, make all fields optional
-        const updateSchema = userProfileInputSchema.partial().omit({ userId: true });
+        const updateSchema = userProfileInputSchema
+          .partial()
+          .omit({ userId: true });
         const validated = updateSchema.parse(req.body);
 
         const profile = await storage.updateUserProfile(req.userId!, validated);
@@ -331,7 +344,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         );
         const offset = Math.max(parseInt(req.query.offset as string) || 0, 0);
 
-        const result = await storage.getScannedItems(req.userId!, limit, offset);
+        const result = await storage.getScannedItems(
+          req.userId!,
+          limit,
+          offset,
+        );
         res.json(result);
       } catch (error) {
         console.error("Error fetching scanned items:", error);
@@ -340,25 +357,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
     },
   );
 
-  app.get("/api/scanned-items/:id", requireAuth, async (req: Request, res: Response) => {
-    try {
-      const id = parseInt(req.params.id as string, 10);
-      if (isNaN(id) || id <= 0) {
-        return res.status(400).json({ error: "Invalid item ID" });
+  app.get(
+    "/api/scanned-items/:id",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      try {
+        const id = parseInt(req.params.id as string, 10);
+        if (isNaN(id) || id <= 0) {
+          return res.status(400).json({ error: "Invalid item ID" });
+        }
+
+        const item = await storage.getScannedItem(id);
+
+        if (!item || item.userId !== req.userId) {
+          return res.status(404).json({ error: "Item not found" });
+        }
+
+        res.json(item);
+      } catch (error) {
+        console.error("Error fetching scanned item:", error);
+        res.status(500).json({ error: "Failed to fetch item" });
       }
-
-      const item = await storage.getScannedItem(id);
-
-      if (!item || item.userId !== req.userId) {
-        return res.status(404).json({ error: "Item not found" });
-      }
-
-      res.json(item);
-    } catch (error) {
-      console.error("Error fetching scanned item:", error);
-      res.status(500).json({ error: "Failed to fetch item" });
-    }
-  });
+    },
+  );
 
   app.post(
     "/api/scanned-items",

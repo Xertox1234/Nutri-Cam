@@ -6,7 +6,7 @@ import { Feather } from "@expo/vector-icons";
 import { ThemedText } from "@/components/ThemedText";
 import { Button } from "@/components/Button";
 import { useTheme } from "@/hooks/useTheme";
-import { useOnboarding, Allergy } from "@/context/OnboardingContext";
+import { useOnboarding } from "@/context/OnboardingContext";
 import { Spacing, BorderRadius, Colors } from "@/constants/theme";
 
 const COMMON_ALLERGENS = [

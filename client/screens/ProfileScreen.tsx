@@ -5,8 +5,6 @@ import {
   Pressable,
   TextInput,
   ActivityIndicator,
-  Image,
-  ScrollView,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
@@ -14,8 +12,6 @@ import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useQuery } from "@tanstack/react-query";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-
-type FeatherIconName = ComponentProps<typeof Feather>["name"];
 import Animated, { FadeInDown } from "react-native-reanimated";
 
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
@@ -25,6 +21,8 @@ import { Button } from "@/components/Button";
 import { useTheme } from "@/hooks/useTheme";
 import { useAuthContext } from "@/context/AuthContext";
 import { Spacing, BorderRadius, Colors } from "@/constants/theme";
+
+type FeatherIconName = ComponentProps<typeof Feather>["name"];
 
 interface DietaryProfile {
   allergies?: { name: string; severity: string }[];

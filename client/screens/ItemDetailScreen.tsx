@@ -189,7 +189,7 @@ export default function ItemDetailScreen() {
       const response = await apiRequest(
         "POST",
         `/api/items/${itemId}/suggestions`,
-        { productName: item?.productName }
+        { productName: item?.productName },
       );
       return response.json();
     },
@@ -354,7 +354,10 @@ export default function ItemDetailScreen() {
             Ideas & Inspiration
           </ThemedText>
           {suggestionsError ? (
-            <Pressable onPress={() => refetchSuggestions()} style={styles.retryButton}>
+            <Pressable
+              onPress={() => refetchSuggestions()}
+              style={styles.retryButton}
+            >
               <Feather
                 name="refresh-cw"
                 size={16}

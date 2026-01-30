@@ -48,8 +48,6 @@ type PaginatedResponse = {
 
 const PAGE_SIZE = 50;
 
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
-
 const HistoryItem = React.memo(function HistoryItem({
   item,
   index,
