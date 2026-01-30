@@ -23,7 +23,10 @@ export interface IStorage {
 
   getUserProfile(userId: string): Promise<UserProfile | undefined>;
   createUserProfile(profile: InsertUserProfile): Promise<UserProfile>;
-  updateUserProfile(userId: string, updates: Partial<InsertUserProfile>): Promise<UserProfile | undefined>;
+  updateUserProfile(
+    userId: string,
+    updates: Partial<InsertUserProfile>,
+  ): Promise<UserProfile | undefined>;
 
   getScannedItems(userId: string): Promise<ScannedItem[]>;
   getScannedItem(id: number): Promise<ScannedItem | undefined>;
@@ -33,7 +36,7 @@ export interface IStorage {
   createDailyLog(log: InsertDailyLog): Promise<DailyLog>;
   getDailySummary(
     userId: string,
-    date: Date
+    date: Date,
   ): Promise<{
     totalCalories: number;
     totalProtein: number;
@@ -64,7 +67,7 @@ export class DatabaseStorage implements IStorage {
 
   async updateUser(
     id: string,
-    updates: Partial<User>
+    updates: Partial<User>,
   ): Promise<User | undefined> {
     const [user] = await db
       .update(users)
@@ -92,7 +95,7 @@ export class DatabaseStorage implements IStorage {
 
   async updateUserProfile(
     userId: string,
-    updates: Partial<InsertUserProfile>
+    updates: Partial<InsertUserProfile>,
   ): Promise<UserProfile | undefined> {
     const [profile] = await db
       .update(userProfiles)
@@ -139,8 +142,8 @@ export class DatabaseStorage implements IStorage {
         and(
           eq(dailyLogs.userId, userId),
           gte(dailyLogs.loggedAt, startOfDay),
-          lt(dailyLogs.loggedAt, endOfDay)
-        )
+          lt(dailyLogs.loggedAt, endOfDay),
+        ),
       )
       .orderBy(desc(dailyLogs.loggedAt));
   }
@@ -152,7 +155,7 @@ export class DatabaseStorage implements IStorage {
 
   async getDailySummary(
     userId: string,
-    date: Date
+    date: Date,
   ): Promise<{
     totalCalories: number;
     totalProtein: number;
@@ -179,8 +182,8 @@ export class DatabaseStorage implements IStorage {
         and(
           eq(dailyLogs.userId, userId),
           gte(dailyLogs.loggedAt, startOfDay),
-          lt(dailyLogs.loggedAt, endOfDay)
-        )
+          lt(dailyLogs.loggedAt, endOfDay),
+        ),
       );
 
     return (

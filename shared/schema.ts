@@ -1,5 +1,15 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, serial, integer, timestamp, decimal, boolean, jsonb } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  text,
+  varchar,
+  serial,
+  integer,
+  timestamp,
+  decimal,
+  boolean,
+  jsonb,
+} from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -12,7 +22,9 @@ export const users = pgTable("users", {
   displayName: text("display_name"),
   dailyCalorieGoal: integer("daily_calorie_goal").default(2000),
   onboardingCompleted: boolean("onboarding_completed").default(false),
-  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  createdAt: timestamp("created_at")
+    .default(sql`CURRENT_TIMESTAMP`)
+    .notNull(),
 });
 
 export const allergySchema = z.object({
@@ -24,7 +36,10 @@ export type Allergy = z.infer<typeof allergySchema>;
 
 export const userProfiles = pgTable("user_profiles", {
   id: serial("id").primaryKey(),
-  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull().unique(),
+  userId: varchar("user_id")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull()
+    .unique(),
   allergies: jsonb("allergies").$type<Allergy[]>().default([]),
   healthConditions: jsonb("health_conditions").$type<string[]>().default([]),
   dietType: text("diet_type"),
@@ -32,16 +47,24 @@ export const userProfiles = pgTable("user_profiles", {
   primaryGoal: text("primary_goal"),
   activityLevel: text("activity_level"),
   householdSize: integer("household_size").default(1),
-  cuisinePreferences: jsonb("cuisine_preferences").$type<string[]>().default([]),
+  cuisinePreferences: jsonb("cuisine_preferences")
+    .$type<string[]>()
+    .default([]),
   cookingSkillLevel: text("cooking_skill_level"),
   cookingTimeAvailable: text("cooking_time_available"),
-  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
-  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  createdAt: timestamp("created_at")
+    .default(sql`CURRENT_TIMESTAMP`)
+    .notNull(),
+  updatedAt: timestamp("updated_at")
+    .default(sql`CURRENT_TIMESTAMP`)
+    .notNull(),
 });
 
 export const scannedItems = pgTable("scanned_items", {
   id: serial("id").primaryKey(),
-  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").references(() => users.id, {
+    onDelete: "cascade",
+  }),
   barcode: text("barcode"),
   productName: text("product_name").notNull(),
   brandName: text("brand_name"),
@@ -54,16 +77,24 @@ export const scannedItems = pgTable("scanned_items", {
   sugar: decimal("sugar", { precision: 10, scale: 2 }),
   sodium: decimal("sodium", { precision: 10, scale: 2 }),
   imageUrl: text("image_url"),
-  scannedAt: timestamp("scanned_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  scannedAt: timestamp("scanned_at")
+    .default(sql`CURRENT_TIMESTAMP`)
+    .notNull(),
 });
 
 export const dailyLogs = pgTable("daily_logs", {
   id: serial("id").primaryKey(),
-  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }),
-  scannedItemId: integer("scanned_item_id").references(() => scannedItems.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").references(() => users.id, {
+    onDelete: "cascade",
+  }),
+  scannedItemId: integer("scanned_item_id").references(() => scannedItems.id, {
+    onDelete: "cascade",
+  }),
   servings: decimal("servings", { precision: 5, scale: 2 }).default("1"),
   mealType: text("meal_type"),
-  loggedAt: timestamp("logged_at").default(sql`CURRENT_TIMESTAMP`).notNull(),
+  loggedAt: timestamp("logged_at")
+    .default(sql`CURRENT_TIMESTAMP`)
+    .notNull(),
 });
 
 export const usersRelations = relations(users, ({ one, many }) => ({
@@ -82,13 +113,16 @@ export const userProfilesRelations = relations(userProfiles, ({ one }) => ({
   }),
 }));
 
-export const scannedItemsRelations = relations(scannedItems, ({ one, many }) => ({
-  user: one(users, {
-    fields: [scannedItems.userId],
-    references: [users.id],
+export const scannedItemsRelations = relations(
+  scannedItems,
+  ({ one, many }) => ({
+    user: one(users, {
+      fields: [scannedItems.userId],
+      references: [users.id],
+    }),
+    dailyLogs: many(dailyLogs),
   }),
-  dailyLogs: many(dailyLogs),
-}));
+);
 
 export const dailyLogsRelations = relations(dailyLogs, ({ one }) => ({
   user: one(users, {
