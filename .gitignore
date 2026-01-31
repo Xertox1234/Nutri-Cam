@@ -53,3 +53,6 @@ attached_assets/
 *.log
 logs/
 /tmp/
+
+# Test coverage
+coverage/
