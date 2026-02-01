@@ -16,14 +16,16 @@ import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { Button } from "@/components/Button";
 import { useTheme } from "@/hooks/useTheme";
+import { useHaptics } from "@/hooks/useHaptics";
 import { useAuthContext } from "@/context/AuthContext";
-import { Spacing, BorderRadius, Colors } from "@/constants/theme";
+import { Spacing, BorderRadius } from "@/constants/theme";
 
 type Mode = "login" | "register";
 
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
+  const haptics = useHaptics();
   const { login, register } = useAuthContext();
 
   const [mode, setMode] = useState<Mode>("login");
@@ -39,13 +41,13 @@ export default function LoginScreen() {
 
     if (!username.trim() || !password.trim()) {
       setError("Please fill in all fields");
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      haptics.notification(Haptics.NotificationFeedbackType.Error);
       return;
     }
 
     if (mode === "register" && password !== confirmPassword) {
       setError("Passwords do not match");
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      haptics.notification(Haptics.NotificationFeedbackType.Error);
       return;
     }
 
@@ -56,12 +58,12 @@ export default function LoginScreen() {
       } else {
         await register(username.trim(), password);
       }
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      haptics.notification(Haptics.NotificationFeedbackType.Success);
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Authentication failed";
       setError(message);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      haptics.notification(Haptics.NotificationFeedbackType.Error);
     } finally {
       setIsLoading(false);
     }
@@ -210,17 +212,13 @@ export default function LoginScreen() {
             <View
               style={[
                 styles.errorContainer,
-                { backgroundColor: Colors.light.error + "15" },
+                { backgroundColor: theme.error + "15" },
               ]}
             >
-              <Feather
-                name="alert-circle"
-                size={16}
-                color={Colors.light.error}
-              />
+              <Feather name="alert-circle" size={16} color={theme.error} />
               <ThemedText
                 type="small"
-                style={[styles.errorText, { color: Colors.light.error }]}
+                style={[styles.errorText, { color: theme.error }]}
               >
                 {error}
               </ThemedText>
@@ -230,7 +228,16 @@ export default function LoginScreen() {
           <Button
             onPress={handleSubmit}
             disabled={isLoading}
-            style={[styles.button, { backgroundColor: Colors.light.success }]}
+            accessibilityLabel={
+              isLoading
+                ? mode === "login"
+                  ? "Signing in"
+                  : "Creating account"
+                : mode === "login"
+                  ? "Sign In"
+                  : "Create Account"
+            }
+            style={[styles.button, { backgroundColor: theme.success }]}
           >
             {isLoading ? (
               <ActivityIndicator color="#FFFFFF" size="small" />
@@ -258,7 +265,7 @@ export default function LoginScreen() {
           >
             <ThemedText
               type="body"
-              style={[styles.linkText, { color: Colors.light.success }]}
+              style={[styles.linkText, { color: theme.success }]}
             >
               {mode === "login" ? "Sign Up" : "Sign In"}
             </ThemedText>

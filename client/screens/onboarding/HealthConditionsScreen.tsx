@@ -7,7 +7,7 @@ import { ThemedText } from "@/components/ThemedText";
 import { Button } from "@/components/Button";
 import { useTheme } from "@/hooks/useTheme";
 import { useOnboarding } from "@/context/OnboardingContext";
-import { Spacing, BorderRadius, Colors } from "@/constants/theme";
+import { Spacing, BorderRadius } from "@/constants/theme";
 
 const HEALTH_CONDITIONS = [
   {
@@ -106,12 +106,12 @@ export default function HealthConditionsScreen() {
           <View
             style={[
               styles.stepIndicator,
-              { backgroundColor: Colors.light.success + "15" },
+              { backgroundColor: theme.success + "15" },
             ]}
           >
             <ThemedText
               type="small"
-              style={{ color: Colors.light.success, fontWeight: "600" }}
+              style={{ color: theme.success, fontWeight: "600" }}
             >
               Step 2 of 6
             </ThemedText>
@@ -142,9 +142,9 @@ export default function HealthConditionsScreen() {
                   styles.conditionItem,
                   {
                     backgroundColor: selected
-                      ? Colors.light.success + "15"
+                      ? theme.success + "15"
                       : theme.backgroundDefault,
-                    borderColor: selected ? Colors.light.success : theme.border,
+                    borderColor: selected ? theme.success : theme.border,
                   },
                 ]}
               >
@@ -154,7 +154,7 @@ export default function HealthConditionsScreen() {
                       styles.conditionIcon,
                       {
                         backgroundColor: selected
-                          ? Colors.light.success + "20"
+                          ? theme.success + "20"
                           : theme.backgroundSecondary,
                       },
                     ]}
@@ -162,9 +162,7 @@ export default function HealthConditionsScreen() {
                     <Feather
                       name={condition.icon as keyof typeof Feather.glyphMap}
                       size={20}
-                      color={
-                        selected ? Colors.light.success : theme.textSecondary
-                      }
+                      color={selected ? theme.success : theme.textSecondary}
                     />
                   </View>
                   <View style={styles.conditionText}>
@@ -186,7 +184,7 @@ export default function HealthConditionsScreen() {
                   <Feather
                     name="check-circle"
                     size={22}
-                    color={Colors.light.success}
+                    color={theme.success}
                   />
                 ) : (
                   <View
@@ -205,7 +203,14 @@ export default function HealthConditionsScreen() {
         <View style={styles.footerButtons}>
           <Pressable
             onPress={prevStep}
-            style={styles.backButton}
+            style={({ pressed }) => [
+              styles.backButton,
+              {
+                backgroundColor: pressed
+                  ? theme.backgroundTertiary
+                  : theme.backgroundSecondary,
+              },
+            ]}
             accessibilityLabel="Go back"
             accessibilityRole="button"
           >

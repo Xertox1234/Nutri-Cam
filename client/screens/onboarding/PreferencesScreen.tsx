@@ -7,7 +7,7 @@ import { ThemedText } from "@/components/ThemedText";
 import { Button } from "@/components/Button";
 import { useTheme } from "@/hooks/useTheme";
 import { useOnboarding } from "@/context/OnboardingContext";
-import { Spacing, BorderRadius, Colors } from "@/constants/theme";
+import { Spacing, BorderRadius } from "@/constants/theme";
 
 const CUISINES = [
   { id: "american", name: "American" },
@@ -96,12 +96,12 @@ export default function PreferencesScreen() {
           <View
             style={[
               styles.stepIndicator,
-              { backgroundColor: Colors.light.success + "15" },
+              { backgroundColor: theme.success + "15" },
             ]}
           >
             <ThemedText
               type="small"
-              style={{ color: Colors.light.success, fontWeight: "600" }}
+              style={{ color: theme.success, fontWeight: "600" }}
             >
               Step 5 of 6
             </ThemedText>
@@ -136,11 +136,9 @@ export default function PreferencesScreen() {
                     styles.cuisineChip,
                     {
                       backgroundColor: selected
-                        ? Colors.light.success
+                        ? theme.success
                         : theme.backgroundDefault,
-                      borderColor: selected
-                        ? Colors.light.success
-                        : theme.border,
+                      borderColor: selected ? theme.success : theme.border,
                     },
                   ]}
                 >
@@ -177,11 +175,9 @@ export default function PreferencesScreen() {
                     styles.optionItem,
                     {
                       backgroundColor: selected
-                        ? Colors.light.success + "15"
+                        ? theme.success + "15"
                         : theme.backgroundDefault,
-                      borderColor: selected
-                        ? Colors.light.success
-                        : theme.border,
+                      borderColor: selected ? theme.success : theme.border,
                     },
                   ]}
                 >
@@ -203,7 +199,7 @@ export default function PreferencesScreen() {
                     <Feather
                       name="check-circle"
                       size={22}
-                      color={Colors.light.success}
+                      color={theme.success}
                     />
                   ) : (
                     <View
@@ -234,11 +230,9 @@ export default function PreferencesScreen() {
                     styles.optionItem,
                     {
                       backgroundColor: selected
-                        ? Colors.light.success + "15"
+                        ? theme.success + "15"
                         : theme.backgroundDefault,
-                      borderColor: selected
-                        ? Colors.light.success
-                        : theme.border,
+                      borderColor: selected ? theme.success : theme.border,
                     },
                   ]}
                 >
@@ -260,7 +254,7 @@ export default function PreferencesScreen() {
                     <Feather
                       name="check-circle"
                       size={22}
-                      color={Colors.light.success}
+                      color={theme.success}
                     />
                   ) : (
                     <View
@@ -280,7 +274,14 @@ export default function PreferencesScreen() {
         <View style={styles.footerButtons}>
           <Pressable
             onPress={prevStep}
-            style={styles.backButton}
+            style={({ pressed }) => [
+              styles.backButton,
+              {
+                backgroundColor: pressed
+                  ? theme.backgroundTertiary
+                  : theme.backgroundSecondary,
+              },
+            ]}
             accessibilityLabel="Go back"
             accessibilityRole="button"
           >
@@ -289,6 +290,9 @@ export default function PreferencesScreen() {
           <Button
             onPress={completeOnboarding}
             disabled={isSubmitting}
+            accessibilityLabel={
+              isSubmitting ? "Saving your preferences" : "Complete setup"
+            }
             style={styles.continueButton}
           >
             {isSubmitting ? "Saving..." : "Complete Setup"}

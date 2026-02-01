@@ -8,10 +8,12 @@ import {
   Text,
   Modal,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import { ThemedView } from "@/components/ThemedView";
 import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
+import { useAccessibility } from "@/hooks/useAccessibility";
 import { Spacing, BorderRadius, Fonts } from "@/constants/theme";
 
 export type ErrorFallbackProps = {
@@ -21,6 +23,8 @@ export type ErrorFallbackProps = {
 
 export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
   const { theme } = useTheme();
+  const { reducedMotion } = useAccessibility();
+  const insets = useSafeAreaInsets();
   const [isModalVisible, setIsModalVisible] = useState(false);
 
   const handleRestart = async () => {
@@ -50,6 +54,7 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
           style={({ pressed }) => [
             styles.topButton,
             {
+              top: insets.top + Spacing.lg,
               backgroundColor: theme.backgroundDefault,
               opacity: pressed ? 0.8 : 1,
             },
@@ -77,7 +82,9 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
             {
               backgroundColor: theme.link,
               opacity: pressed ? 0.9 : 1,
-              transform: [{ scale: pressed ? 0.98 : 1 }],
+              transform: reducedMotion
+                ? undefined
+                : [{ scale: pressed ? 0.98 : 1 }],
             },
           ]}
         >
@@ -176,7 +183,6 @@ const styles = StyleSheet.create({
   },
   topButton: {
     position: "absolute",
-    top: Spacing["2xl"] + Spacing.lg,
     right: Spacing.lg,
     width: 44,
     height: 44,

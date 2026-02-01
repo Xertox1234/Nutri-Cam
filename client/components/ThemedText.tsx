@@ -57,7 +57,18 @@ export function ThemedText({
     }
   };
 
+  const getAccessibilityRole = (): "header" | undefined => {
+    if (["h1", "h2", "h3", "h4"].includes(type)) {
+      return "header";
+    }
+    return undefined;
+  };
+
   return (
-    <Text style={[{ color: getColor() }, getTypeStyle(), style]} {...rest} />
+    <Text
+      accessibilityRole={getAccessibilityRole()}
+      style={[{ color: getColor() }, getTypeStyle(), style]}
+      {...rest}
+    />
   );
 }
