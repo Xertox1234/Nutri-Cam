@@ -114,7 +114,7 @@ export default function PreferencesScreen() {
             style={[styles.subtitle, { color: theme.textSecondary }]}
           >
             Almost done! Tell us about your cooking style so we can suggest
-            recipes you'll love.
+            recipes you&apos;ll love.
           </ThemedText>
         </View>
 
@@ -129,6 +129,9 @@ export default function PreferencesScreen() {
                 <Pressable
                   key={cuisine.id}
                   onPress={() => toggleCuisine(cuisine.id)}
+                  accessibilityLabel={cuisine.name}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: selected }}
                   style={[
                     styles.cuisineChip,
                     {
@@ -167,6 +170,9 @@ export default function PreferencesScreen() {
                 <Pressable
                   key={level.id}
                   onPress={() => selectSkillLevel(level.id)}
+                  accessibilityLabel={`${level.name}: ${level.description}`}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected }}
                   style={[
                     styles.optionItem,
                     {
@@ -221,6 +227,9 @@ export default function PreferencesScreen() {
                 <Pressable
                   key={time.id}
                   onPress={() => selectCookingTime(time.id)}
+                  accessibilityLabel={`${time.name}: ${time.description}`}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected }}
                   style={[
                     styles.optionItem,
                     {
@@ -269,7 +278,12 @@ export default function PreferencesScreen() {
         style={[styles.footer, { paddingBottom: insets.bottom + Spacing.xl }]}
       >
         <View style={styles.footerButtons}>
-          <Pressable onPress={prevStep} style={styles.backButton}>
+          <Pressable
+            onPress={prevStep}
+            style={styles.backButton}
+            accessibilityLabel="Go back"
+            accessibilityRole="button"
+          >
             <Feather name="arrow-left" size={24} color={theme.text} />
           </Pressable>
           <Button

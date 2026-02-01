@@ -369,7 +369,12 @@ export default function NutritionDetailScreen() {
             </ThemedText>
             <Card elevation={1} style={styles.nutrientsList}>
               {nutrition?.fiber !== undefined ? (
-                <View style={styles.nutrientRow}>
+                <View
+                  style={[
+                    styles.nutrientRow,
+                    { borderBottomColor: theme.border },
+                  ]}
+                >
                   <ThemedText type="body">Fiber</ThemedText>
                   <ThemedText type="body" style={{ fontWeight: "600" }}>
                     {Math.round(nutrition.fiber)}g
@@ -377,7 +382,12 @@ export default function NutritionDetailScreen() {
                 </View>
               ) : null}
               {nutrition?.sugar !== undefined ? (
-                <View style={styles.nutrientRow}>
+                <View
+                  style={[
+                    styles.nutrientRow,
+                    { borderBottomColor: theme.border },
+                  ]}
+                >
                   <ThemedText type="body">Sugar</ThemedText>
                   <ThemedText type="body" style={{ fontWeight: "600" }}>
                     {Math.round(nutrition.sugar)}g
@@ -385,7 +395,12 @@ export default function NutritionDetailScreen() {
                 </View>
               ) : null}
               {nutrition?.sodium !== undefined ? (
-                <View style={styles.nutrientRow}>
+                <View
+                  style={[
+                    styles.nutrientRow,
+                    { borderBottomColor: theme.border },
+                  ]}
+                >
                   <ThemedText type="body">Sodium</ThemedText>
                   <ThemedText type="body" style={{ fontWeight: "600" }}>
                     {Math.round(nutrition.sodium)}mg
@@ -401,6 +416,8 @@ export default function NutritionDetailScreen() {
             <Button
               onPress={handleAddToLog}
               disabled={addToLogMutation.isPending}
+              accessibilityLabel={`Add ${nutrition?.productName || "item"} to today's food log`}
+              accessibilityHint="Saves this item to your daily nutrition tracking"
               style={[
                 styles.addButton,
                 { backgroundColor: Colors.light.success },
@@ -533,7 +550,6 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.md,
     paddingHorizontal: Spacing.lg,
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(0,0,0,0.05)",
   },
   buttonContainer: {
     marginTop: Spacing.lg,

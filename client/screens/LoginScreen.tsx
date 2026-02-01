@@ -128,6 +128,8 @@ export default function LoginScreen() {
               autoCapitalize="none"
               autoCorrect={false}
               testID="input-username"
+              accessibilityLabel="Username"
+              accessibilityHint="Enter your username"
             />
           </View>
 
@@ -154,10 +156,17 @@ export default function LoginScreen() {
               secureTextEntry={!showPassword}
               autoCapitalize="none"
               testID="input-password"
+              accessibilityLabel="Password"
+              accessibilityHint="Enter your password"
             />
             <Pressable
               onPress={() => setShowPassword(!showPassword)}
               style={styles.eyeButton}
+              accessibilityLabel={
+                showPassword ? "Hide password" : "Show password"
+              }
+              accessibilityRole="button"
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <Feather
                 name={showPassword ? "eye-off" : "eye"}
@@ -191,6 +200,8 @@ export default function LoginScreen() {
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
                 testID="input-confirm-password"
+                accessibilityLabel="Confirm password"
+                accessibilityHint="Re-enter your password to confirm"
               />
             </View>
           ) : null}
@@ -237,7 +248,14 @@ export default function LoginScreen() {
               ? "Don't have an account?"
               : "Already have an account?"}
           </ThemedText>
-          <Pressable onPress={toggleMode}>
+          <Pressable
+            onPress={toggleMode}
+            accessibilityLabel={
+              mode === "login" ? "Switch to sign up" : "Switch to sign in"
+            }
+            accessibilityRole="button"
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
             <ThemedText
               type="body"
               style={[styles.linkText, { color: Colors.light.success }]}

@@ -23,7 +23,7 @@ import { useNavigation } from "@react-navigation/native";
 
 import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
-import { Spacing, BorderRadius, Colors } from "@/constants/theme";
+import { Spacing, BorderRadius } from "@/constants/theme";
 import type { ScanScreenNavigationProp } from "@/types/navigation";
 
 // Camera abstraction imports
@@ -233,6 +233,8 @@ export default function ScanScreen() {
                   );
                 }
               }}
+              accessibilityLabel="Open device settings to enable camera"
+              accessibilityRole="button"
               style={[
                 styles.permissionButton,
                 { backgroundColor: theme.success },
@@ -253,6 +255,8 @@ export default function ScanScreen() {
         ) : (
           <Pressable
             onPress={requestPermission}
+            accessibilityLabel="Enable camera access"
+            accessibilityRole="button"
             style={[
               styles.permissionButton,
               { backgroundColor: theme.success },
@@ -281,6 +285,11 @@ export default function ScanScreen() {
         <View style={styles.topControls}>
           <Pressable
             onPress={() => setTorch(!torch)}
+            accessibilityLabel={
+              torch ? "Turn off flashlight" : "Turn on flashlight"
+            }
+            accessibilityRole="button"
+            accessibilityState={{ checked: torch }}
             style={[
               styles.controlButton,
               {
@@ -296,6 +305,8 @@ export default function ScanScreen() {
           </Pressable>
           <Pressable
             onPress={() => navigation.navigate("HistoryTab")}
+            accessibilityLabel="Close camera"
+            accessibilityRole="button"
             style={[
               styles.controlButton,
               { backgroundColor: "rgba(0,0,0,0.4)" },
@@ -307,10 +318,34 @@ export default function ScanScreen() {
 
         <View style={styles.reticleContainer}>
           <AnimatedView style={[styles.reticle, cornerStyle]}>
-            <View style={[styles.corner, styles.cornerTL]} />
-            <View style={[styles.corner, styles.cornerTR]} />
-            <View style={[styles.corner, styles.cornerBL]} />
-            <View style={[styles.corner, styles.cornerBR]} />
+            <View
+              style={[
+                styles.corner,
+                styles.cornerTL,
+                { borderColor: theme.success },
+              ]}
+            />
+            <View
+              style={[
+                styles.corner,
+                styles.cornerTR,
+                { borderColor: theme.success },
+              ]}
+            />
+            <View
+              style={[
+                styles.corner,
+                styles.cornerBL,
+                { borderColor: theme.success },
+              ]}
+            />
+            <View
+              style={[
+                styles.corner,
+                styles.cornerBR,
+                { borderColor: theme.success },
+              ]}
+            />
           </AnimatedView>
 
           <AnimatedView
@@ -343,13 +378,20 @@ export default function ScanScreen() {
             { paddingBottom: insets.bottom + Spacing.xl },
           ]}
         >
-          <Pressable onPress={handlePickImage} style={styles.galleryButton}>
+          <Pressable
+            onPress={handlePickImage}
+            accessibilityLabel="Choose photo from gallery"
+            accessibilityRole="button"
+            style={styles.galleryButton}
+          >
             <Feather name="image" size={28} color="#FFFFFF" />
           </Pressable>
 
           <AnimatedView style={pulseStyle}>
             <Pressable
               onPress={handleShutterPress}
+              accessibilityLabel="Take photo of food"
+              accessibilityRole="button"
               style={[styles.shutterButton, { backgroundColor: theme.success }]}
             >
               <View style={styles.shutterInner} />
@@ -426,7 +468,6 @@ const styles = StyleSheet.create({
     position: "absolute",
     width: 40,
     height: 40,
-    borderColor: Colors.light.success,
     borderWidth: 4,
   },
   cornerTL: {

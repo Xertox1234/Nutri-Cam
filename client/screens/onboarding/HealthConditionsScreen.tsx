@@ -135,6 +135,9 @@ export default function HealthConditionsScreen() {
               <Pressable
                 key={condition.id}
                 onPress={() => toggleCondition(condition.id)}
+                accessibilityLabel={`${condition.name}: ${condition.description}`}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: selected }}
                 style={[
                   styles.conditionItem,
                   {
@@ -200,7 +203,12 @@ export default function HealthConditionsScreen() {
         style={[styles.footer, { paddingBottom: insets.bottom + Spacing.xl }]}
       >
         <View style={styles.footerButtons}>
-          <Pressable onPress={prevStep} style={styles.backButton}>
+          <Pressable
+            onPress={prevStep}
+            style={styles.backButton}
+            accessibilityLabel="Go back"
+            accessibilityRole="button"
+          >
             <Feather name="arrow-left" size={24} color={theme.text} />
           </Pressable>
           <Button onPress={nextStep} style={styles.continueButton}>

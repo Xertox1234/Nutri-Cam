@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useMemo, useEffect } from "react";
 import {
   StyleSheet,
   View,
@@ -20,6 +20,9 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
+  withRepeat,
+  withTiming,
+  interpolate,
 } from "react-native-reanimated";
 
 import { ThemedText } from "@/components/ThemedText";
@@ -84,6 +87,10 @@ const HistoryItem = React.memo(function HistoryItem({
     return date.toLocaleDateString();
   };
 
+  const calorieText = item.calories
+    ? `${Math.round(parseFloat(item.calories))} calories`
+    : "calories unknown";
+
   return (
     <Animated.View entering={FadeInDown.delay(index * 50).duration(300)}>
       <Animated.View style={animatedStyle}>
@@ -91,6 +98,8 @@ const HistoryItem = React.memo(function HistoryItem({
           onPress={() => onPress(item)}
           onPressIn={handlePressIn}
           onPressOut={handlePressOut}
+          accessibilityLabel={`${item.productName}${item.brandName ? ` by ${item.brandName}` : ""}, ${calorieText}. Tap to view details.`}
+          accessibilityRole="button"
         >
           <Card elevation={1} style={styles.itemCard}>
             <View style={styles.itemContent}>
@@ -195,40 +204,67 @@ function EmptyState() {
   );
 }
 
-function LoadingSkeleton() {
+function ShimmerItem({ index }: { index: number }) {
   const { theme } = useTheme();
+  const shimmerValue = useSharedValue(0);
+
+  useEffect(() => {
+    shimmerValue.value = withRepeat(
+      withTiming(1, { duration: 1200 }),
+      -1,
+      false,
+    );
+  }, [shimmerValue]);
+
+  const shimmerStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(
+      shimmerValue.value,
+      [0, 0.5, 1],
+      [0.3, 0.7, 0.3],
+    );
+    return { opacity };
+  });
 
   return (
-    <View style={styles.skeletonContainer}>
-      {[1, 2, 3, 4, 5].map((i) => (
-        <View
-          key={i}
+    <Animated.View
+      style={[
+        styles.skeletonItem,
+        { backgroundColor: theme.backgroundDefault },
+        { opacity: 1 - index * 0.1 },
+      ]}
+    >
+      <Animated.View
+        style={[
+          styles.skeletonImage,
+          { backgroundColor: theme.backgroundSecondary },
+          shimmerStyle,
+        ]}
+      />
+      <View style={styles.skeletonText}>
+        <Animated.View
           style={[
-            styles.skeletonItem,
-            { backgroundColor: theme.backgroundDefault },
+            styles.skeletonLine,
+            { backgroundColor: theme.backgroundSecondary, width: "70%" },
+            shimmerStyle,
           ]}
-        >
-          <View
-            style={[
-              styles.skeletonImage,
-              { backgroundColor: theme.backgroundSecondary },
-            ]}
-          />
-          <View style={styles.skeletonText}>
-            <View
-              style={[
-                styles.skeletonLine,
-                { backgroundColor: theme.backgroundSecondary, width: "70%" },
-              ]}
-            />
-            <View
-              style={[
-                styles.skeletonLine,
-                { backgroundColor: theme.backgroundSecondary, width: "40%" },
-              ]}
-            />
-          </View>
-        </View>
+        />
+        <Animated.View
+          style={[
+            styles.skeletonLine,
+            { backgroundColor: theme.backgroundSecondary, width: "40%" },
+            shimmerStyle,
+          ]}
+        />
+      </View>
+    </Animated.View>
+  );
+}
+
+function LoadingSkeleton() {
+  return (
+    <View style={styles.skeletonContainer}>
+      {[0, 1, 2, 3, 4].map((i) => (
+        <ShimmerItem key={i} index={i} />
       ))}
     </View>
   );
@@ -341,12 +377,14 @@ export default function HistoryScreen() {
         <RefreshControl
           refreshing={isRefetching}
           onRefresh={refetch}
-          tintColor={Colors.light.success}
+          tintColor={theme.success}
         />
       }
       ItemSeparatorComponent={ItemSeparator}
       onEndReached={handleEndReached}
       onEndReachedThreshold={0.5}
+      accessibilityLabel="Scan history list"
+      accessibilityRole="list"
     />
   );
 }

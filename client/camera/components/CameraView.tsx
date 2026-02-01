@@ -4,8 +4,9 @@ import React, {
   useRef,
   useCallback,
 } from "react";
-import { StyleSheet, View, Text } from "react-native";
+import { StyleSheet, View } from "react-native";
 import { Feather } from "@expo/vector-icons";
+import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
 import {
   Camera,
@@ -151,14 +152,15 @@ export const CameraView = forwardRef<CameraRef, CameraViewProps>(
           ]}
         >
           <Feather name="camera-off" size={48} color={theme.textSecondary} />
-          <Text style={[styles.unavailableTitle, { color: theme.text }]}>
+          <ThemedText type="h4" style={styles.unavailableTitle}>
             Camera unavailable
-          </Text>
-          <Text
+          </ThemedText>
+          <ThemedText
+            type="body"
             style={[styles.unavailableSubtitle, { color: theme.textSecondary }]}
           >
             Try using the gallery to upload a photo
-          </Text>
+          </ThemedText>
         </View>
       );
     }
@@ -193,12 +195,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing["3xl"],
   },
   unavailableTitle: {
-    fontSize: 18,
-    fontWeight: "600",
     marginTop: Spacing.sm,
   },
   unavailableSubtitle: {
-    fontSize: 14,
     textAlign: "center",
   },
 });
