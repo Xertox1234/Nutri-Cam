@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   StyleSheet,
   View,
@@ -22,11 +22,13 @@ import Animated, {
 import { useNavigation, useIsFocused } from "@react-navigation/native";
 
 import { ThemedText } from "@/components/ThemedText";
+import { UpgradeModal } from "@/components/UpgradeModal";
 import { useTheme } from "@/hooks/useTheme";
 import { useHaptics } from "@/hooks/useHaptics";
 import { useAccessibility } from "@/hooks/useAccessibility";
 import { Spacing, BorderRadius } from "@/constants/theme";
 import type { ScanScreenNavigationProp } from "@/types/navigation";
+import type { PurchaseState } from "@shared/types/subscription";
 
 // Camera abstraction imports
 import {
@@ -88,7 +90,14 @@ export default function ScanScreen() {
     isPremium,
     highQualityCapture,
   } = usePremiumCamera();
-  const { refreshScanCount } = usePremiumContext();
+  const { refreshScanCount, refreshSubscription } = usePremiumContext();
+
+  // Upgrade modal state
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [purchaseState, setPurchaseState] = useState<PurchaseState>({
+    status: "idle",
+  });
+  const isModalOpenRef = useRef(false);
 
   // Camera hook with debouncing
   const { cameraRef, isScanning, handleBarcodeScanned, resetScanning } =
@@ -212,12 +221,64 @@ export default function ScanScreen() {
     }
   };
 
+  // Open upgrade modal (with guard to prevent double-open)
+  const openUpgradeModal = useCallback(() => {
+    if (isModalOpenRef.current) return;
+    isModalOpenRef.current = true;
+    setShowUpgradeModal(true);
+  }, []);
+
+  // Close upgrade modal
+  const closeUpgradeModal = useCallback(() => {
+    isModalOpenRef.current = false;
+    setShowUpgradeModal(false);
+    // Reset purchase state when closing
+    if (purchaseState.status !== "success") {
+      setPurchaseState({ status: "idle" });
+    }
+  }, [purchaseState.status]);
+
+  // Handle purchase (stub - will be replaced with expo-iap integration)
+  const handlePurchase = useCallback(() => {
+    setPurchaseState({
+      status: "loading",
+      productId: "com.nutriscan.premium.annual",
+    });
+
+    // TODO: Implement actual expo-iap purchase flow
+    // For now, simulate a failed purchase after 2 seconds
+    setTimeout(() => {
+      setPurchaseState({
+        status: "error",
+        productId: "com.nutriscan.premium.annual",
+        error: {
+          code: "STORE_UNAVAILABLE",
+          message:
+            "In-app purchases are not available in this build. Install the production app from the App Store.",
+        },
+      });
+    }, 2000);
+  }, []);
+
+  // Handle restore (stub - will be replaced with expo-iap integration)
+  const handleRestore = useCallback(() => {
+    setPurchaseState({ status: "restoring" });
+
+    // TODO: Implement actual expo-iap restore flow
+    // For now, simulate no purchases found after 2 seconds
+    setTimeout(() => {
+      setPurchaseState({ status: "idle" });
+      // Refresh subscription status in case user purchased elsewhere
+      refreshSubscription();
+    }, 2000);
+  }, [refreshSubscription]);
+
   // Handle barcode scan with premium check
   const onBarcodeScanned = (result: BarcodeResult) => {
     // Check if user can scan today (daily limit)
     if (!canScan) {
       haptics.notification(Haptics.NotificationFeedbackType.Warning);
-      // TODO: Show upgrade modal
+      openUpgradeModal();
       return;
     }
 
@@ -438,6 +499,14 @@ export default function ScanScreen() {
           <View style={styles.spacer} />
         </View>
       </View>
+
+      <UpgradeModal
+        visible={showUpgradeModal}
+        onClose={closeUpgradeModal}
+        onPurchase={handlePurchase}
+        onRestore={handleRestore}
+        purchaseState={purchaseState}
+      />
     </View>
   );
 }
