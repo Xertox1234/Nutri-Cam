@@ -15,6 +15,13 @@ This document captures established patterns for the NutriScan codebase. Follow t
   - [Touch Target Size Pattern](#touch-target-size-pattern)
   - [Accessibility Grouping Pattern](#accessibility-grouping-pattern)
   - [Dynamic Accessibility Announcements](#dynamic-accessibility-announcements)
+  - [useAccessibility Hook Pattern](#useaccessibility-hook-pattern)
+  - [Accessibility-Aware Haptics Pattern](#accessibility-aware-haptics-pattern)
+  - [Reduced Motion Animation Pattern](#reduced-motion-animation-pattern)
+  - [Skeleton Loader Pattern](#skeleton-loader-pattern)
+  - [Dynamic Loading State Labels](#dynamic-loading-state-labels)
+  - [Query Error Retry Pattern](#query-error-retry-pattern)
+- [Animation Patterns](#animation-patterns)
 - [Performance Patterns](#performance-patterns)
 - [Documentation Patterns](#documentation-patterns)
 
@@ -1100,6 +1107,47 @@ Group related elements so screen readers announce them together:
 
 **When NOT to use:** When child elements are independently interactive (buttons, links within the group).
 
+### Radio/Checkbox Group Container Pattern
+
+When rendering lists of radio buttons or checkboxes, wrap them in a container with the appropriate group role:
+
+```typescript
+// Good: Radio group with accessibilityRole
+<View accessibilityRole="radiogroup">
+  {OPTIONS.map((option) => (
+    <Pressable
+      key={option.id}
+      onPress={() => setSelected(option.id)}
+      accessibilityRole="radio"
+      accessibilityState={{ selected: selected === option.id }}
+    >
+      {/* Radio button content */}
+    </Pressable>
+  ))}
+</View>
+
+// Good: Checkbox group (no special container role needed, but can use "list")
+<View accessibilityRole="list">
+  {OPTIONS.map((option) => (
+    <Pressable
+      key={option.id}
+      onPress={() => toggleOption(option.id)}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: selectedIds.includes(option.id) }}
+    >
+      {/* Checkbox content */}
+    </Pressable>
+  ))}
+</View>
+```
+
+**Why:** Screen readers use the `radiogroup` role to understand that only one option can be selected. This provides proper context and navigation behavior for assistive technology users.
+
+**When to use:**
+
+- Single-select option lists (diet type, goals, activity level)
+- Any UI where exactly one option must be selected
+
 ### Dynamic Accessibility Announcements
 
 Announce important state changes that aren't reflected in focus:
@@ -1126,6 +1174,302 @@ const handleError = (message: string) => {
 - Success/error states after async operations
 - Content updates not caused by user navigation
 - Timer-based notifications
+
+### useAccessibility Hook Pattern
+
+Centralize accessibility detection with a custom hook that provides reduced motion and screen reader status:
+
+```typescript
+// client/hooks/useAccessibility.ts
+import { useReducedMotion } from "react-native-reanimated";
+import { AccessibilityInfo } from "react-native";
+import { useState, useEffect } from "react";
+
+export function useAccessibility() {
+  const reducedMotion = useReducedMotion();
+  const [screenReaderEnabled, setScreenReaderEnabled] = useState(false);
+
+  useEffect(() => {
+    AccessibilityInfo.isScreenReaderEnabled().then(setScreenReaderEnabled);
+    const subscription = AccessibilityInfo.addEventListener(
+      "screenReaderChanged",
+      setScreenReaderEnabled,
+    );
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
+  return {
+    reducedMotion: reducedMotion ?? false,
+    screenReaderEnabled,
+  };
+}
+```
+
+**Why:** Provides a single source of truth for accessibility settings across the app.
+
+**When to use:**
+
+- Components with animations that should respect reduced motion
+- Features that behave differently with screen readers
+- Any component needing accessibility context
+
+### Accessibility-Aware Haptics Pattern
+
+Wrap haptic feedback to automatically disable when reduced motion is preferred:
+
+```typescript
+// client/hooks/useHaptics.ts
+import * as Haptics from "expo-haptics";
+import { useCallback } from "react";
+import { useAccessibility } from "./useAccessibility";
+
+export function useHaptics() {
+  const { reducedMotion } = useAccessibility();
+
+  const impact = useCallback(
+    (
+      style: Haptics.ImpactFeedbackStyle = Haptics.ImpactFeedbackStyle.Medium,
+    ) => {
+      if (!reducedMotion) {
+        Haptics.impactAsync(style);
+      }
+    },
+    [reducedMotion],
+  );
+
+  const notification = useCallback(
+    (type: Haptics.NotificationFeedbackType) => {
+      if (!reducedMotion) {
+        Haptics.notificationAsync(type);
+      }
+    },
+    [reducedMotion],
+  );
+
+  const selection = useCallback(() => {
+    if (!reducedMotion) {
+      Haptics.selectionAsync();
+    }
+  }, [reducedMotion]);
+
+  return { impact, notification, selection, disabled: reducedMotion };
+}
+```
+
+**Usage:**
+
+```typescript
+const haptics = useHaptics();
+
+const handlePress = () => {
+  haptics.impact(Haptics.ImpactFeedbackStyle.Light);
+  // ... action
+};
+```
+
+**Why:** Users who enable reduced motion often want reduced sensory feedback overall. This respects that preference while keeping haptic code unchanged.
+
+### Reduced Motion Animation Pattern
+
+Skip or simplify animations when the user has reduced motion enabled:
+
+```typescript
+import { useAccessibility } from "@/hooks/useAccessibility";
+import Animated, { FadeInDown } from "react-native-reanimated";
+
+function ListItem({ item, index }: { item: Item; index: number }) {
+  const { reducedMotion } = useAccessibility();
+
+  // Skip entrance animation when reduced motion is preferred
+  const enteringAnimation = reducedMotion
+    ? undefined
+    : FadeInDown.delay(index * 50).duration(300);
+
+  return (
+    <Animated.View entering={enteringAnimation}>
+      {/* content */}
+    </Animated.View>
+  );
+}
+```
+
+**For press animations:**
+
+```typescript
+const handlePressIn = () => {
+  if (!reducedMotion) {
+    scale.value = withSpring(0.98, pressSpringConfig);
+  }
+};
+
+const handlePressOut = () => {
+  if (!reducedMotion) {
+    scale.value = withSpring(1, pressSpringConfig);
+  }
+};
+```
+
+**Why:** WCAG 2.1 requires respecting the "prefers-reduced-motion" setting. This prevents motion sickness and cognitive overload for users who need it.
+
+### Skeleton Loader Pattern
+
+Create reusable skeleton components with shimmer animation and reduced motion support:
+
+```typescript
+// client/components/SkeletonLoader.tsx
+export function SkeletonBox({ width, height, borderRadius, style }: SkeletonBoxProps) {
+  const { theme } = useTheme();
+  const { reducedMotion } = useAccessibility();
+  const shimmerValue = useSharedValue(0);
+
+  useEffect(() => {
+    if (reducedMotion) {
+      shimmerValue.value = 0.5; // Static opacity for reduced motion
+      return;
+    }
+
+    shimmerValue.value = withRepeat(
+      withTiming(1, { duration: 1200 }),
+      -1,
+      false,
+    );
+
+    return () => cancelAnimation(shimmerValue);
+  }, [reducedMotion]);
+
+  const shimmerStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(shimmerValue.value, [0, 0.5, 1], [0.3, 0.7, 0.3]),
+  }));
+
+  return (
+    <Animated.View
+      style={[{ width, height, borderRadius, backgroundColor: theme.backgroundSecondary }, shimmerStyle, style]}
+    />
+  );
+}
+```
+
+**Hide skeletons from screen readers:**
+
+```typescript
+<FlatList
+  ListEmptyComponent={
+    isLoading ? (
+      <View accessibilityElementsHidden>
+        <SkeletonList count={5} />
+      </View>
+    ) : (
+      <EmptyState />
+    )
+  }
+/>
+```
+
+**Why:** Screen readers shouldn't announce loading placeholders. `accessibilityElementsHidden` hides the entire subtree from assistive technologies.
+
+### Dynamic Loading State Labels
+
+Update `accessibilityLabel` to reflect loading state for buttons and actions:
+
+```typescript
+<Button
+  onPress={handleSubmit}
+  disabled={isLoading}
+  accessibilityLabel={
+    isLoading
+      ? mode === "login" ? "Signing in" : "Creating account"
+      : mode === "login" ? "Sign In" : "Create Account"
+  }
+>
+  {isLoading ? <ActivityIndicator /> : mode === "login" ? "Sign In" : "Create Account"}
+</Button>
+```
+
+**For loading indicators:**
+
+```typescript
+function LoadingFooter() {
+  return (
+    <View
+      accessibilityLiveRegion="polite"
+      accessibilityLabel="Loading more items"
+    >
+      <ActivityIndicator size="small" />
+    </View>
+  );
+}
+```
+
+**Why:** Screen reader users need to know when an action is in progress. `accessibilityLiveRegion="polite"` announces the content when it appears without interrupting current speech.
+
+### Query Error Retry Pattern
+
+Provide retry functionality for failed data fetching with accessible controls:
+
+```typescript
+const { data, isLoading, isError, refetch } = useQuery({
+  queryKey: ["/api/dietary-profile"],
+  // ...
+});
+
+// In error UI
+{isError && (
+  <View style={styles.errorContainer}>
+    <ThemedText>Failed to load preferences</ThemedText>
+    <Pressable
+      onPress={() => refetch()}
+      accessibilityLabel="Retry loading dietary preferences"
+      accessibilityRole="button"
+      style={({ pressed }) => [
+        styles.retryButton,
+        { opacity: pressed ? 0.7 : 1 },
+      ]}
+    >
+      <Feather name="refresh-cw" size={14} />
+      <ThemedText>Retry</ThemedText>
+    </Pressable>
+  </View>
+)}
+```
+
+**Why:** Users should always have a way to recover from transient errors without navigating away. The retry button provides an immediate action rather than requiring a pull-to-refresh or screen reload.
+
+---
+
+## Animation Patterns
+
+### Shared Animation Configuration
+
+Define animation configs in a central location for consistency:
+
+```typescript
+// client/constants/animations.ts
+import { WithSpringConfig } from "react-native-reanimated";
+
+export const pressSpringConfig: WithSpringConfig = {
+  damping: 15,
+  stiffness: 150,
+};
+
+export const entranceSpringConfig: WithSpringConfig = {
+  damping: 20,
+  stiffness: 200,
+};
+```
+
+**Usage:**
+
+```typescript
+import { pressSpringConfig } from "@/constants/animations";
+
+const handlePressIn = () => {
+  scale.value = withSpring(0.98, pressSpringConfig);
+};
+```
+
+**Why:** Consistent animation feel across the app. Changing spring parameters in one place updates all press animations.
 
 ---
 
