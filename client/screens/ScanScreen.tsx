@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import {
   StyleSheet,
   View,
@@ -8,11 +8,6 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import {
-  CameraView,
-  useCameraPermissions,
-  BarcodeScanningResult,
-} from "expo-camera";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
@@ -31,18 +26,68 @@ import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius, Colors } from "@/constants/theme";
 import type { ScanScreenNavigationProp } from "@/types/navigation";
 
+// Camera abstraction imports
+import {
+  CameraView,
+  useCameraPermissions,
+  useCamera,
+  type BarcodeResult,
+} from "@/camera";
+import { usePremiumCamera } from "@/hooks/usePremiumFeatures";
+import { usePremiumContext } from "@/context/PremiumContext";
+
 const AnimatedView = Animated.createAnimatedComponent(View);
+
+/** Timing constants for scan operations */
+const SCAN_TIMING = {
+  /** Debounce between barcode scans to prevent duplicates */
+  SCAN_DEBOUNCE_MS: 2000,
+  /** Delay before navigation to allow success animation */
+  NAVIGATION_DELAY_MS: 300,
+  /** Delay before resetting scan state after navigation */
+  RESET_DELAY_MS: 500,
+} as const;
 
 export default function ScanScreen() {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const navigation = useNavigation<ScanScreenNavigationProp>();
-  const [permission, requestPermission] = useCameraPermissions();
+  const {
+    permission,
+    isLoading: permissionLoading,
+    requestPermission,
+  } = useCameraPermissions();
   const [torch, setTorch] = useState(false);
-  const [isScanning, setIsScanning] = useState(false);
-  const lastScannedRef = useRef<string | null>(null);
-  const scanTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const cameraRef = useRef<CameraView>(null);
+
+  // Premium features
+  const { availableBarcodeTypes, canScan, remainingScans, isPremium } =
+    usePremiumCamera();
+  const { refreshScanCount } = usePremiumContext();
+
+  // Camera hook with debouncing
+  const { cameraRef, isScanning, handleBarcodeScanned, resetScanning } =
+    useCamera({
+      onBarcodeScanned: async (result: BarcodeResult) => {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+        scanSuccessScale.value = withSequence(
+          withSpring(1.2, { damping: 10 }),
+          withSpring(1, { damping: 15 }),
+        );
+
+        // Navigate after brief delay for animation
+        setTimeout(() => {
+          navigation.navigate("NutritionDetail", { barcode: result.data });
+          // Refresh scan count after navigation
+          refreshScanCount();
+          setTimeout(() => {
+            resetScanning();
+            scanSuccessScale.value = 0;
+          }, SCAN_TIMING.RESET_DELAY_MS);
+        }, SCAN_TIMING.NAVIGATION_DELAY_MS);
+      },
+      debounceMs: SCAN_TIMING.SCAN_DEBOUNCE_MS,
+    });
 
   const pulseScale = useSharedValue(1);
   const cornerOpacity = useSharedValue(0.6);
@@ -59,14 +104,6 @@ export default function ScanScreen() {
     );
   }, []);
 
-  useEffect(() => {
-    return () => {
-      if (scanTimeoutRef.current) {
-        clearTimeout(scanTimeoutRef.current);
-      }
-    };
-  }, []);
-
   const pulseStyle = useAnimatedStyle(() => ({
     transform: [{ scale: pulseScale.value }],
   }));
@@ -79,34 +116,6 @@ export default function ScanScreen() {
     transform: [{ scale: scanSuccessScale.value }],
     opacity: scanSuccessScale.value,
   }));
-
-  const handleBarCodeScanned = (result: BarcodeScanningResult) => {
-    if (isScanning) return;
-    if (lastScannedRef.current === result.data) return;
-
-    lastScannedRef.current = result.data;
-    setIsScanning(true);
-
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-
-    scanSuccessScale.value = withSequence(
-      withSpring(1.2, { damping: 10 }),
-      withSpring(1, { damping: 15 }),
-    );
-
-    if (scanTimeoutRef.current) {
-      clearTimeout(scanTimeoutRef.current);
-    }
-
-    scanTimeoutRef.current = setTimeout(() => {
-      navigation.navigate("NutritionDetail", { barcode: result.data });
-      setTimeout(() => {
-        setIsScanning(false);
-        lastScannedRef.current = null;
-        scanSuccessScale.value = 0;
-      }, 500);
-    }, 300);
-  };
 
   const handlePickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -128,10 +137,10 @@ export default function ScanScreen() {
     );
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    // Take a photo
+    // Take a photo using the camera ref
     if (cameraRef.current) {
       try {
-        const photo = await cameraRef.current.takePictureAsync({
+        const photo = await cameraRef.current.takePicture({
           quality: 1,
         });
 
@@ -144,7 +153,19 @@ export default function ScanScreen() {
     }
   };
 
-  if (!permission) {
+  // Handle barcode scan with premium check
+  const onBarcodeScanned = (result: BarcodeResult) => {
+    // Check if user can scan today (daily limit)
+    if (!canScan) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      // TODO: Show upgrade modal
+      return;
+    }
+
+    handleBarcodeScanned(result);
+  };
+
+  if (permissionLoading) {
     return (
       <View
         style={[styles.container, { backgroundColor: theme.backgroundRoot }]}
@@ -154,7 +175,7 @@ export default function ScanScreen() {
     );
   }
 
-  if (!permission.granted) {
+  if (!permission || permission.status !== "granted") {
     return (
       <View
         style={[
@@ -179,7 +200,7 @@ export default function ScanScreen() {
           NutriScan needs camera access to scan barcodes and nutrition labels
         </ThemedText>
 
-        {permission.status === "denied" && !permission.canAskAgain ? (
+        {permission?.status === "denied" && !permission.canAskAgain ? (
           Platform.OS !== "web" ? (
             <Pressable
               onPress={async () => {
@@ -225,23 +246,11 @@ export default function ScanScreen() {
     <View style={styles.container}>
       <CameraView
         ref={cameraRef}
-        style={StyleSheet.absoluteFill}
-        facing="back"
+        barcodeTypes={availableBarcodeTypes}
+        onBarcodeScanned={onBarcodeScanned}
         enableTorch={torch}
-        barcodeScannerSettings={{
-          barcodeTypes: [
-            "ean13",
-            "ean8",
-            "upc_a",
-            "upc_e",
-            "code128",
-            "code39",
-            "code93",
-            "datamatrix",
-            "qr",
-          ],
-        }}
-        onBarcodeScanned={handleBarCodeScanned}
+        facing="back"
+        isActive={true}
       />
 
       <View style={[styles.overlay, { paddingTop: insets.top + Spacing.md }]}>
@@ -295,6 +304,15 @@ export default function ScanScreen() {
               ? "Scanning..."
               : "Scan barcode or tap shutter for food photo"}
           </ThemedText>
+
+          {/* Show remaining scans for free users */}
+          {!isPremium && remainingScans !== null && (
+            <ThemedText type="small" style={styles.scanLimitText}>
+              {remainingScans > 0
+                ? `${remainingScans} scans remaining today`
+                : "Daily scan limit reached"}
+            </ThemedText>
+          )}
         </View>
 
         <View
@@ -429,6 +447,14 @@ const styles = StyleSheet.create({
   reticleText: {
     color: "#FFFFFF",
     marginTop: Spacing["2xl"],
+    textShadowColor: "rgba(0,0,0,0.5)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 4,
+  },
+  scanLimitText: {
+    color: "#FFFFFF",
+    marginTop: Spacing.sm,
+    opacity: 0.8,
     textShadowColor: "rgba(0,0,0,0.5)",
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
