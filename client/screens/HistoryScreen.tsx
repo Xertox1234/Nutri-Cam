@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useEffect } from "react";
+import React, { useCallback, useMemo } from "react";
 import {
   StyleSheet,
   View,
@@ -20,16 +20,17 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
-  withRepeat,
-  withTiming,
-  interpolate,
 } from "react-native-reanimated";
 
 import { ThemedText } from "@/components/ThemedText";
 import { Card } from "@/components/Card";
+import { SkeletonList } from "@/components/SkeletonLoader";
 import { useTheme } from "@/hooks/useTheme";
+import { useHaptics } from "@/hooks/useHaptics";
+import { useAccessibility } from "@/hooks/useAccessibility";
 import { useAuthContext } from "@/context/AuthContext";
-import { Spacing, BorderRadius, Colors } from "@/constants/theme";
+import { Spacing, BorderRadius } from "@/constants/theme";
+import { pressSpringConfig } from "@/constants/animations";
 import { getApiUrl } from "@/lib/query-client";
 import { tokenStorage } from "@/lib/token-storage";
 import type { HistoryScreenNavigationProp } from "@/types/navigation";
@@ -51,14 +52,20 @@ type PaginatedResponse = {
 
 const PAGE_SIZE = 50;
 
+/** Item height for getItemLayout optimization (padding + content + padding) */
+const ITEM_HEIGHT = Spacing.lg * 2 + 56; // 88px
+const SEPARATOR_HEIGHT = Spacing.md; // 12px
+
 const HistoryItem = React.memo(function HistoryItem({
   item,
   index,
   onPress,
+  reducedMotion,
 }: {
   item: ScannedItemResponse;
   index: number;
   onPress: (item: ScannedItemResponse) => void;
+  reducedMotion: boolean;
 }) {
   const { theme } = useTheme();
   const scale = useSharedValue(1);
@@ -68,11 +75,15 @@ const HistoryItem = React.memo(function HistoryItem({
   }));
 
   const handlePressIn = () => {
-    scale.value = withSpring(0.98, { damping: 15, stiffness: 150 });
+    if (!reducedMotion) {
+      scale.value = withSpring(0.98, pressSpringConfig);
+    }
   };
 
   const handlePressOut = () => {
-    scale.value = withSpring(1, { damping: 15, stiffness: 150 });
+    if (!reducedMotion) {
+      scale.value = withSpring(1, pressSpringConfig);
+    }
   };
 
   const formatDate = (dateStr: string) => {
@@ -91,8 +102,13 @@ const HistoryItem = React.memo(function HistoryItem({
     ? `${Math.round(parseFloat(item.calories))} calories`
     : "calories unknown";
 
+  // Skip entrance animation when reduced motion is preferred
+  const enteringAnimation = reducedMotion
+    ? undefined
+    : FadeInDown.delay(index * 50).duration(300);
+
   return (
-    <Animated.View entering={FadeInDown.delay(index * 50).duration(300)}>
+    <Animated.View entering={enteringAnimation}>
       <Animated.View style={animatedStyle}>
         <Pressable
           onPress={() => onPress(item)}
@@ -149,11 +165,8 @@ const HistoryItem = React.memo(function HistoryItem({
               </View>
 
               <View style={styles.itemCalories}>
-                <ThemedText
-                  type="h4"
-                  style={{ color: Colors.light.calorieAccent }}
-                >
-                  {item.calories ? Math.round(parseFloat(item.calories)) : "--"}
+                <ThemedText type="h4" style={{ color: theme.calorieAccent }}>
+                  {item.calories ? Math.round(parseFloat(item.calories)) : "—"}
                 </ThemedText>
                 <ThemedText
                   type="caption"
@@ -204,76 +217,14 @@ function EmptyState() {
   );
 }
 
-function ShimmerItem({ index }: { index: number }) {
-  const { theme } = useTheme();
-  const shimmerValue = useSharedValue(0);
-
-  useEffect(() => {
-    shimmerValue.value = withRepeat(
-      withTiming(1, { duration: 1200 }),
-      -1,
-      false,
-    );
-  }, [shimmerValue]);
-
-  const shimmerStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(
-      shimmerValue.value,
-      [0, 0.5, 1],
-      [0.3, 0.7, 0.3],
-    );
-    return { opacity };
-  });
-
-  return (
-    <Animated.View
-      style={[
-        styles.skeletonItem,
-        { backgroundColor: theme.backgroundDefault },
-        { opacity: 1 - index * 0.1 },
-      ]}
-    >
-      <Animated.View
-        style={[
-          styles.skeletonImage,
-          { backgroundColor: theme.backgroundSecondary },
-          shimmerStyle,
-        ]}
-      />
-      <View style={styles.skeletonText}>
-        <Animated.View
-          style={[
-            styles.skeletonLine,
-            { backgroundColor: theme.backgroundSecondary, width: "70%" },
-            shimmerStyle,
-          ]}
-        />
-        <Animated.View
-          style={[
-            styles.skeletonLine,
-            { backgroundColor: theme.backgroundSecondary, width: "40%" },
-            shimmerStyle,
-          ]}
-        />
-      </View>
-    </Animated.View>
-  );
-}
-
-function LoadingSkeleton() {
-  return (
-    <View style={styles.skeletonContainer}>
-      {[0, 1, 2, 3, 4].map((i) => (
-        <ShimmerItem key={i} index={i} />
-      ))}
-    </View>
-  );
-}
-
 function LoadingFooter() {
   const { theme } = useTheme();
   return (
-    <View style={styles.loadingFooter}>
+    <View
+      style={styles.loadingFooter}
+      accessibilityLiveRegion="polite"
+      accessibilityLabel="Loading more items"
+    >
       <ActivityIndicator size="small" color={theme.textSecondary} />
     </View>
   );
@@ -286,6 +237,8 @@ export default function HistoryScreen() {
   const { theme } = useTheme();
   const navigation = useNavigation<HistoryScreenNavigationProp>();
   const { user } = useAuthContext();
+  const haptics = useHaptics();
+  const { reducedMotion } = useAccessibility();
 
   const {
     data,
@@ -337,17 +290,22 @@ export default function HistoryScreen() {
 
   const handleItemPress = useCallback(
     (item: ScannedItemResponse) => {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      haptics.impact(Haptics.ImpactFeedbackStyle.Light);
       navigation.navigate("ItemDetail", { itemId: item.id });
     },
-    [navigation],
+    [navigation, haptics],
   );
 
   const renderItem = useCallback(
     ({ item, index }: { item: ScannedItemResponse; index: number }) => (
-      <HistoryItem item={item} index={index} onPress={handleItemPress} />
+      <HistoryItem
+        item={item}
+        index={index}
+        onPress={handleItemPress}
+        reducedMotion={reducedMotion}
+      />
     ),
-    [handleItemPress],
+    [handleItemPress, reducedMotion],
   );
 
   const handleEndReached = useCallback(() => {
@@ -355,6 +313,15 @@ export default function HistoryScreen() {
       fetchNextPage();
     }
   }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+
+  const getItemLayout = useCallback(
+    (_: unknown, index: number) => ({
+      length: ITEM_HEIGHT,
+      offset: (ITEM_HEIGHT + SEPARATOR_HEIGHT) * index,
+      index,
+    }),
+    [],
+  );
 
   return (
     <FlatList
@@ -371,7 +338,15 @@ export default function HistoryScreen() {
       data={isLoading ? [] : items}
       renderItem={renderItem}
       keyExtractor={(item) => item.id.toString()}
-      ListEmptyComponent={isLoading ? <LoadingSkeleton /> : <EmptyState />}
+      ListEmptyComponent={
+        isLoading ? (
+          <View accessibilityElementsHidden>
+            <SkeletonList count={5} />
+          </View>
+        ) : (
+          <EmptyState />
+        )
+      }
       ListFooterComponent={isFetchingNextPage ? <LoadingFooter /> : null}
       refreshControl={
         <RefreshControl
@@ -381,6 +356,7 @@ export default function HistoryScreen() {
         />
       }
       ItemSeparatorComponent={ItemSeparator}
+      getItemLayout={getItemLayout}
       onEndReached={handleEndReached}
       onEndReachedThreshold={0.5}
       accessibilityLabel="Scan history list"
@@ -443,29 +419,6 @@ const styles = StyleSheet.create({
   emptyText: {
     textAlign: "center",
     maxWidth: 280,
-  },
-  skeletonContainer: {
-    gap: Spacing.md,
-  },
-  skeletonItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: Spacing.lg,
-    borderRadius: BorderRadius["2xl"],
-    gap: Spacing.md,
-  },
-  skeletonImage: {
-    width: 56,
-    height: 56,
-    borderRadius: BorderRadius.xs,
-  },
-  skeletonText: {
-    flex: 1,
-    gap: Spacing.sm,
-  },
-  skeletonLine: {
-    height: 16,
-    borderRadius: 4,
   },
   loadingFooter: {
     paddingVertical: Spacing.lg,

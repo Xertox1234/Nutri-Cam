@@ -7,7 +7,7 @@ import { ThemedText } from "@/components/ThemedText";
 import { Button } from "@/components/Button";
 import { useTheme } from "@/hooks/useTheme";
 import { useOnboarding } from "@/context/OnboardingContext";
-import { Spacing, BorderRadius, Colors } from "@/constants/theme";
+import { Spacing, BorderRadius } from "@/constants/theme";
 
 export default function WelcomeScreen() {
   const { theme } = useTheme();
@@ -23,22 +23,22 @@ export default function WelcomeScreen() {
           <View
             style={[
               styles.iconCircle,
-              { backgroundColor: Colors.light.success + "15" },
+              { backgroundColor: theme.success + "15" },
             ]}
           >
-            <Feather name="heart" size={48} color={Colors.light.success} />
+            <Feather name="heart" size={48} color={theme.success} />
           </View>
         </View>
 
         <View
           style={[
             styles.stepIndicator,
-            { backgroundColor: Colors.light.success + "15" },
+            { backgroundColor: theme.success + "15" },
           ]}
         >
           <ThemedText
             type="small"
-            style={{ color: Colors.light.success, fontWeight: "600" }}
+            style={{ color: theme.success, fontWeight: "600" }}
           >
             6 quick steps
           </ThemedText>
@@ -82,12 +82,20 @@ export default function WelcomeScreen() {
       <View
         style={[styles.footer, { paddingBottom: insets.bottom + Spacing.xl }]}
       >
-        <Button onPress={nextStep} style={styles.button}>
+        <Button
+          onPress={nextStep}
+          style={styles.button}
+          accessibilityLabel="Get Started"
+          accessibilityHint="Begin the personalization questionnaire"
+        >
           Get Started
         </Button>
         <Button
           onPress={skipOnboarding}
           disabled={isSubmitting}
+          accessibilityLabel={
+            isSubmitting ? "Skipping setup" : "Skip personalization for now"
+          }
           style={[styles.skipButton, { backgroundColor: "transparent" }]}
         >
           <ThemedText type="body" style={{ color: theme.textSecondary }}>
@@ -113,12 +121,9 @@ function FeatureItem({
   return (
     <View style={styles.featureItem}>
       <View
-        style={[
-          styles.featureIcon,
-          { backgroundColor: Colors.light.success + "15" },
-        ]}
+        style={[styles.featureIcon, { backgroundColor: theme.success + "15" }]}
       >
-        <Feather name={icon} size={20} color={Colors.light.success} />
+        <Feather name={icon} size={20} color={theme.success} />
       </View>
       <View style={styles.featureText}>
         <ThemedText type="body" style={{ fontWeight: "600" }}>

@@ -19,8 +19,10 @@ import { ThemedText } from "@/components/ThemedText";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { useTheme } from "@/hooks/useTheme";
+import { useHaptics } from "@/hooks/useHaptics";
+import { useAccessibility } from "@/hooks/useAccessibility";
 import { useAuthContext } from "@/context/AuthContext";
-import { Spacing, BorderRadius, Colors } from "@/constants/theme";
+import { Spacing, BorderRadius } from "@/constants/theme";
 
 type FeatherIconName = ComponentProps<typeof Feather>["name"];
 
@@ -131,7 +133,7 @@ function SettingsItem({
           styles.settingsIcon,
           {
             backgroundColor: danger
-              ? Colors.light.error + "20"
+              ? theme.error + "20"
               : theme.backgroundSecondary,
           },
         ]}
@@ -139,14 +141,11 @@ function SettingsItem({
         <Feather
           name={icon}
           size={20}
-          color={danger ? Colors.light.error : theme.text}
+          color={danger ? theme.error : theme.text}
         />
       </View>
       <View style={styles.settingsContent}>
-        <ThemedText
-          type="body"
-          style={[danger && { color: Colors.light.error }]}
-        >
+        <ThemedText type="body" style={[danger && { color: theme.error }]}>
           {label}
         </ThemedText>
         {value ? (
@@ -167,6 +166,8 @@ export default function ProfileScreen() {
   const headerHeight = useHeaderHeight();
   const tabBarHeight = useBottomTabBarHeight();
   const { theme } = useTheme();
+  const haptics = useHaptics();
+  const { reducedMotion } = useAccessibility();
   const { user, logout, updateUser } = useAuthContext();
 
   const [isEditing, setIsEditing] = useState(false);
@@ -181,7 +182,12 @@ export default function ProfileScreen() {
     enabled: !!user,
   });
 
-  const { data: dietaryProfile } = useQuery<DietaryProfile>({
+  const {
+    data: dietaryProfile,
+    isLoading: dietaryLoading,
+    error: dietaryError,
+    refetch: refetchDietaryProfile,
+  } = useQuery<DietaryProfile>({
     queryKey: ["/api/user/dietary-profile"],
     enabled: !!user,
   });
@@ -193,17 +199,17 @@ export default function ProfileScreen() {
         displayName: displayName.trim() || undefined,
         dailyCalorieGoal: parseInt(calorieGoal) || 2000,
       });
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      haptics.notification(Haptics.NotificationFeedbackType.Success);
       setIsEditing(false);
     } catch {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      haptics.notification(Haptics.NotificationFeedbackType.Error);
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleLogout = async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    haptics.impact(Haptics.ImpactFeedbackStyle.Medium);
     await logout();
   };
 
@@ -225,16 +231,15 @@ export default function ProfileScreen() {
       scrollIndicatorInsets={{ bottom: insets.bottom }}
     >
       <Animated.View
-        entering={FadeInDown.delay(100).duration(400)}
+        entering={
+          reducedMotion ? undefined : FadeInDown.delay(100).duration(400)
+        }
         style={styles.profileHeader}
       >
         <View
-          style={[
-            styles.avatar,
-            { backgroundColor: Colors.light.success + "20" },
-          ]}
+          style={[styles.avatar, { backgroundColor: theme.success + "20" }]}
         >
-          <Feather name="user" size={40} color={Colors.light.success} />
+          <Feather name="user" size={40} color={theme.success} />
         </View>
 
         {isEditing ? (
@@ -265,7 +270,11 @@ export default function ProfileScreen() {
         </ThemedText>
       </Animated.View>
 
-      <Animated.View entering={FadeInDown.delay(200).duration(400)}>
+      <Animated.View
+        entering={
+          reducedMotion ? undefined : FadeInDown.delay(200).duration(400)
+        }
+      >
         <Card elevation={1} style={styles.todayCard}>
           <View style={styles.todayHeader}>
             <ThemedText type="h4">Today&apos;s Progress</ThemedText>
@@ -276,10 +285,7 @@ export default function ProfileScreen() {
 
           <View style={styles.progressContainer}>
             <View style={styles.calorieInfo}>
-              <ThemedText
-                type="h2"
-                style={{ color: Colors.light.calorieAccent }}
-              >
+              <ThemedText type="h2" style={{ color: theme.calorieAccent }}>
                 {todaySummary?.totalCalories
                   ? Math.round(todaySummary.totalCalories)
                   : 0}
@@ -300,7 +306,7 @@ export default function ProfileScreen() {
                   styles.progressFill,
                   {
                     width: `${calorieProgress}%`,
-                    backgroundColor: Colors.light.calorieAccent,
+                    backgroundColor: theme.calorieAccent,
                   },
                 ]}
               />
@@ -311,10 +317,7 @@ export default function ProfileScreen() {
             style={[styles.macrosSummary, { borderTopColor: theme.border }]}
           >
             <View style={styles.macroSummaryItem}>
-              <ThemedText
-                type="h4"
-                style={{ color: Colors.light.proteinAccent }}
-              >
+              <ThemedText type="h4" style={{ color: theme.proteinAccent }}>
                 {todaySummary?.totalProtein
                   ? Math.round(todaySummary.totalProtein)
                   : 0}
@@ -325,7 +328,7 @@ export default function ProfileScreen() {
               </ThemedText>
             </View>
             <View style={styles.macroSummaryItem}>
-              <ThemedText type="h4" style={{ color: Colors.light.carbsAccent }}>
+              <ThemedText type="h4" style={{ color: theme.carbsAccent }}>
                 {todaySummary?.totalCarbs
                   ? Math.round(todaySummary.totalCarbs)
                   : 0}
@@ -336,7 +339,7 @@ export default function ProfileScreen() {
               </ThemedText>
             </View>
             <View style={styles.macroSummaryItem}>
-              <ThemedText type="h4" style={{ color: Colors.light.fatAccent }}>
+              <ThemedText type="h4" style={{ color: theme.fatAccent }}>
                 {todaySummary?.totalFat ? Math.round(todaySummary.totalFat) : 0}
                 g
               </ThemedText>
@@ -348,7 +351,11 @@ export default function ProfileScreen() {
         </Card>
       </Animated.View>
 
-      <Animated.View entering={FadeInDown.delay(300).duration(400)}>
+      <Animated.View
+        entering={
+          reducedMotion ? undefined : FadeInDown.delay(300).duration(400)
+        }
+      >
         <ThemedText type="h4" style={styles.sectionTitle}>
           Nutrition Goals
         </ThemedText>
@@ -379,7 +386,11 @@ export default function ProfileScreen() {
         </Card>
       </Animated.View>
 
-      <Animated.View entering={FadeInDown.delay(400).duration(400)}>
+      <Animated.View
+        entering={
+          reducedMotion ? undefined : FadeInDown.delay(400).duration(400)
+        }
+      >
         <ThemedText type="h4" style={styles.sectionTitle}>
           Dietary Preferences
         </ThemedText>
@@ -392,13 +403,13 @@ export default function ProfileScreen() {
                   <View
                     style={[
                       styles.dietaryIcon,
-                      { backgroundColor: Colors.light.error + "20" },
+                      { backgroundColor: theme.error + "20" },
                     ]}
                   >
                     <Feather
                       name="alert-triangle"
                       size={16}
-                      color={Colors.light.error}
+                      color={theme.error}
                     />
                   </View>
                   <View style={styles.dietaryContent}>
@@ -417,9 +428,9 @@ export default function ProfileScreen() {
                             {
                               backgroundColor:
                                 a.severity === "severe"
-                                  ? Colors.light.error + "20"
+                                  ? theme.error + "20"
                                   : a.severity === "moderate"
-                                    ? Colors.light.warning + "20"
+                                    ? theme.warning + "20"
                                     : theme.backgroundSecondary,
                             },
                           ]}
@@ -429,9 +440,9 @@ export default function ProfileScreen() {
                             style={{
                               color:
                                 a.severity === "severe"
-                                  ? Colors.light.error
+                                  ? theme.error
                                   : a.severity === "moderate"
-                                    ? Colors.light.warning
+                                    ? theme.warning
                                     : theme.text,
                             }}
                           >
@@ -450,10 +461,10 @@ export default function ProfileScreen() {
                   <View
                     style={[
                       styles.dietaryIcon,
-                      { backgroundColor: Colors.light.info + "20" },
+                      { backgroundColor: theme.info + "20" },
                     ]}
                   >
-                    <Feather name="heart" size={16} color={Colors.light.info} />
+                    <Feather name="heart" size={16} color={theme.info} />
                   </View>
                   <View style={styles.dietaryContent}>
                     <ThemedText
@@ -476,14 +487,10 @@ export default function ProfileScreen() {
                   <View
                     style={[
                       styles.dietaryIcon,
-                      { backgroundColor: Colors.light.success + "20" },
+                      { backgroundColor: theme.success + "20" },
                     ]}
                   >
-                    <Feather
-                      name="target"
-                      size={16}
-                      color={Colors.light.success}
-                    />
+                    <Feather name="target" size={16} color={theme.success} />
                   </View>
                   <View style={styles.dietaryContent}>
                     <ThemedText
@@ -505,13 +512,13 @@ export default function ProfileScreen() {
                   <View
                     style={[
                       styles.dietaryIcon,
-                      { backgroundColor: Colors.light.calorieAccent + "20" },
+                      { backgroundColor: theme.calorieAccent + "20" },
                     ]}
                   >
                     <Feather
                       name="flag"
                       size={16}
-                      color={Colors.light.calorieAccent}
+                      color={theme.calorieAccent}
                     />
                   </View>
                   <View style={styles.dietaryContent}>
@@ -534,13 +541,13 @@ export default function ProfileScreen() {
                   <View
                     style={[
                       styles.dietaryIcon,
-                      { backgroundColor: Colors.light.proteinAccent + "20" },
+                      { backgroundColor: theme.proteinAccent + "20" },
                     ]}
                   >
                     <Feather
                       name="activity"
                       size={16}
-                      color={Colors.light.proteinAccent}
+                      color={theme.proteinAccent}
                     />
                   </View>
                   <View style={styles.dietaryContent}>
@@ -564,14 +571,10 @@ export default function ProfileScreen() {
                   <View
                     style={[
                       styles.dietaryIcon,
-                      { backgroundColor: Colors.light.carbsAccent + "20" },
+                      { backgroundColor: theme.carbsAccent + "20" },
                     ]}
                   >
-                    <Feather
-                      name="globe"
-                      size={16}
-                      color={Colors.light.carbsAccent}
-                    />
+                    <Feather name="globe" size={16} color={theme.carbsAccent} />
                   </View>
                   <View style={styles.dietaryContent}>
                     <ThemedText
@@ -592,14 +595,10 @@ export default function ProfileScreen() {
                   <View
                     style={[
                       styles.dietaryIcon,
-                      { backgroundColor: Colors.light.fatAccent + "20" },
+                      { backgroundColor: theme.fatAccent + "20" },
                     ]}
                   >
-                    <Feather
-                      name="award"
-                      size={16}
-                      color={Colors.light.fatAccent}
-                    />
+                    <Feather name="award" size={16} color={theme.fatAccent} />
                   </View>
                   <View style={styles.dietaryContent}>
                     <ThemedText
@@ -641,6 +640,51 @@ export default function ProfileScreen() {
                 </View>
               ) : null}
             </>
+          ) : dietaryLoading ? (
+            <View style={styles.emptyDietary}>
+              <ActivityIndicator size="small" color={theme.textSecondary} />
+              <ThemedText
+                type="body"
+                style={{
+                  color: theme.textSecondary,
+                  textAlign: "center",
+                  marginTop: Spacing.sm,
+                }}
+              >
+                Loading preferences...
+              </ThemedText>
+            </View>
+          ) : dietaryError ? (
+            <View style={styles.emptyDietary}>
+              <Feather name="alert-circle" size={24} color={theme.error} />
+              <ThemedText
+                type="body"
+                style={{
+                  color: theme.textSecondary,
+                  textAlign: "center",
+                  marginTop: Spacing.sm,
+                }}
+              >
+                Unable to load preferences
+              </ThemedText>
+              <Pressable
+                onPress={() => refetchDietaryProfile()}
+                accessibilityLabel="Retry loading dietary preferences"
+                accessibilityRole="button"
+                style={({ pressed }) => [
+                  styles.retryButton,
+                  {
+                    backgroundColor: theme.backgroundSecondary,
+                    opacity: pressed ? 0.7 : 1,
+                  },
+                ]}
+              >
+                <Feather name="refresh-cw" size={14} color={theme.link} />
+                <ThemedText type="small" style={{ color: theme.link }}>
+                  Retry
+                </ThemedText>
+              </Pressable>
+            </View>
           ) : (
             <View style={styles.emptyDietary}>
               <ThemedText
@@ -654,7 +698,11 @@ export default function ProfileScreen() {
         </Card>
       </Animated.View>
 
-      <Animated.View entering={FadeInDown.delay(500).duration(400)}>
+      <Animated.View
+        entering={
+          reducedMotion ? undefined : FadeInDown.delay(500).duration(400)
+        }
+      >
         <ThemedText type="h4" style={styles.sectionTitle}>
           Account
         </ThemedText>
@@ -664,7 +712,10 @@ export default function ProfileScreen() {
               <Button
                 onPress={handleSave}
                 disabled={isSaving}
-                style={{ flex: 1, backgroundColor: Colors.light.success }}
+                accessibilityLabel={
+                  isSaving ? "Saving changes" : "Save Changes"
+                }
+                style={{ flex: 1, backgroundColor: theme.success }}
               >
                 {isSaving ? (
                   <ActivityIndicator color="#FFFFFF" size="small" />
@@ -863,5 +914,14 @@ const styles = StyleSheet.create({
   emptyDietary: {
     padding: Spacing.xl,
     alignItems: "center",
+  },
+  retryButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.xs,
+    marginTop: Spacing.md,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.md,
   },
 });

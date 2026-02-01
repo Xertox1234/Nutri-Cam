@@ -23,6 +23,8 @@ import { useNavigation } from "@react-navigation/native";
 
 import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
+import { useHaptics } from "@/hooks/useHaptics";
+import { useAccessibility } from "@/hooks/useAccessibility";
 import { Spacing, BorderRadius } from "@/constants/theme";
 import type { ScanScreenNavigationProp } from "@/types/navigation";
 
@@ -51,9 +53,19 @@ const SCAN_TIMING = {
   RESET_DELAY_MS: 500,
 } as const;
 
+/** Reticle dimensions for barcode scanning viewfinder */
+const RETICLE = {
+  WIDTH: 280,
+  HEIGHT: 180,
+  CORNER_SIZE: 40,
+  CORNER_BORDER_WIDTH: 4,
+  CORNER_RADIUS: 16,
+} as const;
+
 export default function ScanScreen() {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
+  const { reducedMotion } = useAccessibility();
   const navigation = useNavigation<ScanScreenNavigationProp>();
   const {
     permission,
@@ -61,6 +73,7 @@ export default function ScanScreen() {
     requestPermission,
   } = useCameraPermissions();
   const [torch, setTorch] = useState(false);
+  const haptics = useHaptics();
 
   // Timeout refs for cleanup
   const navigationTimeoutRef = useRef<TimeoutRef>(null);
@@ -75,7 +88,7 @@ export default function ScanScreen() {
   const { cameraRef, isScanning, handleBarcodeScanned, resetScanning } =
     useCamera({
       onBarcodeScanned: async (result: BarcodeResult) => {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        haptics.notification(Haptics.NotificationFeedbackType.Success);
 
         scanSuccessScale.value = withSequence(
           withSpring(1.2, { damping: 10 }),
@@ -109,9 +122,14 @@ export default function ScanScreen() {
   const cornerOpacity = useSharedValue(0.6);
   const scanSuccessScale = useSharedValue(0);
 
-  // Start corner pulse animation on mount
+  // Start corner pulse animation on mount (respects reduced motion preference)
   // Note: cornerOpacity is a stable useSharedValue ref, safe to omit from deps
   useEffect(() => {
+    if (reducedMotion) {
+      cornerOpacity.value = 0.8; // Static value for reduced motion
+      return;
+    }
+
     cornerOpacity.value = withRepeat(
       withSequence(
         withTiming(1, { duration: 1000 }),
@@ -121,7 +139,7 @@ export default function ScanScreen() {
       true,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [reducedMotion]);
 
   const pulseStyle = useAnimatedStyle(() => ({
     transform: [{ scale: pulseScale.value }],
@@ -154,7 +172,7 @@ export default function ScanScreen() {
       withSpring(0.9, { damping: 15 }),
       withSpring(1, { damping: 15 }),
     );
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    haptics.impact(Haptics.ImpactFeedbackStyle.Medium);
 
     // Take a photo using the camera ref
     if (cameraRef.current) {
@@ -168,7 +186,7 @@ export default function ScanScreen() {
         }
       } catch {
         // Photo capture failed - provide haptic feedback to indicate failure
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        haptics.notification(Haptics.NotificationFeedbackType.Error);
       }
     }
   };
@@ -177,7 +195,7 @@ export default function ScanScreen() {
   const onBarcodeScanned = (result: BarcodeResult) => {
     // Check if user can scan today (daily limit)
     if (!canScan) {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      haptics.notification(Haptics.NotificationFeedbackType.Warning);
       // TODO: Show upgrade modal
       return;
     }
@@ -228,9 +246,7 @@ export default function ScanScreen() {
                   await Linking.openSettings();
                 } catch {
                   // Settings couldn't be opened - user can manually navigate
-                  Haptics.notificationAsync(
-                    Haptics.NotificationFeedbackType.Error,
-                  );
+                  haptics.notification(Haptics.NotificationFeedbackType.Error);
                 }
               }}
               accessibilityLabel="Open device settings to enable camera"
@@ -427,9 +443,11 @@ const styles = StyleSheet.create({
     marginBottom: Spacing["2xl"],
   },
   permissionButton: {
-    paddingVertical: Spacing.lg,
+    height: Spacing.buttonHeight,
     paddingHorizontal: Spacing["3xl"],
     borderRadius: BorderRadius.full,
+    justifyContent: "center",
+    alignItems: "center",
   },
   permissionButtonText: {
     color: "#FFFFFF",
@@ -460,43 +478,43 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   reticle: {
-    width: 280,
-    height: 180,
+    width: RETICLE.WIDTH,
+    height: RETICLE.HEIGHT,
     position: "relative",
   },
   corner: {
     position: "absolute",
-    width: 40,
-    height: 40,
-    borderWidth: 4,
+    width: RETICLE.CORNER_SIZE,
+    height: RETICLE.CORNER_SIZE,
+    borderWidth: RETICLE.CORNER_BORDER_WIDTH,
   },
   cornerTL: {
     top: 0,
     left: 0,
     borderBottomWidth: 0,
     borderRightWidth: 0,
-    borderTopLeftRadius: 16,
+    borderTopLeftRadius: RETICLE.CORNER_RADIUS,
   },
   cornerTR: {
     top: 0,
     right: 0,
     borderBottomWidth: 0,
     borderLeftWidth: 0,
-    borderTopRightRadius: 16,
+    borderTopRightRadius: RETICLE.CORNER_RADIUS,
   },
   cornerBL: {
     bottom: 0,
     left: 0,
     borderTopWidth: 0,
     borderRightWidth: 0,
-    borderBottomLeftRadius: 16,
+    borderBottomLeftRadius: RETICLE.CORNER_RADIUS,
   },
   cornerBR: {
     bottom: 0,
     right: 0,
     borderTopWidth: 0,
     borderLeftWidth: 0,
-    borderBottomRightRadius: 16,
+    borderBottomRightRadius: RETICLE.CORNER_RADIUS,
   },
   successPulse: {
     position: "absolute",

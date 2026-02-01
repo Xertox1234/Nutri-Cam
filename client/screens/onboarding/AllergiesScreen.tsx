@@ -7,7 +7,7 @@ import { ThemedText } from "@/components/ThemedText";
 import { Button } from "@/components/Button";
 import { useTheme } from "@/hooks/useTheme";
 import { useOnboarding } from "@/context/OnboardingContext";
-import { Spacing, BorderRadius, Colors } from "@/constants/theme";
+import { Spacing, BorderRadius } from "@/constants/theme";
 
 const COMMON_ALLERGENS = [
   { id: "peanuts", name: "Peanuts", icon: "alert-circle" },
@@ -78,12 +78,12 @@ export default function AllergiesScreen() {
           <View
             style={[
               styles.stepIndicator,
-              { backgroundColor: Colors.light.success + "15" },
+              { backgroundColor: theme.success + "15" },
             ]}
           >
             <ThemedText
               type="small"
-              style={{ color: Colors.light.success, fontWeight: "600" }}
+              style={{ color: theme.success, fontWeight: "600" }}
             >
               Step 1 of 6
             </ThemedText>
@@ -115,9 +115,9 @@ export default function AllergiesScreen() {
                   styles.allergenItem,
                   {
                     backgroundColor: selected
-                      ? Colors.light.success + "15"
+                      ? theme.success + "15"
                       : theme.backgroundDefault,
-                    borderColor: selected ? Colors.light.success : theme.border,
+                    borderColor: selected ? theme.success : theme.border,
                   },
                 ]}
               >
@@ -134,10 +134,10 @@ export default function AllergiesScreen() {
                       {
                         backgroundColor:
                           severity === "severe"
-                            ? Colors.light.error
+                            ? theme.error
                             : severity === "moderate"
-                              ? Colors.light.warning
-                              : Colors.light.success,
+                              ? theme.warning
+                              : theme.success,
                       },
                     ]}
                   >
@@ -149,11 +149,7 @@ export default function AllergiesScreen() {
                     </ThemedText>
                   </View>
                 ) : selected ? (
-                  <Feather
-                    name="check"
-                    size={18}
-                    color={Colors.light.success}
-                  />
+                  <Feather name="check" size={18} color={theme.success} />
                 ) : null}
               </Pressable>
             );
@@ -187,16 +183,16 @@ export default function AllergiesScreen() {
                     {
                       backgroundColor:
                         option.value === "severe"
-                          ? Colors.light.error + "15"
+                          ? theme.error + "15"
                           : option.value === "moderate"
-                            ? Colors.light.warning + "15"
-                            : Colors.light.success + "15",
+                            ? theme.warning + "15"
+                            : theme.success + "15",
                       borderColor:
                         option.value === "severe"
-                          ? Colors.light.error
+                          ? theme.error
                           : option.value === "moderate"
-                            ? Colors.light.warning
-                            : Colors.light.success,
+                            ? theme.warning
+                            : theme.success,
                     },
                   ]}
                 >
@@ -222,7 +218,14 @@ export default function AllergiesScreen() {
         <View style={styles.footerButtons}>
           <Pressable
             onPress={prevStep}
-            style={styles.backButton}
+            style={({ pressed }) => [
+              styles.backButton,
+              {
+                backgroundColor: pressed
+                  ? theme.backgroundTertiary
+                  : theme.backgroundSecondary,
+              },
+            ]}
             accessibilityLabel="Go back"
             accessibilityRole="button"
           >
