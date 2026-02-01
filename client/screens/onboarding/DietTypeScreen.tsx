@@ -106,13 +106,13 @@ export default function DietTypeScreen() {
             </ThemedText>
           </View>
           <ThemedText type="h3" style={styles.title}>
-            What's Your Diet?
+            What&apos;s Your Diet?
           </ThemedText>
           <ThemedText
             type="body"
             style={[styles.subtitle, { color: theme.textSecondary }]}
           >
-            Choose your primary eating style. We'll use this to suggest
+            Choose your primary eating style. We&apos;ll use this to suggest
             compatible recipes.
           </ThemedText>
         </View>
@@ -124,6 +124,9 @@ export default function DietTypeScreen() {
               <Pressable
                 key={diet.id}
                 onPress={() => selectDietType(diet.id)}
+                accessibilityLabel={`${diet.name}: ${diet.description}`}
+                accessibilityRole="radio"
+                accessibilityState={{ selected }}
                 style={[
                   styles.dietItem,
                   {
@@ -182,7 +185,12 @@ export default function DietTypeScreen() {
         style={[styles.footer, { paddingBottom: insets.bottom + Spacing.xl }]}
       >
         <View style={styles.footerButtons}>
-          <Pressable onPress={prevStep} style={styles.backButton}>
+          <Pressable
+            onPress={prevStep}
+            style={styles.backButton}
+            accessibilityLabel="Go back"
+            accessibilityRole="button"
+          >
             <Feather name="arrow-left" size={24} color={theme.text} />
           </Pressable>
           <Button onPress={nextStep} style={styles.continueButton}>

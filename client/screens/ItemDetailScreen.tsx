@@ -107,55 +107,82 @@ function SuggestionCard({
         ? Colors.light.proteinAccent
         : Colors.light.fatAccent;
 
+  const typeLabel =
+    suggestion.type === "craft" ? "Kid Activity" : suggestion.type;
+
   return (
-    <Animated.View entering={FadeInDown.delay(index * 100).duration(300)}>
-      <Card elevation={1} style={styles.suggestionCard}>
+    <Animated.View
+      entering={FadeInDown.delay(index * 100).duration(300)}
+      accessible={true}
+      accessibilityLabel={`${typeLabel}: ${suggestion.title}. ${suggestion.description}`}
+      accessibilityRole="text"
+    >
+      <Card
+        elevation={1}
+        style={[styles.suggestionCard, { borderLeftColor: iconColor }]}
+      >
         <View style={styles.suggestionHeader}>
           <View
             style={[
               styles.suggestionIcon,
-              { backgroundColor: `${iconColor}20` },
+              { backgroundColor: `${iconColor}15` },
             ]}
           >
-            <Feather name={iconName} size={20} color={iconColor} />
+            <Feather name={iconName} size={24} color={iconColor} />
           </View>
           <View style={styles.suggestionMeta}>
-            <ThemedText
-              type="caption"
-              style={{
-                color: theme.textSecondary,
-                textTransform: "capitalize",
-              }}
-            >
-              {suggestion.type === "craft" ? "Kid Activity" : suggestion.type}
-            </ThemedText>
-            {suggestion.timeEstimate ? (
-              <View style={styles.timeBadge}>
-                <Feather name="clock" size={12} color={theme.textSecondary} />
-                <ThemedText
-                  type="caption"
-                  style={{ color: theme.textSecondary }}
-                >
-                  {suggestion.timeEstimate}
-                </ThemedText>
-              </View>
-            ) : null}
+            <View>
+              <ThemedText
+                type="caption"
+                style={{
+                  color: iconColor,
+                  textTransform: "uppercase",
+                  fontWeight: "600",
+                  letterSpacing: 0.5,
+                }}
+              >
+                {suggestion.type === "craft" ? "Kid Activity" : suggestion.type}
+              </ThemedText>
+              {suggestion.timeEstimate ? (
+                <View style={styles.timeBadge}>
+                  <Feather name="clock" size={12} color={theme.textSecondary} />
+                  <ThemedText
+                    type="caption"
+                    style={{ color: theme.textSecondary }}
+                  >
+                    {suggestion.timeEstimate}
+                  </ThemedText>
+                </View>
+              ) : null}
+            </View>
+            <Feather
+              name="chevron-right"
+              size={20}
+              color={theme.textSecondary}
+            />
           </View>
         </View>
-        <ThemedText type="body" style={styles.suggestionTitle}>
+        <ThemedText type="h4" style={styles.suggestionTitle}>
           {suggestion.title}
         </ThemedText>
         <ThemedText
-          type="small"
+          type="body"
           style={[styles.suggestionDescription, { color: theme.textSecondary }]}
         >
           {suggestion.description}
         </ThemedText>
         {suggestion.difficulty ? (
-          <View style={styles.difficultyBadge}>
-            <ThemedText type="caption" style={{ color: iconColor }}>
-              {suggestion.difficulty}
-            </ThemedText>
+          <View style={styles.suggestionFooter}>
+            <View
+              style={[
+                styles.difficultyBadge,
+                { backgroundColor: `${iconColor}15` },
+              ]}
+            >
+              <ThemedText type="caption" style={{ color: iconColor }}>
+                {suggestion.difficulty}
+              </ThemedText>
+            </View>
           </View>
         ) : null}
       </Card>
@@ -317,7 +344,9 @@ export default function ItemDetailScreen() {
               {item.calories ? Math.round(parseFloat(item.calories)) : "--"}
             </ThemedText>
           </View>
-          <View style={styles.nutritionDivider} />
+          <View
+            style={[styles.nutritionDivider, { backgroundColor: theme.border }]}
+          />
           <NutritionRow
             label="Protein"
             value={item.protein}
@@ -357,6 +386,9 @@ export default function ItemDetailScreen() {
             <Pressable
               onPress={() => refetchSuggestions()}
               style={styles.retryButton}
+              accessibilityLabel="Retry loading suggestions"
+              accessibilityRole="button"
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             >
               <Feather
                 name="refresh-cw"
@@ -466,7 +498,6 @@ const styles = StyleSheet.create({
   },
   nutritionDivider: {
     height: 1,
-    backgroundColor: "#E5E5E5",
     marginVertical: Spacing.md,
   },
   nutritionRow: {
@@ -505,17 +536,19 @@ const styles = StyleSheet.create({
   },
   suggestionCard: {
     padding: Spacing.lg,
+    borderLeftWidth: 4,
+    overflow: "hidden",
   },
   suggestionHeader: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.sm,
-    marginBottom: Spacing.sm,
+    alignItems: "flex-start",
+    gap: Spacing.md,
+    marginBottom: Spacing.md,
   },
   suggestionIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: BorderRadius.md,
+    width: 48,
+    height: 48,
+    borderRadius: BorderRadius.lg,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -529,20 +562,23 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.xs,
+    marginTop: Spacing.xs,
   },
   suggestionTitle: {
-    fontWeight: "600",
-    marginBottom: Spacing.xs,
+    fontWeight: "700",
+    marginBottom: Spacing.sm,
   },
   suggestionDescription: {
-    lineHeight: 20,
+    lineHeight: 22,
+  },
+  suggestionFooter: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: Spacing.md,
   },
   difficultyBadge: {
-    marginTop: Spacing.sm,
-    alignSelf: "flex-start",
     paddingHorizontal: Spacing.sm,
     paddingVertical: Spacing.xs,
-    backgroundColor: "#F5F5F5",
-    borderRadius: BorderRadius.sm,
+    borderRadius: BorderRadius.full,
   },
 });

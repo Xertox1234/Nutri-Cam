@@ -95,7 +95,7 @@ export default function AllergiesScreen() {
             type="body"
             style={[styles.subtitle, { color: theme.textSecondary }]}
           >
-            Select any allergens and we'll help you avoid them. This is
+            Select any allergens and we&apos;ll help you avoid them. This is
             important for your safety.
           </ThemedText>
         </View>
@@ -108,6 +108,9 @@ export default function AllergiesScreen() {
               <Pressable
                 key={allergen.id}
                 onPress={() => toggleAllergen(allergen.id)}
+                accessibilityLabel={`${allergen.name}${selected ? `, selected${severity ? `, severity: ${severity}` : ""}` : ""}`}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: selected }}
                 style={[
                   styles.allergenItem,
                   {
@@ -215,7 +218,12 @@ export default function AllergiesScreen() {
         style={[styles.footer, { paddingBottom: insets.bottom + Spacing.xl }]}
       >
         <View style={styles.footerButtons}>
-          <Pressable onPress={prevStep} style={styles.backButton}>
+          <Pressable
+            onPress={prevStep}
+            style={styles.backButton}
+            accessibilityLabel="Go back"
+            accessibilityRole="button"
+          >
             <Feather name="arrow-left" size={24} color={theme.text} />
           </Pressable>
           <Button onPress={nextStep} style={styles.continueButton}>

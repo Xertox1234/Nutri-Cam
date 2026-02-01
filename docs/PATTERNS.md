@@ -11,6 +11,10 @@ This document captures established patterns for the NutriScan codebase. Follow t
 - [Database Patterns](#database-patterns)
 - [Client State Patterns](#client-state-patterns)
 - [React Native Patterns](#react-native-patterns)
+  - [Accessibility Props Pattern](#accessibility-props-pattern)
+  - [Touch Target Size Pattern](#touch-target-size-pattern)
+  - [Accessibility Grouping Pattern](#accessibility-grouping-pattern)
+  - [Dynamic Accessibility Announcements](#dynamic-accessibility-announcements)
 - [Performance Patterns](#performance-patterns)
 - [Documentation Patterns](#documentation-patterns)
 
@@ -891,6 +895,237 @@ const handleError = () => {
 **When to use:** Navigation, successful saves, errors, toggle switches, barcode scan success.
 
 **When NOT to use:** Every tap, scrolling, or high-frequency interactions.
+
+### Accessibility Props Pattern
+
+Provide semantic accessibility information for screen readers (VoiceOver on iOS, TalkBack on Android). This is essential for WCAG 2.1 Level AA compliance.
+
+#### Core Accessibility Props
+
+```typescript
+// accessibilityLabel: Descriptive text read by screen readers
+// accessibilityRole: Semantic role (button, checkbox, radio, text, header, etc.)
+// accessibilityState: Current state (selected, checked, disabled, expanded)
+// accessibilityHint: Optional hint about what happens when activated
+
+<Pressable
+  accessibilityLabel="Add to favorites"
+  accessibilityRole="button"
+  accessibilityHint="Saves this item to your favorites list"
+  onPress={handleAddToFavorites}
+>
+  <Feather name="heart" size={24} />
+</Pressable>
+```
+
+#### Checkbox Pattern (Multi-Select Lists)
+
+Use for lists where users can select multiple items (allergies, health conditions):
+
+```typescript
+// Good: Combines title and description for context
+<Pressable
+  onPress={() => toggleSelection(item.id)}
+  accessibilityLabel={`${item.name}: ${item.description}`}
+  accessibilityRole="checkbox"
+  accessibilityState={{ checked: selectedIds.includes(item.id) }}
+>
+  <Text>{item.name}</Text>
+  <Text>{item.description}</Text>
+  <Feather name={isSelected ? "check-square" : "square"} />
+</Pressable>
+```
+
+**Why combine title and description:** Screen reader users hear the full context in one announcement, rather than having to navigate to separate elements.
+
+#### Radio Pattern (Single-Select Lists)
+
+Use for lists where users select exactly one option (diet type, goals):
+
+```typescript
+// Good: Uses radio role with selected state
+<Pressable
+  onPress={() => setSelectedOption(option.id)}
+  accessibilityLabel={`${option.name}: ${option.description}`}
+  accessibilityRole="radio"
+  accessibilityState={{ selected: selectedOption === option.id }}
+>
+  <Text>{option.name}</Text>
+  <Text>{option.description}</Text>
+  <View style={[styles.radioOuter, isSelected && styles.radioSelected]}>
+    {isSelected && <View style={styles.radioInner} />}
+  </View>
+</Pressable>
+```
+
+**Difference from checkbox:** Use `accessibilityRole="radio"` with `selected` state (not `checked`). This tells screen readers the selection is mutually exclusive.
+
+#### Icon-Only Button Pattern
+
+Icon buttons without visible text MUST have an `accessibilityLabel`:
+
+```typescript
+// Good: Descriptive label for icon button
+<Pressable
+  onPress={() => navigation.goBack()}
+  accessibilityLabel="Go back"
+  accessibilityRole="button"
+>
+  <Feather name="arrow-left" size={24} color={colors.text} />
+</Pressable>
+
+// Good: Toggle button with state-aware label
+<Pressable
+  onPress={() => setTorch(!torch)}
+  accessibilityLabel={torch ? "Turn off flashlight" : "Turn on flashlight"}
+  accessibilityRole="button"
+  accessibilityState={{ checked: torch }}
+>
+  <Feather name={torch ? "zap" : "zap-off"} size={24} />
+</Pressable>
+```
+
+**Why state-aware labels:** Users know both the current state AND what will happen when they activate the button.
+
+#### Password Visibility Toggle Pattern
+
+```typescript
+<Pressable
+  onPress={() => setShowPassword(!showPassword)}
+  accessibilityLabel={showPassword ? "Hide password" : "Show password"}
+  accessibilityRole="button"
+  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+>
+  <Feather name={showPassword ? "eye-off" : "eye"} size={20} />
+</Pressable>
+```
+
+#### Text Input Pattern
+
+```typescript
+<TextInput
+  value={username}
+  onChangeText={setUsername}
+  placeholder="Username"
+  accessibilityLabel="Username"
+  accessibilityHint="Enter your username to sign in"
+  autoCapitalize="none"
+  autoCorrect={false}
+/>
+```
+
+**When to add `accessibilityHint`:** When the purpose isn't obvious from the label alone, or when there are specific requirements (format, length, etc.).
+
+#### List Item Navigation Pattern
+
+For items that navigate to detail screens:
+
+```typescript
+// Good: Comprehensive label with action hint
+const HistoryItem = React.memo(function HistoryItem({
+  item,
+  onPress,
+}: HistoryItemProps) {
+  const calorieText = item.calories ? `${item.calories} calories` : "Calories unknown";
+
+  return (
+    <Pressable
+      onPress={() => onPress(item)}
+      accessibilityLabel={`${item.productName}${item.brandName ? ` by ${item.brandName}` : ""}, ${calorieText}. Tap to view details.`}
+      accessibilityRole="button"
+    >
+      <Text>{item.productName}</Text>
+      <Text>{item.brandName}</Text>
+      <Text>{item.calories} cal</Text>
+    </Pressable>
+  );
+});
+```
+
+**Why include "Tap to view details":** Informs users that activation will navigate somewhere, not perform an immediate action.
+
+### Touch Target Size Pattern
+
+Ensure interactive elements meet the minimum touch target size of 44x44 points (WCAG 2.1 Level AA requirement):
+
+```typescript
+// Good: Element meets minimum size naturally
+<Pressable
+  style={{ width: 48, height: 48, justifyContent: "center", alignItems: "center" }}
+  onPress={handlePress}
+>
+  <Feather name="settings" size={24} />
+</Pressable>
+
+// Good: Small visual element with expanded touch area using hitSlop
+<Pressable
+  onPress={handlePress}
+  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+  accessibilityLabel="Show password"
+>
+  <Feather name="eye" size={20} />
+</Pressable>
+```
+
+**When to use `hitSlop`:**
+
+- Icon buttons smaller than 44pt
+- Inline interactive elements (password toggle inside input)
+- Dense UIs where visual spacing is constrained
+
+**Calculating hitSlop:** If your touchable is 24pt, add hitSlop of 10pt on each side to reach 44pt total: `(24 + 10 + 10) = 44pt`.
+
+### Accessibility Grouping Pattern
+
+Group related elements so screen readers announce them together:
+
+```typescript
+// Good: Card announced as single unit
+<View
+  accessible={true}
+  accessibilityLabel={`${productName}, ${brandName}, ${calories} calories. Scanned ${relativeTime}`}
+>
+  <Text>{productName}</Text>
+  <Text>{brandName}</Text>
+  <Text>{calories} cal</Text>
+  <Text>{relativeTime}</Text>
+</View>
+```
+
+**When to use `accessible={true}`:**
+
+- Cards or list items with multiple text elements
+- Complex components that should be announced as one unit
+- When navigating element-by-element would be tedious
+
+**When NOT to use:** When child elements are independently interactive (buttons, links within the group).
+
+### Dynamic Accessibility Announcements
+
+Announce important state changes that aren't reflected in focus:
+
+```typescript
+import { AccessibilityInfo } from "react-native";
+
+// Announce scan success
+const handleBarcodeScanned = async (barcode: string) => {
+  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  AccessibilityInfo.announceForAccessibility("Barcode scanned successfully");
+  // Process barcode...
+};
+
+// Announce errors
+const handleError = (message: string) => {
+  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+  AccessibilityInfo.announceForAccessibility(`Error: ${message}`);
+};
+```
+
+**When to use:**
+
+- Success/error states after async operations
+- Content updates not caused by user navigation
+- Timer-based notifications
 
 ---
 

@@ -118,6 +118,9 @@ function SettingsItem({
   return (
     <Pressable
       onPress={onPress}
+      accessibilityLabel={value ? `${label}: ${value}` : label}
+      accessibilityRole="button"
+      accessibilityHint={showChevron ? "Tap to open" : undefined}
       style={({ pressed }) => [
         styles.settingsItem,
         { opacity: pressed ? 0.7 : 1 },
@@ -264,7 +267,7 @@ export default function ProfileScreen() {
       <Animated.View entering={FadeInDown.delay(200).duration(400)}>
         <Card elevation={1} style={styles.todayCard}>
           <View style={styles.todayHeader}>
-            <ThemedText type="h4">Today's Progress</ThemedText>
+            <ThemedText type="h4">Today&apos;s Progress</ThemedText>
             <ThemedText type="small" style={{ color: theme.textSecondary }}>
               {todaySummary?.itemCount || 0} items logged
             </ThemedText>
@@ -303,7 +306,9 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          <View style={styles.macrosSummary}>
+          <View
+            style={[styles.macrosSummary, { borderTopColor: theme.border }]}
+          >
             <View style={styles.macroSummaryItem}>
               <ThemedText
                 type="h4"
@@ -682,7 +687,9 @@ export default function ProfileScreen() {
                 label="Edit Profile"
                 onPress={() => setIsEditing(true)}
               />
-              <View style={styles.divider} />
+              <View
+                style={[styles.divider, { backgroundColor: theme.border }]}
+              />
               <SettingsItem
                 icon="log-out"
                 label="Sign Out"
@@ -758,7 +765,6 @@ const styles = StyleSheet.create({
     justifyContent: "space-around",
     paddingTop: Spacing.lg,
     borderTopWidth: 1,
-    borderTopColor: "rgba(0,0,0,0.05)",
   },
   macroSummaryItem: {
     alignItems: "center",
@@ -789,7 +795,6 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: 1,
-    backgroundColor: "rgba(0,0,0,0.05)",
     marginLeft: Spacing.lg + 40 + Spacing.md,
   },
   goalRow: {

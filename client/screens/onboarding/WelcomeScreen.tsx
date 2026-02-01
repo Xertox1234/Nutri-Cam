@@ -30,8 +30,22 @@ export default function WelcomeScreen() {
           </View>
         </View>
 
+        <View
+          style={[
+            styles.stepIndicator,
+            { backgroundColor: Colors.light.success + "15" },
+          ]}
+        >
+          <ThemedText
+            type="small"
+            style={{ color: Colors.light.success, fontWeight: "600" }}
+          >
+            6 quick steps
+          </ThemedText>
+        </View>
+
         <ThemedText type="h2" style={styles.title}>
-          Let's Personalize Your Experience
+          Let&apos;s Personalize Your Experience
         </ThemedText>
 
         <ThemedText
@@ -136,6 +150,13 @@ const styles = StyleSheet.create({
     borderRadius: 50,
     alignItems: "center",
     justifyContent: "center",
+  },
+  stepIndicator: {
+    alignSelf: "center",
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.full,
+    marginBottom: Spacing.lg,
   },
   title: {
     textAlign: "center",

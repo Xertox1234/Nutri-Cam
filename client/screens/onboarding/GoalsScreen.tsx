@@ -123,6 +123,9 @@ export default function GoalsScreen() {
                 <Pressable
                   key={goal.id}
                   onPress={() => selectGoal(goal.id)}
+                  accessibilityLabel={goal.name}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected }}
                   style={[
                     styles.goalItem,
                     {
@@ -164,13 +167,16 @@ export default function GoalsScreen() {
           <ThemedText type="body" style={styles.sectionTitle}>
             Activity Level
           </ThemedText>
-          <View style={styles.activityList}>
+          <View style={styles.activityList} accessibilityRole="radiogroup">
             {ACTIVITY_LEVELS.map((level) => {
               const selected = data.activityLevel === level.id;
               return (
                 <Pressable
                   key={level.id}
                   onPress={() => selectActivityLevel(level.id)}
+                  accessibilityLabel={`${level.name}: ${level.description}`}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected }}
                   style={[
                     styles.activityItem,
                     {
@@ -219,7 +225,12 @@ export default function GoalsScreen() {
         style={[styles.footer, { paddingBottom: insets.bottom + Spacing.xl }]}
       >
         <View style={styles.footerButtons}>
-          <Pressable onPress={prevStep} style={styles.backButton}>
+          <Pressable
+            onPress={prevStep}
+            style={styles.backButton}
+            accessibilityLabel="Go back"
+            accessibilityRole="button"
+          >
             <Feather name="arrow-left" size={24} color={theme.text} />
           </Pressable>
           <Button onPress={nextStep} style={styles.continueButton}>
@@ -269,9 +280,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: Spacing.sm,
+    justifyContent: "space-between",
   },
   goalItem: {
-    width: "31%",
+    flexBasis: "30%",
+    flexGrow: 1,
+    maxWidth: "32%",
     paddingVertical: Spacing.lg,
     paddingHorizontal: Spacing.sm,
     borderRadius: BorderRadius.sm,
