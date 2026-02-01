@@ -1313,6 +1313,42 @@ const handlePressOut = () => {
 
 **Why:** WCAG 2.1 requires respecting the "prefers-reduced-motion" setting. This prevents motion sickness and cognitive overload for users who need it.
 
+**For continuous/looping animations:**
+
+Animations that run indefinitely (pulse, shimmer, breathing effects) need a different approach - set a static fallback value instead:
+
+```typescript
+const cornerOpacity = useSharedValue(0.6);
+const { reducedMotion } = useAccessibility();
+
+useEffect(() => {
+  if (reducedMotion) {
+    cornerOpacity.value = 0.8; // Static fallback value
+    return; // Skip animation setup entirely
+  }
+
+  // Only start continuous animation if reduced motion is disabled
+  cornerOpacity.value = withRepeat(
+    withSequence(
+      withTiming(1, { duration: 1000 }),
+      withTiming(0.6, { duration: 1000 }),
+    ),
+    -1, // Infinite repeat
+    true, // Reverse direction
+  );
+}, [reducedMotion]); // Re-run if preference changes
+```
+
+**Key differences from entrance/press animations:**
+
+| Animation Type              | Reduced Motion Approach         |
+| --------------------------- | ------------------------------- |
+| Entrance (`entering` prop)  | Set to `undefined`              |
+| Press (scale on tap)        | Skip `withSpring` call          |
+| Continuous (pulse, shimmer) | Set static value + early return |
+
+**When to use:** Pulse effects, shimmer loaders, breathing animations, any `withRepeat` with `-1` (infinite).
+
 ### Skeleton Loader Pattern
 
 Create reusable skeleton components with shimmer animation and reduced motion support:
