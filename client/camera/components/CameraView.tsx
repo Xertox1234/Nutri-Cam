@@ -18,6 +18,7 @@ import {
   BARCODE_TYPE_MAP,
   BARCODE_TYPE_REVERSE_MAP,
   isVisionCameraBarcodeType,
+  type VisionCameraBarcodeType,
 } from "@shared/types/camera";
 import { Spacing } from "@/constants/theme";
 import type {
