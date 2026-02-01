@@ -17,6 +17,8 @@ import {
   type InsertRecipeIngredient,
   type MealPlanItem,
   type InsertMealPlanItem,
+  type Transaction,
+  type InsertTransaction,
   users,
   scannedItems,
   dailyLogs,
@@ -29,6 +31,7 @@ import {
   mealPlanRecipes,
   recipeIngredients,
   mealPlanItems,
+  transactions,
 } from "@shared/schema";
 import { type CreateSavedItemInput } from "@shared/schemas/saved-items";
 import { db } from "./db";
@@ -90,6 +93,11 @@ export interface IStorage {
     expiresAt: Date | null,
   ): Promise<User | undefined>;
   getDailyScanCount(userId: string, date: Date): Promise<number>;
+
+  // Transaction methods
+  getTransaction(transactionId: string): Promise<Transaction | undefined>;
+  createTransaction(transaction: InsertTransaction): Promise<Transaction>;
+  getTransactionsByUser(userId: string): Promise<Transaction[]>;
 
   // Saved items
   getSavedItems(userId: string): Promise<SavedItem[]>;
@@ -916,6 +924,34 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(mealPlanItems.id, id), eq(mealPlanItems.userId, userId)))
       .returning({ id: mealPlanItems.id });
     return result.length > 0;
+  }
+
+  async getTransaction(
+    transactionId: string,
+  ): Promise<Transaction | undefined> {
+    const [transaction] = await db
+      .select()
+      .from(transactions)
+      .where(eq(transactions.transactionId, transactionId));
+    return transaction || undefined;
+  }
+
+  async createTransaction(
+    transaction: InsertTransaction,
+  ): Promise<Transaction> {
+    const [newTransaction] = await db
+      .insert(transactions)
+      .values(transaction)
+      .returning();
+    return newTransaction;
+  }
+
+  async getTransactionsByUser(userId: string): Promise<Transaction[]> {
+    return db
+      .select()
+      .from(transactions)
+      .where(eq(transactions.userId, userId))
+      .orderBy(desc(transactions.createdAt));
   }
 }
 

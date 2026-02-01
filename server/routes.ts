@@ -28,6 +28,12 @@ import {
   type SubscriptionStatus,
 } from "@shared/types/premium";
 import {
+  UpgradeRequestSchema,
+  RestoreRequestSchema,
+} from "@shared/schemas/subscription";
+import { validateReceipt } from "./services/receipt-validation";
+import { sendError } from "./lib/api-errors";
+import {
   photoIntentSchema,
   INTENT_CONFIG,
   type PhotoIntent,
@@ -709,6 +715,163 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         console.error("Error fetching scan count:", error);
         res.status(500).json({ error: "Failed to fetch scan count" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/subscription/upgrade",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      const parseResult = UpgradeRequestSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return sendError(res, 400, "Invalid request", {
+          code: "VALIDATION_ERROR",
+          details: parseResult.error.flatten(),
+        });
+      }
+
+      const { receipt, platform, productId, transactionId } = parseResult.data;
+      const userId = req.userId!;
+
+      try {
+        // 1. Check for duplicate transaction (idempotency)
+        const existing = await storage.getTransaction(transactionId);
+        if (existing) {
+          // Return success for idempotent requests
+          const user = await storage.getUser(userId);
+          return res.json({
+            success: true,
+            tier: user?.subscriptionTier || "premium",
+            expiresAt:
+              user?.subscriptionExpiresAt?.toISOString() ||
+              new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+          });
+        }
+
+        // 2. Validate receipt with Apple/Google
+        const validation = await validateReceipt(receipt, platform);
+        if (!validation.valid) {
+          return sendError(res, 400, "Invalid receipt", {
+            code: "INVALID_RECEIPT",
+          });
+        }
+
+        // 3. Store transaction
+        await storage.createTransaction({
+          userId,
+          transactionId,
+          receipt,
+          platform,
+          productId,
+          status: "completed",
+        });
+
+        // 4. Upgrade user
+        const expiresAt =
+          validation.expiresAt ??
+          new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+
+        await storage.updateSubscription(userId, "premium", expiresAt);
+
+        res.json({
+          success: true,
+          tier: "premium",
+          expiresAt: expiresAt.toISOString(),
+        });
+      } catch (error) {
+        console.error("Upgrade failed:", error);
+        sendError(res, 500, "Upgrade failed", { code: "SERVER_ERROR" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/subscription/restore",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      const parseResult = RestoreRequestSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return sendError(res, 400, "Invalid request", {
+          code: "VALIDATION_ERROR",
+          details: parseResult.error.flatten(),
+        });
+      }
+
+      const { platform, receipts } = parseResult.data;
+      const userId = req.userId!;
+
+      try {
+        if (receipts.length === 0) {
+          return res.json({
+            success: true,
+            tier: "free",
+            expiresAt: null,
+            restoredCount: 0,
+          });
+        }
+
+        let latestValidExpiration: Date | null = null;
+        let restoredCount = 0;
+
+        // Process each receipt
+        for (const { receipt, transactionId, productId } of receipts) {
+          // Skip already processed transactions
+          const existing = await storage.getTransaction(transactionId);
+          if (existing) {
+            restoredCount++;
+            continue;
+          }
+
+          // Validate receipt
+          const validation = await validateReceipt(receipt, platform);
+          if (validation.valid && validation.expiresAt) {
+            // Store transaction
+            await storage.createTransaction({
+              userId,
+              transactionId,
+              receipt,
+              platform,
+              productId,
+              status: "completed",
+            });
+
+            // Track latest expiration
+            if (
+              !latestValidExpiration ||
+              validation.expiresAt > latestValidExpiration
+            ) {
+              latestValidExpiration = validation.expiresAt;
+            }
+            restoredCount++;
+          }
+        }
+
+        // Update subscription if we found valid purchases
+        if (latestValidExpiration && latestValidExpiration > new Date()) {
+          await storage.updateSubscription(
+            userId,
+            "premium",
+            latestValidExpiration,
+          );
+          return res.json({
+            success: true,
+            tier: "premium",
+            expiresAt: latestValidExpiration.toISOString(),
+            restoredCount,
+          });
+        }
+
+        // No valid active purchases found
+        res.json({
+          success: true,
+          tier: "free",
+          expiresAt: null,
+          restoredCount,
+        });
+      } catch (error) {
+        console.error("Restore failed:", error);
+        sendError(res, 500, "Restore failed", { code: "SERVER_ERROR" });
       }
     },
   );
