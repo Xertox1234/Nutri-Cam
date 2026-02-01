@@ -1,5 +1,3 @@
-import type { SubscriptionTier } from "./premium";
-
 // expo-camera barcode types
 export const expoBarcodeTypes = [
   "ean13",
@@ -72,34 +70,8 @@ export const BARCODE_TYPE_REVERSE_MAP: Record<
   qr: "qr",
 };
 
-// Free tier barcode types (basic barcodes)
-export const FREE_BARCODE_TYPES: ExpoBarcodeType[] = [
-  "ean13",
-  "ean8",
-  "upc_a",
-  "upc_e",
-  "code128",
-  "code39",
-  "code93",
-];
-
-// Premium-only barcode types (advanced)
-export const PREMIUM_BARCODE_TYPES: ExpoBarcodeType[] = ["datamatrix", "qr"];
-
-// Get barcode types available for a subscription tier
-export function getBarcodeTypesForTier(
-  tier: SubscriptionTier,
-): ExpoBarcodeType[] {
-  if (tier === "premium") {
-    return [...FREE_BARCODE_TYPES, ...PREMIUM_BARCODE_TYPES];
-  }
-  return FREE_BARCODE_TYPES;
-}
-
-// Check if a barcode type is premium-only
-export function isPremiumBarcodeType(type: ExpoBarcodeType): boolean {
-  return PREMIUM_BARCODE_TYPES.includes(type);
-}
+// All barcode types are available to all users (no tier gating)
+export const ALL_BARCODE_TYPES: ExpoBarcodeType[] = [...expoBarcodeTypes];
 
 // Camera-agnostic barcode result
 export interface BarcodeResult {

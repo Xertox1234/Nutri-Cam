@@ -1,10 +1,6 @@
 import { usePremiumContext } from "@/context/PremiumContext";
 import type { PremiumFeatureKey } from "@shared/types/premium";
-import {
-  getBarcodeTypesForTier,
-  isPremiumBarcodeType,
-  type ExpoBarcodeType,
-} from "@shared/types/camera";
+import { ALL_BARCODE_TYPES, type ExpoBarcodeType } from "@shared/types/camera";
 
 /**
  * Check if a specific premium feature is enabled for the current user.
@@ -22,25 +18,10 @@ export function usePremiumFeature(featureKey: PremiumFeatureKey): boolean {
 }
 
 /**
- * Get barcode types available for the current user's subscription tier.
+ * Get all barcode types (no tier restrictions - all types free).
  */
 export function useAvailableBarcodeTypes(): ExpoBarcodeType[] {
-  const { tier } = usePremiumContext();
-  return getBarcodeTypesForTier(tier);
-}
-
-/**
- * Check if the user can use a specific barcode type.
- */
-export function useCanUseBarcodeType(barcodeType: ExpoBarcodeType): boolean {
-  const { isPremium } = usePremiumContext();
-
-  // Free users can't use premium barcode types
-  if (isPremiumBarcodeType(barcodeType) && !isPremium) {
-    return false;
-  }
-
-  return true;
+  return ALL_BARCODE_TYPES;
 }
 
 /**
@@ -76,24 +57,21 @@ export function usePremiumCamera(): {
   canScan: boolean;
   remainingScans: number | null;
   isPremium: boolean;
-  highQualityCapture: boolean;
   videoRecording: boolean;
 } {
-  const { features, isPremium, dailyScanCount, canScanToday, tier } =
+  const { features, isPremium, dailyScanCount, canScanToday } =
     usePremiumContext();
 
-  const availableBarcodeTypes = getBarcodeTypesForTier(tier);
   const dailyLimit = features.maxDailyScans;
   const remainingScans = isPremium
     ? null
     : Math.max(0, dailyLimit - dailyScanCount);
 
   return {
-    availableBarcodeTypes,
+    availableBarcodeTypes: ALL_BARCODE_TYPES,
     canScan: canScanToday,
     remainingScans,
     isPremium,
-    highQualityCapture: features.highQualityCapture,
     videoRecording: features.videoRecording,
   };
 }

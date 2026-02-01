@@ -3,18 +3,12 @@ import {
   UNLIMITED_SCANS,
   type SubscriptionTier,
 } from "@shared/types/premium";
-import {
-  FREE_BARCODE_TYPES,
-  PREMIUM_BARCODE_TYPES,
-  getBarcodeTypesForTier,
-  isPremiumBarcodeType,
-} from "@shared/types/camera";
+import { ALL_BARCODE_TYPES } from "@shared/types/camera";
 
 // Import hooks after mocking
 import {
   usePremiumFeature,
   useAvailableBarcodeTypes,
-  useCanUseBarcodeType,
   useCanScanToday,
   usePremiumCamera,
 } from "../usePremiumFeatures";
@@ -36,8 +30,6 @@ describe("usePremiumFeatures", () => {
         features: TIER_FEATURES.premium,
       });
 
-      expect(usePremiumFeature("advancedBarcodes")).toBe(true);
-      expect(usePremiumFeature("highQualityCapture")).toBe(true);
       expect(usePremiumFeature("videoRecording")).toBe(true);
     });
 
@@ -46,14 +38,12 @@ describe("usePremiumFeatures", () => {
         features: TIER_FEATURES.free,
       });
 
-      expect(usePremiumFeature("advancedBarcodes")).toBe(false);
-      expect(usePremiumFeature("highQualityCapture")).toBe(false);
       expect(usePremiumFeature("videoRecording")).toBe(false);
     });
 
     it("should return true for numeric features > 0", () => {
       mockUsePremiumContext.mockReturnValue({
-        features: { ...TIER_FEATURES.free, maxDailyScans: 10 },
+        features: { ...TIER_FEATURES.free, maxDailyScans: 3 },
       });
 
       expect(usePremiumFeature("maxDailyScans")).toBe(true);
@@ -69,60 +59,13 @@ describe("usePremiumFeatures", () => {
   });
 
   describe("useAvailableBarcodeTypes", () => {
-    it("should return only free barcode types for free tier", () => {
-      mockUsePremiumContext.mockReturnValue({
-        tier: "free" as SubscriptionTier,
-      });
-
+    it("should return all barcode types (no tier restrictions)", () => {
       const types = useAvailableBarcodeTypes();
 
-      expect(types).toEqual(FREE_BARCODE_TYPES);
-      expect(types).not.toContain("qr");
-      expect(types).not.toContain("datamatrix");
-    });
-
-    it("should return all barcode types for premium tier", () => {
-      mockUsePremiumContext.mockReturnValue({
-        tier: "premium" as SubscriptionTier,
-      });
-
-      const types = useAvailableBarcodeTypes();
-
-      expect(types).toEqual([...FREE_BARCODE_TYPES, ...PREMIUM_BARCODE_TYPES]);
+      expect(types).toEqual(ALL_BARCODE_TYPES);
       expect(types).toContain("qr");
       expect(types).toContain("datamatrix");
       expect(types).toContain("ean13");
-    });
-  });
-
-  describe("useCanUseBarcodeType", () => {
-    it("should allow free barcode types for free users", () => {
-      mockUsePremiumContext.mockReturnValue({
-        isPremium: false,
-      });
-
-      expect(useCanUseBarcodeType("ean13")).toBe(true);
-      expect(useCanUseBarcodeType("upc_a")).toBe(true);
-      expect(useCanUseBarcodeType("code128")).toBe(true);
-    });
-
-    it("should block premium barcode types for free users", () => {
-      mockUsePremiumContext.mockReturnValue({
-        isPremium: false,
-      });
-
-      expect(useCanUseBarcodeType("qr")).toBe(false);
-      expect(useCanUseBarcodeType("datamatrix")).toBe(false);
-    });
-
-    it("should allow all barcode types for premium users", () => {
-      mockUsePremiumContext.mockReturnValue({
-        isPremium: true,
-      });
-
-      expect(useCanUseBarcodeType("ean13")).toBe(true);
-      expect(useCanUseBarcodeType("qr")).toBe(true);
-      expect(useCanUseBarcodeType("datamatrix")).toBe(true);
     });
   });
 
@@ -131,23 +74,23 @@ describe("usePremiumFeatures", () => {
       mockUsePremiumContext.mockReturnValue({
         features: TIER_FEATURES.free,
         isPremium: false,
-        dailyScanCount: 5,
+        dailyScanCount: 2,
         canScanToday: true,
       });
 
       const result = useCanScanToday();
 
       expect(result.canScan).toBe(true);
-      expect(result.remainingScans).toBe(5); // 10 - 5
-      expect(result.dailyLimit).toBe(10);
-      expect(result.currentCount).toBe(5);
+      expect(result.remainingScans).toBe(1); // 3 - 2
+      expect(result.dailyLimit).toBe(3);
+      expect(result.currentCount).toBe(2);
     });
 
     it("should return canScan false when at limit", () => {
       mockUsePremiumContext.mockReturnValue({
         features: TIER_FEATURES.free,
         isPremium: false,
-        dailyScanCount: 10,
+        dailyScanCount: 3,
         canScanToday: false,
       });
 
@@ -155,14 +98,14 @@ describe("usePremiumFeatures", () => {
 
       expect(result.canScan).toBe(false);
       expect(result.remainingScans).toBe(0);
-      expect(result.currentCount).toBe(10);
+      expect(result.currentCount).toBe(3);
     });
 
     it("should return canScan false when over limit", () => {
       mockUsePremiumContext.mockReturnValue({
         features: TIER_FEATURES.free,
         isPremium: false,
-        dailyScanCount: 15,
+        dailyScanCount: 5,
         canScanToday: false,
       });
 
@@ -193,18 +136,17 @@ describe("usePremiumFeatures", () => {
       mockUsePremiumContext.mockReturnValue({
         features: TIER_FEATURES.free,
         isPremium: false,
-        dailyScanCount: 3,
+        dailyScanCount: 1,
         canScanToday: true,
         tier: "free" as SubscriptionTier,
       });
 
       const result = usePremiumCamera();
 
-      expect(result.availableBarcodeTypes).toEqual(FREE_BARCODE_TYPES);
+      expect(result.availableBarcodeTypes).toEqual(ALL_BARCODE_TYPES);
       expect(result.canScan).toBe(true);
-      expect(result.remainingScans).toBe(7); // 10 - 3
+      expect(result.remainingScans).toBe(2); // 3 - 1
       expect(result.isPremium).toBe(false);
-      expect(result.highQualityCapture).toBe(false);
       expect(result.videoRecording).toBe(false);
     });
 
@@ -219,14 +161,10 @@ describe("usePremiumFeatures", () => {
 
       const result = usePremiumCamera();
 
-      expect(result.availableBarcodeTypes).toEqual([
-        ...FREE_BARCODE_TYPES,
-        ...PREMIUM_BARCODE_TYPES,
-      ]);
+      expect(result.availableBarcodeTypes).toEqual(ALL_BARCODE_TYPES);
       expect(result.canScan).toBe(true);
       expect(result.remainingScans).toBeNull();
       expect(result.isPremium).toBe(true);
-      expect(result.highQualityCapture).toBe(true);
       expect(result.videoRecording).toBe(true);
     });
 
@@ -234,7 +172,7 @@ describe("usePremiumFeatures", () => {
       mockUsePremiumContext.mockReturnValue({
         features: TIER_FEATURES.free,
         isPremium: false,
-        dailyScanCount: 10,
+        dailyScanCount: 3,
         canScanToday: false,
         tier: "free" as SubscriptionTier,
       });
@@ -247,33 +185,9 @@ describe("usePremiumFeatures", () => {
   });
 });
 
-// Additional tests for the underlying utility functions
-describe("Camera type utilities", () => {
-  describe("getBarcodeTypesForTier", () => {
-    it("should return correct types for each tier", () => {
-      expect(getBarcodeTypesForTier("free")).toEqual(FREE_BARCODE_TYPES);
-      expect(getBarcodeTypesForTier("premium")).toEqual([
-        ...FREE_BARCODE_TYPES,
-        ...PREMIUM_BARCODE_TYPES,
-      ]);
-    });
-  });
-
-  describe("isPremiumBarcodeType", () => {
-    it("should correctly identify premium types", () => {
-      expect(isPremiumBarcodeType("qr")).toBe(true);
-      expect(isPremiumBarcodeType("datamatrix")).toBe(true);
-      expect(isPremiumBarcodeType("ean13")).toBe(false);
-      expect(isPremiumBarcodeType("upc_a")).toBe(false);
-    });
-  });
-});
-
 describe("TIER_FEATURES configuration", () => {
   it("should have correct free tier limits", () => {
-    expect(TIER_FEATURES.free.maxDailyScans).toBe(10);
-    expect(TIER_FEATURES.free.advancedBarcodes).toBe(false);
-    expect(TIER_FEATURES.free.highQualityCapture).toBe(false);
+    expect(TIER_FEATURES.free.maxDailyScans).toBe(3);
     expect(TIER_FEATURES.free.videoRecording).toBe(false);
   });
 

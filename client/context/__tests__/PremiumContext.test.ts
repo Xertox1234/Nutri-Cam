@@ -19,8 +19,8 @@ describe("PremiumContext", () => {
       const features = subscriptionData?.features ?? TIER_FEATURES.free;
 
       expect(features).toEqual(TIER_FEATURES.free);
-      expect(features.maxDailyScans).toBe(10);
-      expect(features.advancedBarcodes).toBe(false);
+      expect(features.maxDailyScans).toBe(3);
+      expect(features.videoRecording).toBe(false);
     });
 
     it("should default to 0 scan count when no data", () => {
@@ -113,7 +113,7 @@ describe("PremiumContext", () => {
 
     it("should return true for free users under the limit", () => {
       const isPremium = false;
-      const dailyScanCount = 5;
+      const dailyScanCount = 2;
       const features = TIER_FEATURES.free;
       const canScanToday = isPremium || dailyScanCount < features.maxDailyScans;
 
@@ -122,7 +122,7 @@ describe("PremiumContext", () => {
 
     it("should return false for free users at the limit", () => {
       const isPremium = false;
-      const dailyScanCount = 10;
+      const dailyScanCount = 3;
       const features = TIER_FEATURES.free;
       const canScanToday = isPremium || dailyScanCount < features.maxDailyScans;
 
@@ -131,7 +131,7 @@ describe("PremiumContext", () => {
 
     it("should return false for free users over the limit", () => {
       const isPremium = false;
-      const dailyScanCount = 15;
+      const dailyScanCount = 5;
       const features = TIER_FEATURES.free;
       const canScanToday = isPremium || dailyScanCount < features.maxDailyScans;
 

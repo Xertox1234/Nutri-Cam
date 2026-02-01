@@ -21,7 +21,7 @@ export const UNLIMITED_SCANS = 999999;
 
 export const TIER_FEATURES: Record<SubscriptionTier, PremiumFeatures> = {
   free: {
-    maxDailyScans: 10,
+    maxDailyScans: 3,
     advancedBarcodes: false,
     highQualityCapture: false,
     videoRecording: false,
@@ -50,3 +50,11 @@ export interface SubscriptionStatus {
 }
 
 export type PremiumFeatureKey = keyof PremiumFeatures;
+
+// Subscription product configuration
+export const SUBSCRIPTION_PRODUCT = {
+  id: "com.nutriscan.premium.annual",
+  trialDays: 3,
+  priceDisplay: "$29.99/year",
+  monthlyEquivalent: "$2.50/month",
+} as const;

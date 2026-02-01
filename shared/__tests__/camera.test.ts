@@ -3,10 +3,7 @@ import {
   visionCameraBarcodeTypes,
   BARCODE_TYPE_MAP,
   BARCODE_TYPE_REVERSE_MAP,
-  FREE_BARCODE_TYPES,
-  PREMIUM_BARCODE_TYPES,
-  getBarcodeTypesForTier,
-  isPremiumBarcodeType,
+  ALL_BARCODE_TYPES,
 } from "../types/camera";
 
 describe("Camera Types", () => {
@@ -68,63 +65,21 @@ describe("Camera Types", () => {
     });
   });
 
-  describe("FREE_BARCODE_TYPES", () => {
-    it("should include basic barcode types", () => {
-      expect(FREE_BARCODE_TYPES).toContain("ean13");
-      expect(FREE_BARCODE_TYPES).toContain("ean8");
-      expect(FREE_BARCODE_TYPES).toContain("upc_a");
-      expect(FREE_BARCODE_TYPES).toContain("upc_e");
-      expect(FREE_BARCODE_TYPES).toContain("code128");
-      expect(FREE_BARCODE_TYPES).toContain("code39");
-      expect(FREE_BARCODE_TYPES).toContain("code93");
+  describe("ALL_BARCODE_TYPES", () => {
+    it("should include all barcode types (no tier restrictions)", () => {
+      expect(ALL_BARCODE_TYPES).toContain("ean13");
+      expect(ALL_BARCODE_TYPES).toContain("ean8");
+      expect(ALL_BARCODE_TYPES).toContain("upc_a");
+      expect(ALL_BARCODE_TYPES).toContain("upc_e");
+      expect(ALL_BARCODE_TYPES).toContain("code128");
+      expect(ALL_BARCODE_TYPES).toContain("code39");
+      expect(ALL_BARCODE_TYPES).toContain("code93");
+      expect(ALL_BARCODE_TYPES).toContain("datamatrix");
+      expect(ALL_BARCODE_TYPES).toContain("qr");
     });
 
-    it("should not include premium types", () => {
-      expect(FREE_BARCODE_TYPES).not.toContain("datamatrix");
-      expect(FREE_BARCODE_TYPES).not.toContain("qr");
-    });
-  });
-
-  describe("PREMIUM_BARCODE_TYPES", () => {
-    it("should include advanced barcode types", () => {
-      expect(PREMIUM_BARCODE_TYPES).toContain("datamatrix");
-      expect(PREMIUM_BARCODE_TYPES).toContain("qr");
-    });
-
-    it("should not include free types", () => {
-      FREE_BARCODE_TYPES.forEach((freeType) => {
-        expect(PREMIUM_BARCODE_TYPES).not.toContain(freeType);
-      });
-    });
-  });
-
-  describe("getBarcodeTypesForTier", () => {
-    it("should return only free types for free tier", () => {
-      const types = getBarcodeTypesForTier("free");
-      expect(types).toEqual(FREE_BARCODE_TYPES);
-      expect(types).not.toContain("datamatrix");
-      expect(types).not.toContain("qr");
-    });
-
-    it("should return all types for premium tier", () => {
-      const types = getBarcodeTypesForTier("premium");
-      expect(types).toEqual([...FREE_BARCODE_TYPES, ...PREMIUM_BARCODE_TYPES]);
-      expect(types).toContain("ean13");
-      expect(types).toContain("datamatrix");
-      expect(types).toContain("qr");
-    });
-  });
-
-  describe("isPremiumBarcodeType", () => {
-    it("should return true for premium types", () => {
-      expect(isPremiumBarcodeType("datamatrix")).toBe(true);
-      expect(isPremiumBarcodeType("qr")).toBe(true);
-    });
-
-    it("should return false for free types", () => {
-      FREE_BARCODE_TYPES.forEach((freeType) => {
-        expect(isPremiumBarcodeType(freeType)).toBe(false);
-      });
+    it("should equal expoBarcodeTypes", () => {
+      expect(ALL_BARCODE_TYPES).toEqual([...expoBarcodeTypes]);
     });
   });
 });

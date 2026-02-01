@@ -3,6 +3,7 @@ import {
   subscriptionTierSchema,
   TIER_FEATURES,
   UNLIMITED_SCANS,
+  SUBSCRIPTION_PRODUCT,
 } from "../types/premium";
 
 describe("Premium Types", () => {
@@ -30,9 +31,7 @@ describe("Premium Types", () => {
   describe("TIER_FEATURES", () => {
     it("should have features for free tier", () => {
       const freeFeatures = TIER_FEATURES.free;
-      expect(freeFeatures.maxDailyScans).toBe(10);
-      expect(freeFeatures.advancedBarcodes).toBe(false);
-      expect(freeFeatures.highQualityCapture).toBe(false);
+      expect(freeFeatures.maxDailyScans).toBe(3);
       expect(freeFeatures.videoRecording).toBe(false);
     });
 
@@ -48,6 +47,15 @@ describe("Premium Types", () => {
       subscriptionTiers.forEach((tier) => {
         expect(TIER_FEATURES[tier]).toBeDefined();
       });
+    });
+  });
+
+  describe("SUBSCRIPTION_PRODUCT", () => {
+    it("should have correct product configuration", () => {
+      expect(SUBSCRIPTION_PRODUCT.id).toBe("com.nutriscan.premium.annual");
+      expect(SUBSCRIPTION_PRODUCT.trialDays).toBe(3);
+      expect(SUBSCRIPTION_PRODUCT.priceDisplay).toBe("$29.99/year");
+      expect(SUBSCRIPTION_PRODUCT.monthlyEquivalent).toBe("$2.50/month");
     });
   });
 });
