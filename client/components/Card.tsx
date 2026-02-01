@@ -10,12 +10,13 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
-  WithSpringConfig,
 } from "react-native-reanimated";
 
 import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
+import { useAccessibility } from "@/hooks/useAccessibility";
 import { Spacing, BorderRadius, Colors } from "@/constants/theme";
+import { pressSpringConfig } from "@/constants/animations";
 
 type Theme = (typeof Colors)["light"] | (typeof Colors)["dark"];
 
@@ -26,15 +27,9 @@ interface CardProps {
   children?: React.ReactNode;
   onPress?: () => void;
   style?: StyleProp<ViewStyle>;
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
 }
-
-const springConfig: WithSpringConfig = {
-  damping: 15,
-  mass: 0.3,
-  stiffness: 150,
-  overshootClamping: true,
-  energyThreshold: 0.001,
-};
 
 const getBackgroundColorForElevation = (
   elevation: number,
@@ -61,8 +56,11 @@ export function Card({
   children,
   onPress,
   style,
+  accessibilityLabel,
+  accessibilityHint,
 }: CardProps) {
   const { theme } = useTheme();
+  const { reducedMotion } = useAccessibility();
   const scale = useSharedValue(1);
 
   const cardBackgroundColor = getBackgroundColorForElevation(elevation, theme);
@@ -72,11 +70,15 @@ export function Card({
   }));
 
   const handlePressIn = () => {
-    scale.value = withSpring(0.98, springConfig);
+    if (!reducedMotion) {
+      scale.value = withSpring(0.98, pressSpringConfig);
+    }
   };
 
   const handlePressOut = () => {
-    scale.value = withSpring(1, springConfig);
+    if (!reducedMotion) {
+      scale.value = withSpring(1, pressSpringConfig);
+    }
   };
 
   const content = (
@@ -103,6 +105,9 @@ export function Card({
         onPress={onPress}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
+        accessibilityHint={accessibilityHint}
         style={[
           styles.card,
           {

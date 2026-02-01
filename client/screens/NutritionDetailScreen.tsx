@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   StyleSheet,
   View,
@@ -19,9 +19,11 @@ import { ThemedView } from "@/components/ThemedView";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { useTheme } from "@/hooks/useTheme";
+import { useHaptics } from "@/hooks/useHaptics";
+import { useAccessibility } from "@/hooks/useAccessibility";
 import { useAuthContext } from "@/context/AuthContext";
 import { apiRequest } from "@/lib/query-client";
-import { Spacing, BorderRadius, Colors } from "@/constants/theme";
+import { Spacing, BorderRadius } from "@/constants/theme";
 import type { NutritionDetailScreenNavigationProp } from "@/types/navigation";
 
 type RouteParams = {
@@ -52,25 +54,29 @@ function MacroCard({
   unit,
   color,
   index,
+  reducedMotion,
 }: {
   label: string;
   value?: number;
   unit: string;
   color: string;
   index: number;
+  reducedMotion: boolean;
 }) {
   const { theme } = useTheme();
 
+  // Skip entrance animation when reduced motion is preferred
+  const enteringAnimation = reducedMotion
+    ? undefined
+    : FadeInUp.delay(index * 100).duration(400);
+
   return (
-    <Animated.View
-      entering={FadeInUp.delay(index * 100).duration(400)}
-      style={styles.macroCardWrapper}
-    >
+    <Animated.View entering={enteringAnimation} style={styles.macroCardWrapper}>
       <Card elevation={1} style={styles.macroCard}>
         <View style={[styles.macroAccent, { backgroundColor: color }]} />
         <View style={styles.macroContent}>
           <ThemedText type="h3" style={{ color }}>
-            {value !== undefined ? Math.round(value) : "--"}
+            {value !== undefined ? Math.round(value) : "—"}
           </ThemedText>
           <ThemedText type="small" style={{ color: theme.textSecondary }}>
             {unit}
@@ -88,6 +94,8 @@ export default function NutritionDetailScreen() {
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const { theme } = useTheme();
+  const haptics = useHaptics();
+  const { reducedMotion } = useAccessibility();
   const navigation = useNavigation<NutritionDetailScreenNavigationProp>();
   const route = useRoute<RouteProp<{ params: RouteParams }, "params">>();
   const queryClient = useQueryClient();
@@ -105,28 +113,7 @@ export default function NutritionDetailScreen() {
     enabled: !!itemId,
   });
 
-  useEffect(() => {
-    if (existingItem) {
-      setNutrition(existingItem);
-      setIsLoading(false);
-      return;
-    }
-
-    if (barcode) {
-      fetchBarcodeData(barcode);
-    } else if (imageUri) {
-      setNutrition({
-        productName: "Manual Entry",
-        servingSize: "1 serving",
-      });
-      setIsLoading(false);
-    } else if (!itemId) {
-      setError("No scan data provided");
-      setIsLoading(false);
-    }
-  }, [barcode, imageUri, itemId, existingItem]);
-
-  const fetchBarcodeData = async (code: string) => {
+  const fetchBarcodeData = useCallback(async (code: string) => {
     try {
       const response = await fetch(
         `https://world.openfoodfacts.org/api/v0/product/${code}.json`,
@@ -169,7 +156,7 @@ export default function NutritionDetailScreen() {
           barcode: code,
         });
       }
-    } catch (err) {
+    } catch {
       setError("Failed to fetch product data");
       setNutrition({
         productName: "Unknown Product",
@@ -178,7 +165,28 @@ export default function NutritionDetailScreen() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (existingItem) {
+      setNutrition(existingItem);
+      setIsLoading(false);
+      return;
+    }
+
+    if (barcode) {
+      fetchBarcodeData(barcode);
+    } else if (imageUri) {
+      setNutrition({
+        productName: "Manual Entry",
+        servingSize: "1 serving",
+      });
+      setIsLoading(false);
+    } else if (!itemId) {
+      setError("No scan data provided");
+      setIsLoading(false);
+    }
+  }, [barcode, imageUri, itemId, existingItem, fetchBarcodeData]);
 
   const addToLogMutation = useMutation({
     mutationFn: async () => {
@@ -193,11 +201,11 @@ export default function NutritionDetailScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/scanned-items"] });
       queryClient.invalidateQueries({ queryKey: ["/api/daily-summary"] });
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      haptics.notification(Haptics.NotificationFeedbackType.Success);
       navigation.goBack();
     },
     onError: () => {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      haptics.notification(Haptics.NotificationFeedbackType.Error);
     },
   });
 
@@ -208,7 +216,7 @@ export default function NutritionDetailScreen() {
   if (isLoading) {
     return (
       <ThemedView style={[styles.container, styles.centered]}>
-        <ActivityIndicator size="large" color={Colors.light.success} />
+        <ActivityIndicator size="large" color={theme.success} />
         <ThemedText
           type="body"
           style={[styles.loadingText, { color: theme.textSecondary }]}
@@ -234,7 +242,7 @@ export default function NutritionDetailScreen() {
       >
         {nutrition?.imageUrl ? (
           <Animated.View
-            entering={FadeIn.duration(400)}
+            entering={reducedMotion ? undefined : FadeIn.duration(400)}
             style={styles.imageContainer}
           >
             <Image
@@ -245,7 +253,11 @@ export default function NutritionDetailScreen() {
           </Animated.View>
         ) : null}
 
-        <Animated.View entering={FadeInUp.delay(100).duration(400)}>
+        <Animated.View
+          entering={
+            reducedMotion ? undefined : FadeInUp.delay(100).duration(400)
+          }
+        >
           <ThemedText type="h2" style={styles.productName}>
             {nutrition?.productName || "Unknown Product"}
           </ThemedText>
@@ -271,44 +283,36 @@ export default function NutritionDetailScreen() {
           <View
             style={[
               styles.warningContainer,
-              { backgroundColor: Colors.light.warning + "20" },
+              { backgroundColor: theme.warning + "20" },
             ]}
           >
-            <Feather
-              name="alert-triangle"
-              size={20}
-              color={Colors.light.warning}
-            />
-            <ThemedText
-              type="small"
-              style={{ color: Colors.light.warning, flex: 1 }}
-            >
+            <Feather name="alert-triangle" size={20} color={theme.warning} />
+            <ThemedText type="small" style={{ color: theme.warning, flex: 1 }}>
               {error}
             </ThemedText>
           </View>
         ) : null}
 
         <Animated.View
-          entering={FadeInUp.delay(200).duration(400)}
+          entering={
+            reducedMotion ? undefined : FadeInUp.delay(200).duration(400)
+          }
           style={styles.calorieCard}
         >
           <Card
             elevation={2}
             style={[
               styles.heroCalorieCard,
-              { borderColor: Colors.light.calorieAccent, borderWidth: 2 },
+              { borderColor: theme.calorieAccent, borderWidth: 2 },
             ]}
           >
             <ThemedText
               type="h1"
-              style={[
-                styles.calorieValue,
-                { color: Colors.light.calorieAccent },
-              ]}
+              style={[styles.calorieValue, { color: theme.calorieAccent }]}
             >
               {nutrition?.calories !== undefined
                 ? Math.round(nutrition.calories)
-                : "--"}
+                : "—"}
             </ThemedText>
             <ThemedText type="body" style={{ color: theme.textSecondary }}>
               Calories{isPer100g ? " (per 100g)" : ""}
@@ -320,14 +324,11 @@ export default function NutritionDetailScreen() {
           <View
             style={[
               styles.infoContainer,
-              { backgroundColor: Colors.light.info + "15" },
+              { backgroundColor: theme.info + "15" },
             ]}
           >
-            <Feather name="info" size={16} color={Colors.light.info} />
-            <ThemedText
-              type="small"
-              style={{ color: Colors.light.info, flex: 1 }}
-            >
+            <Feather name="info" size={16} color={theme.info} />
+            <ThemedText type="small" style={{ color: theme.info, flex: 1 }}>
               Values shown per 100g. Check package for actual serving size.
             </ThemedText>
           </View>
@@ -338,22 +339,25 @@ export default function NutritionDetailScreen() {
             label="Protein"
             value={nutrition?.protein}
             unit="g"
-            color={Colors.light.proteinAccent}
+            color={theme.proteinAccent}
             index={0}
+            reducedMotion={reducedMotion}
           />
           <MacroCard
             label="Carbs"
             value={nutrition?.carbs}
             unit="g"
-            color={Colors.light.carbsAccent}
+            color={theme.carbsAccent}
             index={1}
+            reducedMotion={reducedMotion}
           />
           <MacroCard
             label="Fat"
             value={nutrition?.fat}
             unit="g"
-            color={Colors.light.fatAccent}
+            color={theme.fatAccent}
             index={2}
+            reducedMotion={reducedMotion}
           />
         </View>
 
@@ -361,7 +365,9 @@ export default function NutritionDetailScreen() {
         nutrition?.sugar !== undefined ||
         nutrition?.sodium !== undefined ? (
           <Animated.View
-            entering={FadeInUp.delay(500).duration(400)}
+            entering={
+              reducedMotion ? undefined : FadeInUp.delay(500).duration(400)
+            }
             style={styles.additionalNutrients}
           >
             <ThemedText type="h4" style={styles.sectionTitle}>
@@ -418,10 +424,7 @@ export default function NutritionDetailScreen() {
               disabled={addToLogMutation.isPending}
               accessibilityLabel={`Add ${nutrition?.productName || "item"} to today's food log`}
               accessibilityHint="Saves this item to your daily nutrition tracking"
-              style={[
-                styles.addButton,
-                { backgroundColor: Colors.light.success },
-              ]}
+              style={[styles.addButton, { backgroundColor: theme.success }]}
             >
               {addToLogMutation.isPending ? (
                 <ActivityIndicator color="#FFFFFF" size="small" />

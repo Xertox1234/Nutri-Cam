@@ -17,7 +17,8 @@ import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { ThemedText } from "@/components/ThemedText";
 import { Card } from "@/components/Card";
 import { useTheme } from "@/hooks/useTheme";
-import { Spacing, BorderRadius, Colors } from "@/constants/theme";
+import { useAccessibility } from "@/hooks/useAccessibility";
+import { Spacing, BorderRadius } from "@/constants/theme";
 import { apiRequest } from "@/lib/query-client";
 
 // API response type (dates come as strings over JSON)
@@ -66,7 +67,7 @@ function NutritionRow({
   color?: string;
 }) {
   const { theme } = useTheme();
-  const displayValue = value ? Math.round(parseFloat(value)) : "--";
+  const displayValue = value ? Math.round(parseFloat(value)) : "—";
 
   return (
     <View style={styles.nutritionRow}>
@@ -87,9 +88,11 @@ function NutritionRow({
 function SuggestionCard({
   suggestion,
   index,
+  reducedMotion,
 }: {
   suggestion: Suggestion;
   index: number;
+  reducedMotion: boolean;
 }) {
   const { theme } = useTheme();
 
@@ -102,17 +105,22 @@ function SuggestionCard({
 
   const iconColor =
     suggestion.type === "recipe"
-      ? Colors.light.success
+      ? theme.success
       : suggestion.type === "craft"
-        ? Colors.light.proteinAccent
-        : Colors.light.fatAccent;
+        ? theme.proteinAccent
+        : theme.fatAccent;
 
   const typeLabel =
     suggestion.type === "craft" ? "Kid Activity" : suggestion.type;
 
+  // Skip entrance animation when reduced motion is preferred
+  const enteringAnimation = reducedMotion
+    ? undefined
+    : FadeInDown.delay(index * 100).duration(300);
+
   return (
     <Animated.View
-      entering={FadeInDown.delay(index * 100).duration(300)}
+      entering={enteringAnimation}
       accessible={true}
       accessibilityLabel={`${typeLabel}: ${suggestion.title}. ${suggestion.description}`}
       accessibilityRole="text"
@@ -155,11 +163,6 @@ function SuggestionCard({
                 </View>
               ) : null}
             </View>
-            <Feather
-              name="chevron-right"
-              size={20}
-              color={theme.textSecondary}
-            />
           </View>
         </View>
         <ThemedText type="h4" style={styles.suggestionTitle}>
@@ -195,6 +198,7 @@ export default function ItemDetailScreen() {
   const headerHeight = useHeaderHeight();
   const route = useRoute<ItemDetailRouteProp>();
   const { theme } = useTheme();
+  const { reducedMotion } = useAccessibility();
   const { itemId } = route.params;
 
   const {
@@ -249,7 +253,7 @@ export default function ItemDetailScreen() {
           },
         ]}
       >
-        <ActivityIndicator size="large" color={Colors.light.success} />
+        <ActivityIndicator size="large" color={theme.success} />
       </View>
     );
   }
@@ -284,7 +288,9 @@ export default function ItemDetailScreen() {
         },
       ]}
     >
-      <Animated.View entering={FadeIn.duration(300)}>
+      <Animated.View
+        entering={reducedMotion ? undefined : FadeIn.duration(300)}
+      >
         <Card elevation={2} style={styles.headerCard}>
           <View style={styles.headerContent}>
             {item.imageUrl ? (
@@ -325,7 +331,11 @@ export default function ItemDetailScreen() {
         </Card>
       </Animated.View>
 
-      <Animated.View entering={FadeInDown.delay(100).duration(300)}>
+      <Animated.View
+        entering={
+          reducedMotion ? undefined : FadeInDown.delay(100).duration(300)
+        }
+      >
         <ThemedText type="h4" style={styles.sectionTitle}>
           Nutrition Facts
         </ThemedText>
@@ -340,8 +350,8 @@ export default function ItemDetailScreen() {
           ) : null}
           <View style={styles.caloriesRow}>
             <ThemedText type="body">Calories</ThemedText>
-            <ThemedText type="h2" style={{ color: Colors.light.calorieAccent }}>
-              {item.calories ? Math.round(parseFloat(item.calories)) : "--"}
+            <ThemedText type="h2" style={{ color: theme.calorieAccent }}>
+              {item.calories ? Math.round(parseFloat(item.calories)) : "—"}
             </ThemedText>
           </View>
           <View
@@ -351,19 +361,19 @@ export default function ItemDetailScreen() {
             label="Protein"
             value={item.protein}
             unit="g"
-            color={Colors.light.proteinAccent}
+            color={theme.proteinAccent}
           />
           <NutritionRow
             label="Carbohydrates"
             value={item.carbs}
             unit="g"
-            color={Colors.light.carbsAccent}
+            color={theme.carbsAccent}
           />
           <NutritionRow
             label="Fat"
             value={item.fat}
             unit="g"
-            color={Colors.light.fatAccent}
+            color={theme.fatAccent}
           />
           {item.fiber ? (
             <NutritionRow label="Fiber" value={item.fiber} unit="g" />
@@ -377,7 +387,11 @@ export default function ItemDetailScreen() {
         </Card>
       </Animated.View>
 
-      <Animated.View entering={FadeInDown.delay(200).duration(300)}>
+      <Animated.View
+        entering={
+          reducedMotion ? undefined : FadeInDown.delay(200).duration(300)
+        }
+      >
         <View style={styles.suggestionsHeader}>
           <ThemedText type="h4" style={styles.sectionTitle}>
             Ideas & Inspiration
@@ -390,12 +404,8 @@ export default function ItemDetailScreen() {
               accessibilityRole="button"
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
             >
-              <Feather
-                name="refresh-cw"
-                size={16}
-                color={Colors.light.success}
-              />
-              <ThemedText type="small" style={{ color: Colors.light.success }}>
+              <Feather name="refresh-cw" size={16} color={theme.success} />
+              <ThemedText type="small" style={{ color: theme.success }}>
                 Retry
               </ThemedText>
             </Pressable>
@@ -404,7 +414,7 @@ export default function ItemDetailScreen() {
 
         {suggestionsLoading ? (
           <Card elevation={1} style={styles.suggestionsLoadingCard}>
-            <ActivityIndicator size="small" color={Colors.light.success} />
+            <ActivityIndicator size="small" color={theme.success} />
             <ThemedText
               type="body"
               style={{ color: theme.textSecondary, marginTop: Spacing.md }}
@@ -429,6 +439,7 @@ export default function ItemDetailScreen() {
                 key={`${suggestion.type}-${index}`}
                 suggestion={suggestion}
                 index={index}
+                reducedMotion={reducedMotion}
               />
             ))}
           </View>

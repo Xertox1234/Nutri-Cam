@@ -4,12 +4,13 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withSpring,
-  WithSpringConfig,
 } from "react-native-reanimated";
 
 import { ThemedText } from "@/components/ThemedText";
+import { useAccessibility } from "@/hooks/useAccessibility";
 import { useTheme } from "@/hooks/useTheme";
 import { BorderRadius, Spacing } from "@/constants/theme";
+import { pressSpringConfig } from "@/constants/animations";
 
 interface ButtonProps {
   onPress?: () => void;
@@ -19,14 +20,6 @@ interface ButtonProps {
   accessibilityLabel?: string;
   accessibilityHint?: string;
 }
-
-const springConfig: WithSpringConfig = {
-  damping: 15,
-  mass: 0.3,
-  stiffness: 150,
-  overshootClamping: true,
-  energyThreshold: 0.001,
-};
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -39,6 +32,7 @@ export function Button({
   accessibilityHint,
 }: ButtonProps) {
   const { theme } = useTheme();
+  const { reducedMotion } = useAccessibility();
   const scale = useSharedValue(1);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -46,11 +40,15 @@ export function Button({
   }));
 
   const handlePressIn = () => {
-    scale.value = withSpring(0.98, springConfig);
+    if (!reducedMotion) {
+      scale.value = withSpring(0.98, pressSpringConfig);
+    }
   };
 
   const handlePressOut = () => {
-    scale.value = withSpring(1, springConfig);
+    if (!reducedMotion) {
+      scale.value = withSpring(1, pressSpringConfig);
+    }
   };
 
   // Derive accessibility label from children if not provided
