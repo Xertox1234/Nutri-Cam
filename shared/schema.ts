@@ -12,9 +12,19 @@ import {
   index,
   uniqueIndex,
   date,
+  pgEnum,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+
+// Enums for transactions table
+export const platformEnum = pgEnum("platform", ["ios", "android"]);
+export const transactionStatusEnum = pgEnum("transaction_status", [
+  "pending",
+  "completed",
+  "refunded",
+  "failed",
+]);
 
 export const users = pgTable("users", {
   id: varchar("id")
@@ -261,12 +271,39 @@ export const savedItems = pgTable(
   }),
 );
 
+// Transactions table for subscription purchase tracking
+export const transactions = pgTable(
+  "transactions",
+  {
+    id: serial("id").primaryKey(),
+    userId: varchar("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    transactionId: text("transaction_id").notNull().unique(),
+    receipt: text("receipt").notNull(),
+    platform: platformEnum("platform").notNull(),
+    productId: text("product_id").notNull(),
+    status: transactionStatusEnum("status").notNull().default("pending"),
+    createdAt: timestamp("created_at")
+      .default(sql`CURRENT_TIMESTAMP`)
+      .notNull(),
+    updatedAt: timestamp("updated_at")
+      .default(sql`CURRENT_TIMESTAMP`)
+      .notNull(),
+  },
+  (table) => ({
+    userIdIdx: index("transactions_user_id_idx").on(table.userId),
+    statusIdx: index("transactions_status_idx").on(table.status),
+  }),
+);
+
 export const usersRelations = relations(users, ({ one, many }) => ({
   scannedItems: many(scannedItems),
   dailyLogs: many(dailyLogs),
   savedItems: many(savedItems),
   mealPlanRecipes: many(mealPlanRecipes),
   mealPlanItems: many(mealPlanItems),
+  transactions: many(transactions),
   profile: one(userProfiles, {
     fields: [users.id],
     references: [userProfiles.userId],
@@ -396,6 +433,13 @@ export const recipeGenerationLogRelations = relations(
     }),
   }),
 );
+
+export const transactionsRelations = relations(transactions, ({ one }) => ({
+  user: one(users, {
+    fields: [transactions.userId],
+    references: [users.id],
+  }),
+}));
 
 // ============================================================================
 // MEAL PLANNING TABLES
@@ -570,6 +614,12 @@ export const insertUserProfileSchema = createInsertSchema(userProfiles).omit({
   updatedAt: true,
 });
 
+export const insertTransactionSchema = createInsertSchema(transactions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type InsertScannedItem = z.infer<typeof insertScannedItemSchema>;
@@ -586,6 +636,8 @@ export type InsertSavedItem = typeof savedItems.$inferInsert;
 export type CommunityRecipe = typeof communityRecipes.$inferSelect;
 export type InsertCommunityRecipe = typeof communityRecipes.$inferInsert;
 export type RecipeGenerationLog = typeof recipeGenerationLog.$inferSelect;
+export type InsertTransaction = z.infer<typeof insertTransactionSchema>;
+export type Transaction = typeof transactions.$inferSelect;
 
 // Meal planning types
 export const insertMealPlanRecipeSchema = createInsertSchema(

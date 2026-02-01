@@ -4,6 +4,7 @@ import {
   insertScannedItemSchema,
   insertDailyLogSchema,
   insertUserProfileSchema,
+  insertTransactionSchema,
 } from "../schema";
 
 describe("Schema Validation", () => {
@@ -214,6 +215,141 @@ describe("Schema Validation", () => {
     it("rejects missing userId", () => {
       const profile = { dietType: "vegan" };
       const result = insertUserProfileSchema.safeParse(profile);
+      expect(result.success).toBe(false);
+    });
+  });
+
+  describe("insertTransactionSchema", () => {
+    it("validates valid transaction with required fields", () => {
+      const transaction = {
+        userId: "user-123",
+        transactionId: "txn_abc123",
+        receipt: "receipt_data_here",
+        platform: "ios",
+        productId: "com.nutriscan.premium.annual",
+      };
+      const result = insertTransactionSchema.safeParse(transaction);
+      expect(result.success).toBe(true);
+    });
+
+    it("validates transaction with android platform", () => {
+      const transaction = {
+        userId: "user-123",
+        transactionId: "txn_def456",
+        receipt: "receipt_data_here",
+        platform: "android",
+        productId: "com.nutriscan.premium.annual",
+      };
+      const result = insertTransactionSchema.safeParse(transaction);
+      expect(result.success).toBe(true);
+    });
+
+    it("validates transaction with explicit status", () => {
+      const transaction = {
+        userId: "user-123",
+        transactionId: "txn_ghi789",
+        receipt: "receipt_data_here",
+        platform: "ios",
+        productId: "com.nutriscan.premium.annual",
+        status: "completed",
+      };
+      const result = insertTransactionSchema.safeParse(transaction);
+      expect(result.success).toBe(true);
+    });
+
+    it("validates all status values", () => {
+      const statuses = ["pending", "completed", "refunded", "failed"];
+      statuses.forEach((status) => {
+        const transaction = {
+          userId: "user-123",
+          transactionId: `txn_${status}`,
+          receipt: "receipt_data_here",
+          platform: "ios",
+          productId: "com.nutriscan.premium.annual",
+          status,
+        };
+        const result = insertTransactionSchema.safeParse(transaction);
+        expect(result.success).toBe(true);
+      });
+    });
+
+    it("rejects invalid platform", () => {
+      const transaction = {
+        userId: "user-123",
+        transactionId: "txn_invalid",
+        receipt: "receipt_data_here",
+        platform: "web",
+        productId: "com.nutriscan.premium.annual",
+      };
+      const result = insertTransactionSchema.safeParse(transaction);
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects invalid status", () => {
+      const transaction = {
+        userId: "user-123",
+        transactionId: "txn_invalid",
+        receipt: "receipt_data_here",
+        platform: "ios",
+        productId: "com.nutriscan.premium.annual",
+        status: "cancelled",
+      };
+      const result = insertTransactionSchema.safeParse(transaction);
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects missing userId", () => {
+      const transaction = {
+        transactionId: "txn_abc123",
+        receipt: "receipt_data_here",
+        platform: "ios",
+        productId: "com.nutriscan.premium.annual",
+      };
+      const result = insertTransactionSchema.safeParse(transaction);
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects missing transactionId", () => {
+      const transaction = {
+        userId: "user-123",
+        receipt: "receipt_data_here",
+        platform: "ios",
+        productId: "com.nutriscan.premium.annual",
+      };
+      const result = insertTransactionSchema.safeParse(transaction);
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects missing receipt", () => {
+      const transaction = {
+        userId: "user-123",
+        transactionId: "txn_abc123",
+        platform: "ios",
+        productId: "com.nutriscan.premium.annual",
+      };
+      const result = insertTransactionSchema.safeParse(transaction);
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects missing platform", () => {
+      const transaction = {
+        userId: "user-123",
+        transactionId: "txn_abc123",
+        receipt: "receipt_data_here",
+        productId: "com.nutriscan.premium.annual",
+      };
+      const result = insertTransactionSchema.safeParse(transaction);
+      expect(result.success).toBe(false);
+    });
+
+    it("rejects missing productId", () => {
+      const transaction = {
+        userId: "user-123",
+        transactionId: "txn_abc123",
+        receipt: "receipt_data_here",
+        platform: "ios",
+      };
+      const result = insertTransactionSchema.safeParse(transaction);
       expect(result.success).toBe(false);
     });
   });
