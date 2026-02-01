@@ -1,4 +1,4 @@
-import React, { ComponentProps, useState, useRef, useEffect } from "react";
+import React, { ComponentProps, useState, useRef, useEffect, useCallback } from "react";
 import {
   StyleSheet,
   View,
@@ -7,6 +7,8 @@ import {
   ActivityIndicator,
   Image,
   AccessibilityInfo,
+  Linking,
+  Platform,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -14,7 +16,7 @@ import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useNavigation } from "@react-navigation/native";
 import { useQuery } from "@tanstack/react-query";
-import { Feather } from "@expo/vector-icons";
+import { Feather, Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 import Animated, { FadeInDown } from "react-native-reanimated";
 
@@ -23,10 +25,13 @@ import { ThemedText } from "@/components/ThemedText";
 import { Card } from "@/components/Card";
 import { ProgressBar } from "@/components/ProgressBar";
 import { SkeletonBox } from "@/components/SkeletonLoader";
+import { Button } from "@/components/Button";
+import { UpgradeModal } from "@/components/UpgradeModal";
 import { useTheme } from "@/hooks/useTheme";
 import { useHaptics } from "@/hooks/useHaptics";
 import { useAccessibility } from "@/hooks/useAccessibility";
 import { useAuthContext } from "@/context/AuthContext";
+import { usePremiumContext } from "@/context/PremiumContext";
 import { useSavedItemCount } from "@/hooks/useSavedItems";
 import { usePremiumFeature } from "@/hooks/usePremiumFeatures";
 import { Spacing, BorderRadius, withOpacity } from "@/constants/theme";
@@ -40,6 +45,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { CompositeNavigationProp } from "@react-navigation/native";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import type { MainTabParamList } from "@/navigation/MainTabNavigator";
+import type { PurchaseState } from "@shared/types/subscription";
 
 import {
   DIET_LABELS,
@@ -1039,6 +1045,7 @@ export default function ProfileScreen() {
   const haptics = useHaptics();
   const { reducedMotion } = useAccessibility();
   const { user, logout, updateUser, checkAuth } = useAuthContext();
+  const { isPremium, tier } = usePremiumContext();
   const navigation = useNavigation<ProfileScreenNavigationProp>();
   const { preference: themePreference, setPreference: setThemePreference } =
     useThemePreference();
@@ -1046,6 +1053,10 @@ export default function ProfileScreen() {
   const [isEditing, setIsEditing] = useState(false);
   const [displayName, setDisplayName] = useState(user?.displayName || "");
   const [isSaving, setIsSaving] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [purchaseState, setPurchaseState] = useState<PurchaseState>({
+    status: "idle",
+  });
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [nameSelection, setNameSelection] = useState<
     { start: number; end: number } | undefined
@@ -1106,6 +1117,50 @@ export default function ProfileScreen() {
     haptics.impact(Haptics.ImpactFeedbackStyle.Medium);
     await logout();
   };
+
+  const openUpgradeModal = useCallback(() => {
+    haptics.impact(Haptics.ImpactFeedbackStyle.Light);
+    setShowUpgradeModal(true);
+  }, [haptics]);
+
+  const closeUpgradeModal = useCallback(() => {
+    setShowUpgradeModal(false);
+    setPurchaseState({ status: "idle" });
+  }, []);
+
+  const handlePurchase = useCallback(() => {
+    // TODO: Implement actual IAP purchase flow with expo-iap
+    setPurchaseState({
+      status: "loading",
+      productId: "com.nutriscan.premium.annual",
+    });
+    // Stub: simulate success after delay for development
+    setTimeout(() => {
+      setPurchaseState({
+        status: "success",
+        productId: "com.nutriscan.premium.annual",
+        transactionId: "stub_txn_" + Date.now(),
+      });
+    }, 2000);
+  }, []);
+
+  const handleRestore = useCallback(() => {
+    // TODO: Implement actual restore flow with expo-iap
+    setPurchaseState({ status: "restoring" });
+    setTimeout(() => {
+      setPurchaseState({ status: "idle" });
+    }, 2000);
+  }, []);
+
+  const handleManageSubscription = useCallback(() => {
+    haptics.impact(Haptics.ImpactFeedbackStyle.Light);
+    // Open platform-specific subscription management
+    if (Platform.OS === "ios") {
+      Linking.openURL("https://apps.apple.com/account/subscriptions");
+    } else {
+      Linking.openURL("https://play.google.com/store/account/subscriptions");
+    }
+  }, [haptics]);
 
   const handleThemeToggle = async () => {
     haptics.impact(Haptics.ImpactFeedbackStyle.Light);
@@ -1276,7 +1331,115 @@ export default function ProfileScreen() {
 
       <Animated.View
         entering={
-          reducedMotion ? undefined : FadeInDown.delay(400).duration(400)
+          reducedMotion ? undefined : FadeInDown.delay(350).duration(400)
+        }
+      >
+        <ThemedText type="h4" style={styles.sectionTitle}>
+          Subscription
+        </ThemedText>
+        <Card elevation={1} style={styles.subscriptionCard}>
+          <View style={styles.subscriptionHeader}>
+            <View
+              style={[
+                styles.tierBadge,
+                {
+                  backgroundColor: isPremium
+                    ? theme.success + "20"
+                    : theme.backgroundSecondary,
+                },
+              ]}
+            >
+              <Ionicons
+                name={isPremium ? "star" : "star-outline"}
+                size={20}
+                color={isPremium ? theme.success : theme.textSecondary}
+              />
+              <ThemedText
+                type="body"
+                style={{
+                  fontWeight: "600",
+                  color: isPremium ? theme.success : theme.text,
+                }}
+              >
+                {tier === "premium" ? "Premium" : "Free"}
+              </ThemedText>
+            </View>
+            {isPremium && (
+              <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                Active
+              </ThemedText>
+            )}
+          </View>
+
+          {isPremium ? (
+            <View style={styles.subscriptionActions}>
+              <ThemedText
+                type="small"
+                style={{
+                  color: theme.textSecondary,
+                  marginBottom: Spacing.md,
+                }}
+              >
+                Unlimited scans · Priority support
+              </ThemedText>
+              <Pressable
+                onPress={handleManageSubscription}
+                accessibilityLabel="Manage subscription"
+                accessibilityHint="Opens subscription settings in your device settings"
+                accessibilityRole="button"
+                style={({ pressed }) => [
+                  styles.outlineButton,
+                  {
+                    borderColor: theme.border,
+                    opacity: pressed ? 0.7 : 1,
+                  },
+                ]}
+              >
+                <ThemedText type="body" style={{ fontWeight: "500" }}>
+                  Manage Subscription
+                </ThemedText>
+              </Pressable>
+            </View>
+          ) : (
+            <View style={styles.subscriptionActions}>
+              <ThemedText
+                type="small"
+                style={{
+                  color: theme.textSecondary,
+                  marginBottom: Spacing.md,
+                }}
+              >
+                3 scans per day · Upgrade for unlimited
+              </ThemedText>
+              <Button
+                onPress={openUpgradeModal}
+                accessibilityLabel="Upgrade to Premium"
+                accessibilityHint="Opens upgrade options"
+              >
+                Upgrade to Premium
+              </Button>
+            </View>
+          )}
+
+          <Pressable
+            onPress={handleRestore}
+            accessibilityRole="button"
+            accessibilityLabel="Restore purchases"
+            style={({ pressed }) => [
+              styles.restoreLink,
+              { opacity: pressed ? 0.7 : 1 },
+            ]}
+          >
+            <ThemedText type="link" style={{ color: theme.link }}>
+              Restore Purchases
+            </ThemedText>
+          </Pressable>
+        </Card>
+      </Animated.View>
+
+      <Animated.View
+        entering={
+          reducedMotion ? undefined : FadeInDown.delay(450).duration(400)
         }
       >
         <DietaryPreferencesSection
@@ -1290,7 +1453,7 @@ export default function ProfileScreen() {
 
       <Animated.View
         entering={
-          reducedMotion ? undefined : FadeInDown.delay(500).duration(400)
+          reducedMotion ? undefined : FadeInDown.delay(550).duration(400)
         }
       >
         <LibrarySection
@@ -1311,6 +1474,14 @@ export default function ProfileScreen() {
           onLogout={handleLogout}
         />
       </Animated.View>
+
+      <UpgradeModal
+        visible={showUpgradeModal}
+        onClose={closeUpgradeModal}
+        onPurchase={handlePurchase}
+        onRestore={handleRestore}
+        purchaseState={purchaseState}
+      />
     </KeyboardAwareScrollViewCompat>
   );
 }
@@ -1610,5 +1781,37 @@ const styles = StyleSheet.create({
   },
   librarySubtitle: {
     opacity: 0.6,
+  },
+  subscriptionCard: {
+    padding: Spacing.lg,
+    marginBottom: Spacing["2xl"],
+  },
+  subscriptionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: Spacing.lg,
+  },
+  tierBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.full,
+  },
+  subscriptionActions: {
+    marginBottom: Spacing.md,
+  },
+  restoreLink: {
+    alignItems: "center",
+    paddingVertical: Spacing.sm,
+  },
+  outlineButton: {
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.xl,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    alignItems: "center",
   },
 });
