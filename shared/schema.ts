@@ -22,6 +22,14 @@ export const users = pgTable("users", {
   password: text("password").notNull(),
   displayName: text("display_name"),
   dailyCalorieGoal: integer("daily_calorie_goal").default(2000),
+  dailyProteinGoal: integer("daily_protein_goal"),
+  dailyCarbsGoal: integer("daily_carbs_goal"),
+  dailyFatGoal: integer("daily_fat_goal"),
+  weight: decimal("weight", { precision: 5, scale: 2 }),
+  height: decimal("height", { precision: 5, scale: 2 }),
+  age: integer("age"),
+  gender: text("gender"),
+  goalsCalculatedAt: timestamp("goals_calculated_at"),
   onboardingCompleted: boolean("onboarding_completed").default(false),
   subscriptionTier: text("subscription_tier").default("free"),
   subscriptionExpiresAt: timestamp("subscription_expires_at"),
@@ -84,6 +92,9 @@ export const scannedItems = pgTable(
     sugar: decimal("sugar", { precision: 10, scale: 2 }),
     sodium: decimal("sodium", { precision: 10, scale: 2 }),
     imageUrl: text("image_url"),
+    sourceType: text("source_type").default("barcode"),
+    photoUrl: text("photo_url"),
+    aiConfidence: decimal("ai_confidence", { precision: 3, scale: 2 }),
     scannedAt: timestamp("scanned_at")
       .default(sql`CURRENT_TIMESTAMP`)
       .notNull(),
@@ -117,6 +128,26 @@ export const dailyLogs = pgTable(
   (table) => ({
     userIdIdx: index("daily_logs_user_id_idx").on(table.userId),
     loggedAtIdx: index("daily_logs_logged_at_idx").on(table.loggedAt),
+  }),
+);
+
+export const nutritionCache = pgTable(
+  "nutrition_cache",
+  {
+    id: serial("id").primaryKey(),
+    queryKey: varchar("query_key", { length: 255 }).notNull().unique(),
+    normalizedName: varchar("normalized_name", { length: 255 }).notNull(),
+    source: varchar("source", { length: 50 }).notNull(),
+    data: jsonb("data").notNull(),
+    hitCount: integer("hit_count").default(0),
+    createdAt: timestamp("created_at")
+      .default(sql`CURRENT_TIMESTAMP`)
+      .notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+  },
+  (table) => ({
+    queryKeyIdx: index("nutrition_cache_query_key_idx").on(table.queryKey),
+    expiresAtIdx: index("nutrition_cache_expires_at_idx").on(table.expiresAt),
   }),
 );
 
@@ -187,3 +218,4 @@ export type InsertDailyLog = z.infer<typeof insertDailyLogSchema>;
 export type DailyLog = typeof dailyLogs.$inferSelect;
 export type InsertUserProfile = z.infer<typeof insertUserProfileSchema>;
 export type UserProfile = typeof userProfiles.$inferSelect;
+export type NutritionCache = typeof nutritionCache.$inferSelect;
