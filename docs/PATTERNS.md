@@ -130,6 +130,148 @@ app.post("/api/auth/register", registerLimiter, async (req, res) => {
 });
 ```
 
+### Rate Limiting on External API Endpoints
+
+Apply rate limiting to endpoints that call expensive external APIs (OpenAI, payment processors, third-party services):
+
+```typescript
+import rateLimit from "express-rate-limit";
+
+const photoRateLimit = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10, // 10 requests per minute
+  message: { error: "Too many photo uploads. Please wait." },
+  keyGenerator: (req) => req.userId || req.ip || "anonymous",
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Apply to endpoints calling external APIs
+app.post("/api/photos/analyze", requireAuth, photoRateLimit, upload.single("photo"), ...);
+app.post("/api/photos/analyze/:sessionId/followup", requireAuth, photoRateLimit, ...);
+```
+
+**Why:** Prevents cost explosion from malicious or accidental overuse of paid APIs.
+
+**Key differences from auth rate limiting:**
+
+| Auth Endpoints              | External API Endpoints          |
+| --------------------------- | ------------------------------- |
+| Prevent brute force attacks | Prevent cost explosion          |
+| Longer windows (15min-1hr)  | Shorter windows (1min)          |
+| Tighter limits (5-10 total) | Higher limits per minute        |
+| IP-based by default         | User ID-based for authenticated |
+
+### Session Ownership Verification
+
+For in-memory session stores, always include `userId` and verify ownership:
+
+```typescript
+interface AnalysisSession {
+  userId: string; // Always include owner ID
+  result: AnalysisResult;
+  createdAt: Date;
+}
+
+const sessionStore = new Map<string, AnalysisSession>();
+
+// When creating session:
+const sessionId = crypto.randomUUID(); // Use cryptographic randomness
+sessionStore.set(sessionId, {
+  userId: req.userId!, // Store owner
+  result,
+  createdAt: new Date(),
+});
+
+// When accessing session:
+const session = sessionStore.get(sessionId);
+if (!session || session.userId !== req.userId!) {
+  return res.status(403).json({ error: "Not authorized" });
+}
+```
+
+**Why:** Prevents users from accessing other users' sessions, even if they guess the session ID.
+
+### Session Timeout Cleanup Pattern
+
+Track timeout references to prevent memory leaks from orphaned timers:
+
+```typescript
+const sessionStore = new Map<string, AnalysisSession>();
+const sessionTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+
+const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
+
+/**
+ * Clear session and its associated timeout.
+ * Call this whenever a session is deleted to prevent memory leaks.
+ */
+function clearSession(sessionId: string): void {
+  const existingTimeout = sessionTimeouts.get(sessionId);
+  if (existingTimeout) {
+    clearTimeout(existingTimeout);
+    sessionTimeouts.delete(sessionId);
+  }
+  sessionStore.delete(sessionId);
+}
+
+// When creating session:
+const timeoutId = setTimeout(() => {
+  sessionStore.delete(sessionId);
+  sessionTimeouts.delete(sessionId);
+}, SESSION_TIMEOUT);
+sessionTimeouts.set(sessionId, timeoutId);
+
+// When session is accessed/confirmed (use clearSession):
+clearSession(sessionId);
+```
+
+**Why:** Orphaned timeouts consume memory and may reference stale data.
+
+### Multer Error Handler Pattern
+
+Add specific error handling for file upload validation to return 400 (not 500):
+
+```typescript
+import multer, { MulterError } from "multer";
+
+// Multer config with fileFilter
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowedMimes = ["image/jpeg", "image/png", "image/webp"];
+    if (allowedMimes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Invalid file type. Only JPEG, PNG, and WebP allowed."));
+    }
+  },
+});
+
+// Error handler (add before createServer)
+app.use(
+  (
+    err: Error,
+    req: Request,
+    res: Response,
+    next: (err?: Error) => void,
+  ): void => {
+    if (err instanceof MulterError) {
+      res.status(400).json({ error: err.message, code: err.code });
+      return;
+    }
+    if (err.message?.includes("Invalid file type")) {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    next(err);
+  },
+);
+```
+
+**Why:** Without this handler, multer validation errors bubble up as 500 Internal Server Error.
+
 ### Input Validation with Zod
 
 Validate ALL user input with Zod schemas before processing:
@@ -219,6 +361,70 @@ if (!isAccessTokenPayload(payload)) {
 }
 // payload is now typed as AccessTokenPayload
 ```
+
+### Type Guard for Enum Validation
+
+When validating against a defined set of values (like subscription tiers), use a type guard that checks the source of truth:
+
+```typescript
+// Source of truth: array of valid values
+export const subscriptionTiers = ["free", "premium"] as const;
+export type SubscriptionTier = (typeof subscriptionTiers)[number];
+
+// Type guard validates against the array
+function isValidSubscriptionTier(tier: string): tier is SubscriptionTier {
+  return (subscriptionTiers as readonly string[]).includes(tier);
+}
+
+// Usage: Safe validation with fallback
+const tierValue = user.subscriptionTier || "free";
+const tier = isValidSubscriptionTier(tierValue) ? tierValue : "free";
+
+// Now tier is properly typed as SubscriptionTier
+const features = TIER_FEATURES[tier];
+```
+
+**Why:** Validates against the actual source of truth, not a duplicated list. If you add a new tier to `subscriptionTiers`, the type guard automatically accepts it.
+
+**When to use:** Validating enum-like values from database, API responses, or user input against a defined set.
+
+### Union Types for Record Keys
+
+Replace `Record<string, T>` with `Record<UnionType, T>` for compile-time safety:
+
+```typescript
+// Good: Compile-time typo prevention
+type ActivityLevel = "sedentary" | "light" | "moderate" | "active" | "athlete";
+type PrimaryGoal =
+  | "lose_weight"
+  | "gain_muscle"
+  | "maintain"
+  | "eat_healthier"
+  | "manage_condition";
+
+const ACTIVITY_MULTIPLIERS: Record<ActivityLevel, number> = {
+  sedentary: 1.2,
+  light: 1.375,
+  moderate: 1.55,
+  active: 1.725,
+  athlete: 1.9,
+};
+
+// TypeScript error: "sedantary" is not assignable to type "ActivityLevel"
+const multiplier = ACTIVITY_MULTIPLIERS["sedantary"]; // Typo caught!
+```
+
+```typescript
+// Bad: No compile-time protection
+const ACTIVITY_MULTIPLIERS: Record<string, number> = { ... };
+
+// No error - runtime undefined
+const multiplier = ACTIVITY_MULTIPLIERS["sedantary"];
+```
+
+**Why:** Catches typos at compile time, enables autocomplete, removes need for defensive fallbacks.
+
+**When to use:** Any constant object with a fixed set of keys (config maps, feature flags, tier definitions).
 
 ### Zod safeParse with Fallback for Database Values
 
@@ -410,6 +616,38 @@ export function requireAuth(req, res, next) {
   }
 }
 ```
+
+### Startup Warning for Optional Environment Variables
+
+For optional env vars with rate-limited fallbacks, log a warning at module load time:
+
+```typescript
+// Good: Warn at startup when using rate-limited fallback
+const USDA_API_KEY = process.env.USDA_API_KEY || "DEMO_KEY";
+if (USDA_API_KEY === "DEMO_KEY") {
+  console.warn(
+    "⚠️  USDA_API_KEY not set - using DEMO_KEY with 40 requests/hour limit",
+  );
+}
+
+async function lookupUSDA(query: string): Promise<NutritionData | null> {
+  // Use USDA_API_KEY here - no runtime check needed
+}
+```
+
+```typescript
+// Bad: Silent fallback - production surprises
+const usdaApiKey = process.env.USDA_API_KEY || "DEMO_KEY";
+// No warning - developers don't know they're using a rate-limited key
+```
+
+**When to use:**
+
+- External API keys with free tier/demo key fallbacks
+- Rate-limited fallback values
+- Any optional config where the fallback has significant limitations
+
+**Why:** Silent fallbacks cause unexpected failures in production. A startup warning ensures developers are aware of the limitation.
 
 ### Pagination with useInfiniteQuery
 
