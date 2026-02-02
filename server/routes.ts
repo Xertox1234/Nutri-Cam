@@ -4,6 +4,7 @@ import bcrypt from "bcrypt";
 import OpenAI from "openai";
 import rateLimit from "express-rate-limit";
 import { z, ZodError } from "zod";
+import multer from "multer";
 import { storage } from "./storage";
 import { db } from "./db";
 import { requireAuth, generateToken } from "./middleware/auth";
@@ -22,6 +23,23 @@ import {
   type SubscriptionTier,
   type SubscriptionStatus,
 } from "@shared/types/premium";
+import {
+  analyzePhoto,
+  refineAnalysis,
+  needsFollowUp,
+  getFollowUpQuestions,
+  type AnalysisResult,
+} from "./services/photo-analysis";
+import {
+  batchNutritionLookup,
+  type NutritionData,
+} from "./services/nutrition-lookup";
+import {
+  calculateGoals,
+  userPhysicalProfileSchema,
+  getMissingProfileFields,
+  type CalculatedGoals,
+} from "./services/goal-calculator";
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -647,6 +665,368 @@ Keep descriptions concise. Make recipes practical and kid activities fun and saf
       }
     },
   );
+
+  // Multer configuration for photo uploads (1MB limit for compressed images)
+  const upload = multer({
+    limits: { fileSize: 1 * 1024 * 1024 }, // 1MB
+    storage: multer.memoryStorage(),
+  });
+
+  // In-memory store for analysis sessions (in production, use Redis)
+  const analysisSessionStore = new Map<
+    string,
+    { result: AnalysisResult; imageBase64?: string }
+  >();
+
+  // Photo Analysis Endpoints
+
+  app.post(
+    "/api/photos/analyze",
+    requireAuth,
+    upload.single("photo"),
+    async (req: Request, res: Response) => {
+      try {
+        // Check scan limit
+        const scanCount = await storage.getDailyScanCount(
+          req.userId!,
+          new Date(),
+        );
+        const subscriptionData = await storage.getSubscriptionStatus(
+          req.userId!,
+        );
+        const tier = (subscriptionData?.tier || "free") as SubscriptionTier;
+        const features = TIER_FEATURES[tier];
+
+        if (scanCount >= features.maxDailyScans) {
+          return res.status(429).json({
+            error: "Daily scan limit reached",
+            scanCount,
+            limit: features.maxDailyScans,
+          });
+        }
+
+        if (!req.file) {
+          return res.status(400).json({ error: "No photo provided" });
+        }
+
+        // Convert buffer to base64
+        const imageBase64 = req.file.buffer.toString("base64");
+
+        // Analyze photo with Vision API
+        const analysisResult = await analyzePhoto(imageBase64);
+
+        // Look up nutrition data for identified foods
+        const foodNames = analysisResult.foods.map(
+          (f) => `${f.quantity} ${f.name}`,
+        );
+        const nutritionMap = await batchNutritionLookup(foodNames);
+
+        // Combine analysis with nutrition data
+        const foodsWithNutrition = analysisResult.foods.map((food, index) => {
+          const query = foodNames[index];
+          const nutrition = nutritionMap.get(query);
+          return {
+            ...food,
+            nutrition: nutrition || null,
+          };
+        });
+
+        // Generate session ID for follow-up
+        const sessionId = `${req.userId}-${Date.now()}`;
+        analysisSessionStore.set(sessionId, {
+          result: analysisResult,
+          imageBase64,
+        });
+
+        // Clean up old sessions after 30 minutes
+        setTimeout(
+          () => {
+            analysisSessionStore.delete(sessionId);
+          },
+          30 * 60 * 1000,
+        );
+
+        const response = {
+          sessionId,
+          foods: foodsWithNutrition,
+          overallConfidence: analysisResult.overallConfidence,
+          needsFollowUp: needsFollowUp(analysisResult),
+          followUpQuestions: getFollowUpQuestions(analysisResult),
+        };
+
+        res.json(response);
+      } catch (error) {
+        console.error("Photo analysis error:", error);
+        res.status(500).json({ error: "Failed to analyze photo" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/photos/analyze/:sessionId/followup",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      try {
+        const sessionId = req.params.sessionId as string;
+        const { question, answer } = req.body;
+
+        if (!question || !answer) {
+          return res
+            .status(400)
+            .json({ error: "Question and answer required" });
+        }
+
+        const session = analysisSessionStore.get(sessionId);
+        if (!session) {
+          return res
+            .status(404)
+            .json({ error: "Session not found or expired" });
+        }
+
+        // Refine analysis based on follow-up
+        const refinedResult = await refineAnalysis(
+          session.result,
+          question,
+          answer,
+        );
+
+        // Update session
+        session.result = refinedResult;
+        analysisSessionStore.set(sessionId, session);
+
+        // Re-lookup nutrition with refined data
+        const foodNames = refinedResult.foods.map(
+          (f) => `${f.quantity} ${f.name}`,
+        );
+        const nutritionMap = await batchNutritionLookup(foodNames);
+
+        const foodsWithNutrition = refinedResult.foods.map((food, index) => {
+          const query = foodNames[index];
+          const nutrition = nutritionMap.get(query);
+          return {
+            ...food,
+            nutrition: nutrition || null,
+          };
+        });
+
+        res.json({
+          sessionId,
+          foods: foodsWithNutrition,
+          overallConfidence: refinedResult.overallConfidence,
+          needsFollowUp: needsFollowUp(refinedResult),
+          followUpQuestions: getFollowUpQuestions(refinedResult),
+        });
+      } catch (error) {
+        console.error("Follow-up error:", error);
+        res.status(500).json({ error: "Failed to process follow-up" });
+      }
+    },
+  );
+
+  // Zod schema for confirm request
+  const confirmPhotoSchema = z.object({
+    sessionId: z.string(),
+    foods: z.array(
+      z.object({
+        name: z.string(),
+        quantity: z.string(),
+        calories: z.number(),
+        protein: z.number(),
+        carbs: z.number(),
+        fat: z.number(),
+      }),
+    ),
+    mealType: z.string().optional(),
+  });
+
+  app.post(
+    "/api/photos/confirm",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      try {
+        const validated = confirmPhotoSchema.parse(req.body);
+
+        // Calculate totals
+        const totals = validated.foods.reduce(
+          (acc, food) => ({
+            calories: acc.calories + food.calories,
+            protein: acc.protein + food.protein,
+            carbs: acc.carbs + food.carbs,
+            fat: acc.fat + food.fat,
+          }),
+          { calories: 0, protein: 0, carbs: 0, fat: 0 },
+        );
+
+        // Get confidence from session if available
+        const session = analysisSessionStore.get(validated.sessionId);
+        const confidence = session?.result?.overallConfidence;
+
+        // Create scanned item with photo source
+        const [scannedItem] = await db.transaction(async (tx) => {
+          const [item] = await tx
+            .insert(scannedItems)
+            .values({
+              userId: req.userId!,
+              productName: validated.foods.map((f) => f.name).join(", "),
+              calories: totals.calories.toString(),
+              protein: totals.protein.toString(),
+              carbs: totals.carbs.toString(),
+              fat: totals.fat.toString(),
+              sourceType: "photo",
+              aiConfidence: confidence?.toString(),
+            })
+            .returning();
+
+          await tx.insert(dailyLogs).values({
+            userId: req.userId!,
+            scannedItemId: item.id,
+            servings: "1",
+            mealType: validated.mealType || null,
+          });
+
+          return [item];
+        });
+
+        // Clean up session
+        analysisSessionStore.delete(validated.sessionId);
+
+        res.status(201).json(scannedItem);
+      } catch (error) {
+        if (error instanceof ZodError) {
+          return res.status(400).json({ error: formatZodError(error) });
+        }
+        console.error("Confirm error:", error);
+        res.status(500).json({ error: "Failed to save meal" });
+      }
+    },
+  );
+
+  // Goal Endpoints
+
+  app.get("/api/goals", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const user = await storage.getUser(req.userId!);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      res.json({
+        dailyCalorieGoal: user.dailyCalorieGoal,
+        dailyProteinGoal: user.dailyProteinGoal,
+        dailyCarbsGoal: user.dailyCarbsGoal,
+        dailyFatGoal: user.dailyFatGoal,
+        goalsCalculatedAt: user.goalsCalculatedAt,
+      });
+    } catch (error) {
+      console.error("Get goals error:", error);
+      res.status(500).json({ error: "Failed to fetch goals" });
+    }
+  });
+
+  app.post(
+    "/api/goals/calculate",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      try {
+        const validated = userPhysicalProfileSchema.parse(req.body);
+
+        // Calculate goals using the service
+        const goals = calculateGoals(validated);
+
+        // Update user with physical profile and calculated goals
+        const updatedUser = await storage.updateUser(req.userId!, {
+          weight: validated.weight.toString(),
+          height: validated.height.toString(),
+          age: validated.age,
+          gender: validated.gender,
+          dailyCalorieGoal: goals.dailyCalories,
+          dailyProteinGoal: goals.dailyProtein,
+          dailyCarbsGoal: goals.dailyCarbs,
+          dailyFatGoal: goals.dailyFat,
+          goalsCalculatedAt: new Date(),
+        });
+
+        // Also update profile with activity level and primary goal
+        const existingProfile = await storage.getUserProfile(req.userId!);
+        if (existingProfile) {
+          await storage.updateUserProfile(req.userId!, {
+            activityLevel: validated.activityLevel,
+            primaryGoal: validated.primaryGoal,
+          });
+        } else {
+          await storage.createUserProfile({
+            userId: req.userId!,
+            activityLevel: validated.activityLevel,
+            primaryGoal: validated.primaryGoal,
+          });
+        }
+
+        res.json({
+          ...goals,
+          profile: {
+            weight: validated.weight,
+            height: validated.height,
+            age: validated.age,
+            gender: validated.gender,
+            activityLevel: validated.activityLevel,
+            primaryGoal: validated.primaryGoal,
+          },
+        });
+      } catch (error) {
+        if (error instanceof ZodError) {
+          return res.status(400).json({ error: formatZodError(error) });
+        }
+        console.error("Calculate goals error:", error);
+        res.status(500).json({ error: "Failed to calculate goals" });
+      }
+    },
+  );
+
+  // Zod schema for manual goal update
+  const updateGoalsSchema = z.object({
+    dailyCalorieGoal: z.number().int().min(500).max(10000).optional(),
+    dailyProteinGoal: z.number().int().min(0).max(500).optional(),
+    dailyCarbsGoal: z.number().int().min(0).max(1000).optional(),
+    dailyFatGoal: z.number().int().min(0).max(500).optional(),
+  });
+
+  app.put("/api/goals", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const validated = updateGoalsSchema.parse(req.body);
+
+      const updatedUser = await storage.updateUser(req.userId!, {
+        ...(validated.dailyCalorieGoal !== undefined && {
+          dailyCalorieGoal: validated.dailyCalorieGoal,
+        }),
+        ...(validated.dailyProteinGoal !== undefined && {
+          dailyProteinGoal: validated.dailyProteinGoal,
+        }),
+        ...(validated.dailyCarbsGoal !== undefined && {
+          dailyCarbsGoal: validated.dailyCarbsGoal,
+        }),
+        ...(validated.dailyFatGoal !== undefined && {
+          dailyFatGoal: validated.dailyFatGoal,
+        }),
+      });
+
+      if (!updatedUser) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      res.json({
+        dailyCalorieGoal: updatedUser.dailyCalorieGoal,
+        dailyProteinGoal: updatedUser.dailyProteinGoal,
+        dailyCarbsGoal: updatedUser.dailyCarbsGoal,
+        dailyFatGoal: updatedUser.dailyFatGoal,
+      });
+    } catch (error) {
+      if (error instanceof ZodError) {
+        return res.status(400).json({ error: formatZodError(error) });
+      }
+      console.error("Update goals error:", error);
+      res.status(500).json({ error: "Failed to update goals" });
+    }
+  });
 
   const httpServer = createServer(app);
 

@@ -10,6 +10,8 @@ export interface PremiumFeatures {
   advancedBarcodes: boolean;
   highQualityCapture: boolean;
   videoRecording: boolean;
+  photoAnalysis: boolean;
+  macroGoals: boolean;
 }
 
 export const TIER_FEATURES: Record<SubscriptionTier, PremiumFeatures> = {
@@ -18,12 +20,16 @@ export const TIER_FEATURES: Record<SubscriptionTier, PremiumFeatures> = {
     advancedBarcodes: false,
     highQualityCapture: false,
     videoRecording: false,
+    photoAnalysis: true,
+    macroGoals: false,
   },
   premium: {
     maxDailyScans: Infinity,
     advancedBarcodes: true,
     highQualityCapture: true,
     videoRecording: true,
+    photoAnalysis: true,
+    macroGoals: true,
   },
 };
 
