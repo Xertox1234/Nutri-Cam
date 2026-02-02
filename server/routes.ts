@@ -1,5 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "node:http";
+import crypto from "crypto";
 import bcrypt from "bcrypt";
 import OpenAI from "openai";
 import rateLimit from "express-rate-limit";
@@ -16,10 +17,12 @@ import {
   dailyLogs,
   userProfiles,
   users,
+  type Allergy,
 } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import {
   TIER_FEATURES,
+  subscriptionTiers,
   type SubscriptionTier,
   type SubscriptionStatus,
 } from "@shared/types/premium";
@@ -37,9 +40,16 @@ import {
 import {
   calculateGoals,
   userPhysicalProfileSchema,
-  getMissingProfileFields,
   type CalculatedGoals,
 } from "./services/goal-calculator";
+
+/**
+ * Type guard to validate if a string is a valid subscription tier.
+ * Prevents unsafe type assertions that could cause runtime errors.
+ */
+function isValidSubscriptionTier(tier: string): tier is SubscriptionTier {
+  return (subscriptionTiers as readonly string[]).includes(tier);
+}
 
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -53,6 +63,15 @@ const registerLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
   max: 5, // 5 registrations per hour
   message: { error: "Too many registration attempts, please try again later" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const photoRateLimit = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10, // 10 requests per minute
+  message: { error: "Too many photo uploads. Please wait." },
+  keyGenerator: (req) => req.userId || req.ip || "anonymous",
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -526,7 +545,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           return res.status(404).json({ error: "User not found" });
         }
 
-        const tier = subscriptionData.tier as SubscriptionTier;
+        const tier = isValidSubscriptionTier(subscriptionData.tier)
+          ? subscriptionData.tier
+          : "free";
         const expiresAt = subscriptionData.expiresAt;
 
         // Check if premium subscription has expired
@@ -591,7 +612,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             Array.isArray(userProfile.allergies) &&
             userProfile.allergies.length > 0
           ) {
-            dietaryContext += `User allergies (avoid these ingredients): ${(userProfile.allergies as any[]).map((a) => a.name).join(", ")}. `;
+            dietaryContext += `User allergies (avoid these ingredients): ${(userProfile.allergies as Allergy[]).map((a) => a.name).join(", ")}. `;
           }
           if (userProfile.dietType) {
             dietaryContext += `Diet: ${userProfile.dietType}. `;
@@ -666,23 +687,59 @@ Keep descriptions concise. Make recipes practical and kid activities fun and saf
     },
   );
 
+  // Zod schema for follow-up input validation
+  const followUpSchema = z.object({
+    question: z.string().min(1).max(500),
+    answer: z.string().min(1).max(1000),
+  });
+
   // Multer configuration for photo uploads (1MB limit for compressed images)
   const upload = multer({
     limits: { fileSize: 1 * 1024 * 1024 }, // 1MB
     storage: multer.memoryStorage(),
+    fileFilter: (req, file, cb) => {
+      const allowedMimes = ["image/jpeg", "image/png", "image/webp"];
+      if (allowedMimes.includes(file.mimetype)) {
+        cb(null, true);
+      } else {
+        cb(new Error("Invalid file type. Only JPEG, PNG, and WebP allowed."));
+      }
+    },
   });
 
   // In-memory store for analysis sessions (in production, use Redis)
-  const analysisSessionStore = new Map<
-    string,
-    { result: AnalysisResult; imageBase64?: string }
-  >();
+  interface AnalysisSession {
+    userId: string;
+    result: AnalysisResult;
+    imageBase64?: string;
+  }
+  const analysisSessionStore = new Map<string, AnalysisSession>();
+
+  // Track session timeout references to prevent memory leaks
+  const sessionTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+
+  // Session timeout duration (30 minutes)
+  const SESSION_TIMEOUT = 30 * 60 * 1000;
+
+  /**
+   * Clear session and its associated timeout.
+   * Call this whenever a session is deleted to prevent memory leaks.
+   */
+  function clearSession(sessionId: string): void {
+    const existingTimeout = sessionTimeouts.get(sessionId);
+    if (existingTimeout) {
+      clearTimeout(existingTimeout);
+      sessionTimeouts.delete(sessionId);
+    }
+    analysisSessionStore.delete(sessionId);
+  }
 
   // Photo Analysis Endpoints
 
   app.post(
     "/api/photos/analyze",
     requireAuth,
+    photoRateLimit,
     upload.single("photo"),
     async (req: Request, res: Response) => {
       try {
@@ -694,7 +751,8 @@ Keep descriptions concise. Make recipes practical and kid activities fun and saf
         const subscriptionData = await storage.getSubscriptionStatus(
           req.userId!,
         );
-        const tier = (subscriptionData?.tier || "free") as SubscriptionTier;
+        const tierValue = subscriptionData?.tier || "free";
+        const tier = isValidSubscriptionTier(tierValue) ? tierValue : "free";
         const features = TIER_FEATURES[tier];
 
         if (scanCount >= features.maxDailyScans) {
@@ -732,19 +790,19 @@ Keep descriptions concise. Make recipes practical and kid activities fun and saf
         });
 
         // Generate session ID for follow-up
-        const sessionId = `${req.userId}-${Date.now()}`;
+        const sessionId = crypto.randomUUID();
         analysisSessionStore.set(sessionId, {
+          userId: req.userId!,
           result: analysisResult,
           imageBase64,
         });
 
-        // Clean up old sessions after 30 minutes
-        setTimeout(
-          () => {
-            analysisSessionStore.delete(sessionId);
-          },
-          30 * 60 * 1000,
-        );
+        // Clean up old sessions after timeout, tracking the timeout reference
+        const timeoutId = setTimeout(() => {
+          analysisSessionStore.delete(sessionId);
+          sessionTimeouts.delete(sessionId);
+        }, SESSION_TIMEOUT);
+        sessionTimeouts.set(sessionId, timeoutId);
 
         const response = {
           sessionId,
@@ -765,22 +823,29 @@ Keep descriptions concise. Make recipes practical and kid activities fun and saf
   app.post(
     "/api/photos/analyze/:sessionId/followup",
     requireAuth,
+    photoRateLimit,
     async (req: Request, res: Response) => {
       try {
         const sessionId = req.params.sessionId as string;
-        const { question, answer } = req.body;
 
-        if (!question || !answer) {
+        const parsed = followUpSchema.safeParse(req.body);
+        if (!parsed.success) {
           return res
             .status(400)
-            .json({ error: "Question and answer required" });
+            .json({ error: "Invalid input", details: parsed.error.flatten() });
         }
+        const { question, answer } = parsed.data;
 
         const session = analysisSessionStore.get(sessionId);
         if (!session) {
           return res
             .status(404)
             .json({ error: "Session not found or expired" });
+        }
+
+        // Verify session ownership
+        if (session.userId !== req.userId!) {
+          return res.status(403).json({ error: "Not authorized" });
         }
 
         // Refine analysis based on follow-up
@@ -859,6 +924,12 @@ Keep descriptions concise. Make recipes practical and kid activities fun and saf
 
         // Get confidence from session if available
         const session = analysisSessionStore.get(validated.sessionId);
+
+        // Verify session ownership if session exists
+        if (session && session.userId !== req.userId!) {
+          return res.status(403).json({ error: "Not authorized" });
+        }
+
         const confidence = session?.result?.overallConfidence;
 
         // Create scanned item with photo source
@@ -887,8 +958,8 @@ Keep descriptions concise. Make recipes practical and kid activities fun and saf
           return [item];
         });
 
-        // Clean up session
-        analysisSessionStore.delete(validated.sessionId);
+        // Clean up session and its timeout to prevent memory leaks
+        clearSession(validated.sessionId);
 
         res.status(201).json(scannedItem);
       } catch (error) {

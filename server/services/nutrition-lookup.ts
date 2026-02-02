@@ -2,7 +2,7 @@ import pLimit from "p-limit";
 import { z } from "zod";
 import { db } from "../db";
 import { nutritionCache } from "@shared/schema";
-import { eq, and, gt } from "drizzle-orm";
+import { and, gt, inArray } from "drizzle-orm";
 
 // Rate limiting for parallel requests
 const RATE_LIMIT = 5;
@@ -77,25 +77,22 @@ async function getCachedNutrition(
   const now = new Date();
 
   try {
-    // Query all matching cache entries
+    // Query only matching cache entries using inArray for efficiency
     const cached = await db
       .select()
       .from(nutritionCache)
-      .where(and(gt(nutritionCache.expiresAt, now)));
+      .where(
+        and(
+          inArray(nutritionCache.queryKey, normalizedKeys),
+          gt(nutritionCache.expiresAt, now),
+        ),
+      );
 
-    // Filter to only matching keys (Drizzle doesn't have IN with array)
     for (const entry of cached) {
       const index = normalizedKeys.indexOf(entry.queryKey);
       if (index !== -1) {
         const data = entry.data as NutritionData;
         results.set(items[index], { ...data, source: "cache" });
-
-        // Increment hit count (fire and forget)
-        db.update(nutritionCache)
-          .set({ hitCount: (entry.hitCount || 0) + 1 })
-          .where(eq(nutritionCache.id, entry.id))
-          .execute()
-          .catch(() => {});
       }
     }
   } catch (error) {
@@ -130,7 +127,6 @@ async function cacheNutrition(
         set: {
           data: data,
           expiresAt,
-          hitCount: 0,
         },
       });
   } catch (error) {
@@ -193,9 +189,11 @@ async function lookupCalorieNinjas(
  * Lookup nutrition data from USDA FoodData Central (fallback)
  */
 async function lookupUSDA(query: string): Promise<NutritionData | null> {
+  const usdaApiKey = process.env.USDA_API_KEY || "DEMO_KEY";
+
   try {
     const response = await fetch(
-      `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&pageSize=1&api_key=DEMO_KEY`,
+      `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&pageSize=1&api_key=${usdaApiKey}`,
     );
 
     if (!response.ok) {
@@ -295,14 +293,4 @@ export async function batchNutritionLookup(
   }
 
   return results;
-}
-
-/**
- * Lookup nutrition data for a single item (with caching)
- */
-export async function singleNutritionLookup(
-  query: string,
-): Promise<NutritionData | null> {
-  const results = await batchNutritionLookup([query]);
-  return results.get(query) || null;
 }

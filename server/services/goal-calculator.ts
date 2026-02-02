@@ -1,5 +1,22 @@
 import { z } from "zod";
 
+// Define strict union types for Record keys (prevents typos at compile time)
+export type ActivityLevel =
+  | "sedentary"
+  | "light"
+  | "moderate"
+  | "active"
+  | "athlete";
+
+export type PrimaryGoal =
+  | "lose_weight"
+  | "gain_muscle"
+  | "maintain"
+  | "eat_healthier"
+  | "manage_condition";
+
+export type Gender = "male" | "female" | "other";
+
 // Validate user input with Zod
 export const userPhysicalProfileSchema = z.object({
   weight: z.number().min(20).max(500), // kg, reasonable bounds
@@ -31,7 +48,7 @@ export interface CalculatedGoals {
   dailyFat: number; // grams
 }
 
-const ACTIVITY_MULTIPLIERS: Record<string, number> = {
+const ACTIVITY_MULTIPLIERS: Record<ActivityLevel, number> = {
   sedentary: 1.2,
   light: 1.375,
   moderate: 1.55,
@@ -39,7 +56,7 @@ const ACTIVITY_MULTIPLIERS: Record<string, number> = {
   athlete: 1.9,
 };
 
-const GOAL_MODIFIERS: Record<string, number> = {
+const GOAL_MODIFIERS: Record<PrimaryGoal, number> = {
   lose_weight: -500,
   gain_muscle: 300,
   maintain: 0,
@@ -48,7 +65,7 @@ const GOAL_MODIFIERS: Record<string, number> = {
 };
 
 const MACRO_SPLITS: Record<
-  string,
+  PrimaryGoal,
   { protein: number; carbs: number; fat: number }
 > = {
   lose_weight: { protein: 0.4, carbs: 0.3, fat: 0.3 },
@@ -68,7 +85,7 @@ function calculateBMR(
   weight: number,
   height: number,
   age: number,
-  gender: string,
+  gender: Gender,
 ): number {
   // Mifflin-St Jeor formula
   const baseBMR = 10 * weight + 6.25 * height - 5 * age;
@@ -84,8 +101,8 @@ function calculateBMR(
 /**
  * Calculate Total Daily Energy Expenditure
  */
-function calculateTDEE(bmr: number, activityLevel: string): number {
-  const multiplier = ACTIVITY_MULTIPLIERS[activityLevel] || 1.55;
+function calculateTDEE(bmr: number, activityLevel: ActivityLevel): number {
+  const multiplier = ACTIVITY_MULTIPLIERS[activityLevel];
   return bmr * multiplier;
 }
 
@@ -101,15 +118,15 @@ export function calculateGoals(profile: UserPhysicalProfile): CalculatedGoals {
   );
   const tdee = calculateTDEE(bmr, profile.activityLevel);
 
-  // Apply goal modifier
-  const modifier = GOAL_MODIFIERS[profile.primaryGoal] || 0;
+  // Apply goal modifier (no fallback needed - type ensures valid key)
+  const modifier = GOAL_MODIFIERS[profile.primaryGoal];
   let dailyCalories = Math.round(tdee + modifier);
 
   // Safety guardrail: minimum calorie intake
   dailyCalories = Math.max(MIN_DAILY_CALORIES, dailyCalories);
 
-  // Get macro split for goal
-  const split = MACRO_SPLITS[profile.primaryGoal] || MACRO_SPLITS.maintain;
+  // Get macro split for goal (no fallback needed - type ensures valid key)
+  const split = MACRO_SPLITS[profile.primaryGoal];
 
   return {
     dailyCalories,
@@ -117,35 +134,4 @@ export function calculateGoals(profile: UserPhysicalProfile): CalculatedGoals {
     dailyCarbs: Math.round((dailyCalories * split.carbs) / 4), // 4 cal/g carbs
     dailyFat: Math.round((dailyCalories * split.fat) / 9), // 9 cal/g fat
   };
-}
-
-/**
- * Validate partial profile for goal calculation
- * Returns missing fields needed to calculate goals
- */
-export function getMissingProfileFields(
-  profile: Partial<UserPhysicalProfile>,
-): string[] {
-  const missing: string[] = [];
-
-  if (profile.weight === undefined || profile.weight === null) {
-    missing.push("weight");
-  }
-  if (profile.height === undefined || profile.height === null) {
-    missing.push("height");
-  }
-  if (profile.age === undefined || profile.age === null) {
-    missing.push("age");
-  }
-  if (!profile.gender) {
-    missing.push("gender");
-  }
-  if (!profile.activityLevel) {
-    missing.push("activityLevel");
-  }
-  if (!profile.primaryGoal) {
-    missing.push("primaryGoal");
-  }
-
-  return missing;
 }

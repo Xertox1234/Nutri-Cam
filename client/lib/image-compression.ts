@@ -1,9 +1,5 @@
 import { manipulateAsync, SaveFormat } from "expo-image-manipulator";
-import {
-  getInfoAsync,
-  deleteAsync,
-  type FileInfo,
-} from "expo-file-system/legacy";
+import { getInfoAsync, deleteAsync } from "expo-file-system/legacy";
 
 export interface CompressionOptions {
   maxWidth?: number;
@@ -86,38 +82,5 @@ export async function cleanupImage(uri: string): Promise<void> {
   } catch (error) {
     // Silently ignore cleanup errors
     console.warn("Image cleanup failed:", error);
-  }
-}
-
-/**
- * Get image dimensions without loading full image
- */
-export async function getImageDimensions(
-  uri: string,
-): Promise<{ width: number; height: number } | null> {
-  try {
-    // Use manipulate with no operations to get dimensions
-    const result = await manipulateAsync(uri, [], {});
-    return { width: result.width, height: result.height };
-  } catch (error) {
-    console.warn("Failed to get image dimensions:", error);
-    return null;
-  }
-}
-
-/**
- * Check if an image needs compression based on size
- */
-export async function needsCompression(
-  uri: string,
-  maxSizeKB: number = 900,
-): Promise<boolean> {
-  try {
-    const fileInfo = await getInfoAsync(uri);
-    const sizeKB = (fileInfo.exists ? fileInfo.size : 0) / 1024;
-    return sizeKB > maxSizeKB;
-  } catch (error) {
-    // If we can't check, assume it needs compression
-    return true;
   }
 }
