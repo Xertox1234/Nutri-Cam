@@ -185,15 +185,21 @@ async function lookupCalorieNinjas(
   }
 }
 
+// Warn at startup if using USDA DEMO_KEY (severe rate limits: 40 req/hour)
+const USDA_API_KEY = process.env.USDA_API_KEY || "DEMO_KEY";
+if (USDA_API_KEY === "DEMO_KEY") {
+  console.warn(
+    "⚠️  USDA_API_KEY not set - using DEMO_KEY with 40 requests/hour limit",
+  );
+}
+
 /**
  * Lookup nutrition data from USDA FoodData Central (fallback)
  */
 async function lookupUSDA(query: string): Promise<NutritionData | null> {
-  const usdaApiKey = process.env.USDA_API_KEY || "DEMO_KEY";
-
   try {
     const response = await fetch(
-      `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&pageSize=1&api_key=${usdaApiKey}`,
+      `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&pageSize=1&api_key=${USDA_API_KEY}`,
     );
 
     if (!response.ok) {

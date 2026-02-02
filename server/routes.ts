@@ -5,7 +5,7 @@ import bcrypt from "bcrypt";
 import OpenAI from "openai";
 import rateLimit from "express-rate-limit";
 import { z, ZodError } from "zod";
-import multer from "multer";
+import multer, { MulterError } from "multer";
 import { storage } from "./storage";
 import { db } from "./db";
 import { requireAuth, generateToken } from "./middleware/auth";
@@ -707,7 +707,9 @@ Keep descriptions concise. Make recipes practical and kid activities fun and saf
     },
   });
 
-  // In-memory store for analysis sessions (in production, use Redis)
+  // In-memory store for analysis sessions
+  // TODO: Replace with Redis for horizontal scaling in production
+  // See: https://github.com/Xertox1234/Nutri-Cam/issues (create issue for this)
   interface AnalysisSession {
     userId: string;
     result: AnalysisResult;
@@ -1098,6 +1100,26 @@ Keep descriptions concise. Make recipes practical and kid activities fun and saf
       res.status(500).json({ error: "Failed to update goals" });
     }
   });
+
+  // Multer error handler - returns 400 for file validation errors instead of 500
+  app.use(
+    (
+      err: Error,
+      req: Request,
+      res: Response,
+      next: (err?: Error) => void,
+    ): void => {
+      if (err instanceof MulterError) {
+        res.status(400).json({ error: err.message, code: err.code });
+        return;
+      }
+      if (err.message?.includes("Invalid file type")) {
+        res.status(400).json({ error: err.message });
+        return;
+      }
+      next(err);
+    },
+  );
 
   const httpServer = createServer(app);
 
