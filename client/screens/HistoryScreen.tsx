@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useEffect } from "react";
+import React, { useCallback, useMemo } from "react";
 import {
   StyleSheet,
   View,
@@ -263,6 +263,216 @@ function DashboardSkeleton() {
   );
 }
 
+/** Props for DashboardHeader component */
+type DashboardHeaderProps = {
+  userName: string;
+  currentCalories: number;
+  calorieGoal: number;
+  calorieProgress: number;
+  itemCount: number;
+  reducedMotion: boolean;
+  onScanPress: () => void;
+};
+
+const DashboardHeader = React.memo(function DashboardHeader({
+  userName,
+  currentCalories,
+  calorieGoal,
+  calorieProgress,
+  itemCount,
+  reducedMotion,
+  onScanPress,
+}: DashboardHeaderProps) {
+  const { theme } = useTheme();
+
+  return (
+    <View>
+      {/* Welcome */}
+      <Animated.View
+        entering={
+          reducedMotion ? undefined : FadeInDown.delay(50).duration(300)
+        }
+      >
+        <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+          WELCOME BACK
+        </ThemedText>
+        <ThemedText type="h2" style={{ marginBottom: Spacing.xl }}>
+          {userName}
+        </ThemedText>
+      </Animated.View>
+
+      {/* Stats row */}
+      <Animated.View
+        entering={
+          reducedMotion ? undefined : FadeInDown.delay(100).duration(300)
+        }
+        style={styles.statsRow}
+      >
+        {/* Calories card */}
+        <Card
+          elevation={1}
+          style={[styles.statCard, { backgroundColor: theme.link }]}
+        >
+          <View
+            accessible={true}
+            accessibilityRole="text"
+            accessibilityLabel={`Today's calories: ${currentCalories} of ${calorieGoal} consumed. ${Math.round(calorieProgress)} percent of daily goal.`}
+          >
+            <ThemedText
+              type="caption"
+              style={{ color: "rgba(255,255,255,0.8)" }}
+            >
+              TODAY&apos;S CALORIES
+            </ThemedText>
+            <View style={styles.statValueRow}>
+              <ThemedText type="h2" style={{ color: "#FFFFFF" }}>
+                {currentCalories.toLocaleString()}
+              </ThemedText>
+              <ThemedText
+                type="body"
+                style={{
+                  color: "rgba(255,255,255,0.8)",
+                  marginLeft: Spacing.xs,
+                }}
+              >
+                / {calorieGoal.toLocaleString()}
+              </ThemedText>
+            </View>
+          </View>
+        </Card>
+
+        {/* Items scanned card */}
+        <Card
+          elevation={1}
+          style={[styles.statCard, { backgroundColor: theme.warning }]}
+        >
+          <View
+            accessible={true}
+            accessibilityRole="text"
+            accessibilityLabel={`Items scanned today: ${itemCount}`}
+          >
+            <ThemedText
+              type="caption"
+              style={{ color: "rgba(255,255,255,0.8)" }}
+            >
+              ITEMS SCANNED
+            </ThemedText>
+            <ThemedText type="h2" style={{ color: "#FFFFFF" }}>
+              {itemCount}
+            </ThemedText>
+          </View>
+        </Card>
+      </Animated.View>
+
+      {/* Scan CTA */}
+      <Animated.View
+        entering={
+          reducedMotion ? undefined : FadeInDown.delay(150).duration(300)
+        }
+      >
+        <Pressable
+          style={[
+            styles.scanCTA,
+            { backgroundColor: theme.backgroundSecondary },
+          ]}
+          onPress={onScanPress}
+          accessibilityRole="button"
+          accessibilityLabel="Scan barcode. Opens camera to scan food barcode."
+        >
+          <View style={styles.scanCTAIcon}>
+            <Feather name="camera" size={32} color={theme.text} />
+          </View>
+          <ThemedText type="h4" style={{ marginTop: Spacing.md }}>
+            Scan Barcode
+          </ThemedText>
+          <ThemedText
+            type="small"
+            style={{ color: theme.textSecondary, marginTop: Spacing.xs }}
+          >
+            Identify food & get AI recipes
+          </ThemedText>
+        </Pressable>
+      </Animated.View>
+
+      {/* Recent History section header */}
+      <Animated.View
+        entering={
+          reducedMotion ? undefined : FadeInDown.delay(200).duration(300)
+        }
+        style={styles.sectionHeader}
+      >
+        <ThemedText type="h4">Recent History</ThemedText>
+      </Animated.View>
+    </View>
+  );
+});
+
+/** Props for FullHistoryHeader component */
+type FullHistoryHeaderProps = {
+  onBackPress: () => void;
+};
+
+const FullHistoryHeader = React.memo(function FullHistoryHeader({
+  onBackPress,
+}: FullHistoryHeaderProps) {
+  const { theme } = useTheme();
+
+  return (
+    <View style={styles.fullHistoryHeader}>
+      <Pressable
+        onPress={onBackPress}
+        style={styles.backButton}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        accessibilityRole="button"
+        accessibilityLabel="Back to Today dashboard"
+      >
+        <Feather name="arrow-left" size={20} color={theme.link} />
+        <ThemedText
+          type="body"
+          style={{ color: theme.link, marginLeft: Spacing.xs }}
+        >
+          Today
+        </ThemedText>
+      </Pressable>
+      <ThemedText type="h4" style={{ marginTop: Spacing.md }}>
+        All History
+      </ThemedText>
+    </View>
+  );
+});
+
+/** Props for ViewAllFooter component */
+type ViewAllFooterProps = {
+  onViewAllPress: () => void;
+};
+
+const ViewAllFooter = React.memo(function ViewAllFooter({
+  onViewAllPress,
+}: ViewAllFooterProps) {
+  const { theme } = useTheme();
+
+  return (
+    <View style={styles.viewAllContainer}>
+      <Pressable
+        onPress={onViewAllPress}
+        style={styles.viewAllLink}
+        accessibilityRole="link"
+        accessibilityLabel="View all history"
+      >
+        <ThemedText type="body" style={{ color: theme.link }}>
+          View All History
+        </ThemedText>
+        <Feather
+          name="arrow-right"
+          size={16}
+          color={theme.link}
+          style={{ marginLeft: Spacing.xs }}
+        />
+      </Pressable>
+    </View>
+  );
+});
+
 export default function HistoryScreen() {
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
@@ -278,16 +488,6 @@ export default function HistoryScreen() {
   // Determine if we're showing dashboard or full history
   const showAll = route.params?.showAll ?? false;
 
-  // Mount ref for race condition handling
-  const isMountedRef = useRef(true);
-
-  useEffect(() => {
-    isMountedRef.current = true;
-    return () => {
-      isMountedRef.current = false;
-    };
-  }, []);
-
   // Dashboard queries (only when not showing all)
   const {
     data: todaySummary,
@@ -295,6 +495,23 @@ export default function HistoryScreen() {
     isFetching: summaryFetching,
   } = useQuery<DailySummaryResponse>({
     queryKey: ["/api/daily-summary"],
+    queryFn: async (): Promise<DailySummaryResponse> => {
+      const baseUrl = getApiUrl();
+      const url = new URL("/api/daily-summary", baseUrl);
+
+      const headers: Record<string, string> = {};
+      const token = await tokenStorage.get();
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
+      const res = await fetch(url, { headers });
+      if (!res.ok) {
+        const text = (await res.text()) || res.statusText;
+        throw new Error(`${res.status}: ${text}`);
+      }
+      return res.json();
+    },
     staleTime: 1000 * 60 * 2, // 2 minutes
     refetchOnWindowFocus: true,
     enabled: !!user && !showAll,
@@ -425,191 +642,8 @@ export default function HistoryScreen() {
   const calorieGoal = user?.dailyCalorieGoal || 2000;
   const currentCalories = Math.round(todaySummary?.totalCalories || 0);
   const calorieProgress = Math.min((currentCalories / calorieGoal) * 100, 100);
-
-  // Dashboard header component
-  const DashboardHeader = useCallback(
-    () => (
-      <View>
-        {/* Welcome */}
-        <Animated.View
-          entering={
-            reducedMotion ? undefined : FadeInDown.delay(50).duration(300)
-          }
-        >
-          <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-            WELCOME BACK
-          </ThemedText>
-          <ThemedText type="h2" style={{ marginBottom: Spacing.xl }}>
-            {user?.displayName || user?.username || "there"}
-          </ThemedText>
-        </Animated.View>
-
-        {/* Stats row */}
-        <Animated.View
-          entering={
-            reducedMotion ? undefined : FadeInDown.delay(100).duration(300)
-          }
-          style={styles.statsRow}
-        >
-          {/* Calories card */}
-          <Card
-            elevation={1}
-            style={[styles.statCard, { backgroundColor: theme.link }]}
-          >
-            <View
-              accessible={true}
-              accessibilityRole="text"
-              accessibilityLabel={`Today's calories: ${currentCalories} of ${calorieGoal} consumed. ${Math.round(calorieProgress)} percent of daily goal.`}
-            >
-              <ThemedText
-                type="caption"
-                style={{ color: "rgba(255,255,255,0.8)" }}
-              >
-                TODAY&apos;S CALORIES
-              </ThemedText>
-              <View style={styles.statValueRow}>
-                <ThemedText type="h2" style={{ color: "#FFFFFF" }}>
-                  {currentCalories.toLocaleString()}
-                </ThemedText>
-                <ThemedText
-                  type="body"
-                  style={{
-                    color: "rgba(255,255,255,0.8)",
-                    marginLeft: Spacing.xs,
-                  }}
-                >
-                  / {calorieGoal.toLocaleString()}
-                </ThemedText>
-              </View>
-            </View>
-          </Card>
-
-          {/* Items scanned card */}
-          <Card
-            elevation={1}
-            style={[styles.statCard, { backgroundColor: theme.warning }]}
-          >
-            <View
-              accessible={true}
-              accessibilityRole="text"
-              accessibilityLabel={`Items scanned today: ${todaySummary?.itemCount || 0}`}
-            >
-              <ThemedText
-                type="caption"
-                style={{ color: "rgba(255,255,255,0.8)" }}
-              >
-                ITEMS SCANNED
-              </ThemedText>
-              <ThemedText type="h2" style={{ color: "#FFFFFF" }}>
-                {todaySummary?.itemCount || 0}
-              </ThemedText>
-            </View>
-          </Card>
-        </Animated.View>
-
-        {/* Scan CTA */}
-        <Animated.View
-          entering={
-            reducedMotion ? undefined : FadeInDown.delay(150).duration(300)
-          }
-        >
-          <Pressable
-            style={[
-              styles.scanCTA,
-              { backgroundColor: theme.backgroundSecondary },
-            ]}
-            onPress={handleScanPress}
-            accessibilityRole="button"
-            accessibilityLabel="Scan barcode. Opens camera to scan food barcode."
-          >
-            <View style={styles.scanCTAIcon}>
-              <Feather name="camera" size={32} color={theme.text} />
-            </View>
-            <ThemedText type="h4" style={{ marginTop: Spacing.md }}>
-              Scan Barcode
-            </ThemedText>
-            <ThemedText
-              type="small"
-              style={{ color: theme.textSecondary, marginTop: Spacing.xs }}
-            >
-              Identify food &amp; get AI recipes
-            </ThemedText>
-          </Pressable>
-        </Animated.View>
-
-        {/* Recent History section header */}
-        <Animated.View
-          entering={
-            reducedMotion ? undefined : FadeInDown.delay(200).duration(300)
-          }
-          style={styles.sectionHeader}
-        >
-          <ThemedText type="h4">Recent History</ThemedText>
-        </Animated.View>
-      </View>
-    ),
-    [
-      theme,
-      user,
-      todaySummary,
-      currentCalories,
-      calorieGoal,
-      calorieProgress,
-      reducedMotion,
-      handleScanPress,
-    ],
-  );
-
-  // Full history header (back button)
-  const FullHistoryHeader = useCallback(
-    () => (
-      <View style={styles.fullHistoryHeader}>
-        <Pressable
-          onPress={handleBackToDashboard}
-          style={styles.backButton}
-          accessibilityRole="button"
-          accessibilityLabel="Back to Today dashboard"
-        >
-          <Feather name="arrow-left" size={20} color={theme.link} />
-          <ThemedText
-            type="body"
-            style={{ color: theme.link, marginLeft: Spacing.xs }}
-          >
-            Today
-          </ThemedText>
-        </Pressable>
-        <ThemedText type="h4" style={{ marginTop: Spacing.md }}>
-          All History
-        </ThemedText>
-      </View>
-    ),
-    [theme, handleBackToDashboard],
-  );
-
-  // View All History footer link
-  const ViewAllFooter = useCallback(
-    () => (
-      <View style={styles.viewAllContainer}>
-        <Pressable
-          onPress={handleViewAllPress}
-          style={styles.viewAllLink}
-          accessibilityRole="link"
-          accessibilityLabel="View all history"
-        >
-          <ThemedText type="body" style={{ color: theme.link }}>
-            View All History
-          </ThemedText>
-          <Feather
-            name="arrow-right"
-            size={16}
-            color={theme.link}
-            style={{ marginLeft: Spacing.xs }}
-          />
-        </Pressable>
-      </View>
-    ),
-    [theme, handleViewAllPress],
-  );
+  const userName = user?.displayName || user?.username || "there";
+  const itemCount = todaySummary?.itemCount || 0;
 
   // Render loading state for dashboard
   if (!showAll && isLoading) {
@@ -643,7 +677,21 @@ export default function HistoryScreen() {
       data={isLoading ? [] : displayItems}
       renderItem={renderItem}
       keyExtractor={(item) => item.id.toString()}
-      ListHeaderComponent={showAll ? FullHistoryHeader : DashboardHeader}
+      ListHeaderComponent={
+        showAll ? (
+          <FullHistoryHeader onBackPress={handleBackToDashboard} />
+        ) : (
+          <DashboardHeader
+            userName={userName}
+            currentCalories={currentCalories}
+            calorieGoal={calorieGoal}
+            calorieProgress={calorieProgress}
+            itemCount={itemCount}
+            reducedMotion={reducedMotion}
+            onScanPress={handleScanPress}
+          />
+        )
+      }
       ListEmptyComponent={
         isLoading ? (
           <View accessibilityElementsHidden>
@@ -659,7 +707,7 @@ export default function HistoryScreen() {
             <LoadingFooter />
           ) : null
         ) : displayItems.length > 0 ? (
-          <ViewAllFooter />
+          <ViewAllFooter onViewAllPress={handleViewAllPress} />
         ) : null
       }
       refreshControl={
