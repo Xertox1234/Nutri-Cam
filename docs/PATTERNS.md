@@ -10,6 +10,10 @@ This document captures established patterns for the NutriScan codebase. Follow t
 - [API Patterns](#api-patterns)
 - [External API Patterns](#external-api-patterns)
 - [Database Patterns](#database-patterns)
+  - [Cache-First Pattern for Expensive Operations](#cache-first-pattern-for-expensive-operations)
+  - [Fire-and-Forget for Non-Critical Background Operations](#fire-and-forget-for-non-critical-background-operations)
+  - [Content Hash Invalidation Pattern](#content-hash-invalidation-pattern)
+  - [Parent-Child Cache with Cascade Delete](#parent-child-cache-with-cascade-delete)
 - [Client State Patterns](#client-state-patterns)
   - [Business Logic Errors in Mutations](#business-logic-errors-in-mutations)
 - [React Native Patterns](#react-native-patterns)
@@ -835,6 +839,258 @@ setIsPer100g(!hasServingData);
 ---
 
 ## Database Patterns
+
+### Cache-First Pattern for Expensive Operations
+
+When an endpoint performs expensive operations (OpenAI API calls, external service requests, complex computations), check for cached results first:
+
+```typescript
+// Route handler with cache-first pattern
+app.get("/api/items/:id/suggestions", requireAuth, async (req, res) => {
+  const itemId = parseInt(req.params.id, 10);
+  const userProfile = await storage.getUserProfile(req.userId!);
+  const profileHash = calculateProfileHash(userProfile);
+
+  // 1. Check cache first
+  const cached = await storage.getSuggestionCache(
+    itemId,
+    req.userId!,
+    profileHash,
+  );
+  if (cached) {
+    // Increment hit count in background (fire-and-forget)
+    storage.incrementCacheHit(cached.id).catch(console.error);
+    return res.json({ suggestions: cached.suggestions, cacheId: cached.id });
+  }
+
+  // 2. Cache miss: perform expensive operation
+  const suggestions = await openai.generateSuggestions(itemId, userProfile);
+
+  // 3. Cache result for future requests
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+  const cacheEntry = await storage.createSuggestionCache(
+    itemId,
+    req.userId!,
+    profileHash,
+    suggestions,
+    expiresAt,
+  );
+
+  res.json({ suggestions, cacheId: cacheEntry.id });
+});
+```
+
+**Storage layer - check expiry inline:**
+
+```typescript
+async getSuggestionCache(
+  scannedItemId: number,
+  userId: string,
+  profileHash: string,
+): Promise<{ id: number; suggestions: SuggestionData[] } | undefined> {
+  const [cached] = await db
+    .select({ id: suggestionCache.id, suggestions: suggestionCache.suggestions })
+    .from(suggestionCache)
+    .where(
+      and(
+        eq(suggestionCache.scannedItemId, scannedItemId),
+        eq(suggestionCache.userId, userId),
+        eq(suggestionCache.profileHash, profileHash),
+        gt(suggestionCache.expiresAt, new Date()), // Check expiry inline
+      ),
+    );
+  return cached || undefined;
+}
+```
+
+**When to use:**
+
+- AI-generated content (suggestions, summaries, instructions)
+- External API calls with per-request costs
+- Complex computations with deterministic outputs
+- Any operation taking >500ms that produces cacheable results
+
+**Key elements:**
+
+- Composite cache key (itemId + userId + contextHash)
+- TTL-based expiration checked in query
+- Return cacheId to enable child cache lookups
+- Fire-and-forget hit count tracking
+
+### Fire-and-Forget for Non-Critical Background Operations
+
+When an operation shouldn't block the response but failure should be logged, use the fire-and-forget pattern:
+
+```typescript
+// Good: Fire-and-forget with error logging
+storage.incrementCacheHit(cached.id).catch(console.error);
+storage.invalidateCacheForUser(userId).catch(console.error);
+storage.createCacheEntry(data).catch(console.error);
+
+// Response sent immediately, background operation continues
+return res.json({ data });
+```
+
+```typescript
+// Bad: Awaiting non-critical operations delays response
+await storage.incrementCacheHit(cached.id);
+await storage.invalidateCacheForUser(userId);
+return res.json({ data }); // User waited for analytics
+```
+
+**When to use:**
+
+- Analytics and hit count tracking
+- Cache writes after generating response
+- Eager cache invalidation
+- Audit logging
+- Any operation where:
+  - Failure doesn't affect the current request's correctness
+  - The user shouldn't wait for completion
+
+**Why `.catch(console.error)`:** Without the catch, unhandled promise rejections can crash Node.js in strict mode. The console.error ensures failures are logged for debugging while not blocking the response.
+
+**When NOT to use:**
+
+- Operations that must succeed before responding (auth, critical writes)
+- Operations where failure affects response correctness
+- Multi-step transactions where rollback is needed
+
+### Content Hash Invalidation Pattern
+
+When cached content depends on user preferences that can change, use a content hash to detect when cache should be invalidated:
+
+```typescript
+// server/utils/profile-hash.ts
+import crypto from "crypto";
+import type { UserProfile } from "@shared/schema";
+
+/**
+ * Calculate hash of profile fields that affect cached content.
+ * Cache is invalidated when hash changes.
+ */
+export function calculateProfileHash(profile: UserProfile | undefined): string {
+  const hashInput = JSON.stringify({
+    allergies: profile?.allergies ?? [],
+    dietType: profile?.dietType ?? null,
+    cookingSkillLevel: profile?.cookingSkillLevel ?? null,
+    cookingTimeAvailable: profile?.cookingTimeAvailable ?? null,
+  });
+  return crypto.createHash("sha256").update(hashInput).digest("hex");
+}
+```
+
+**Store hash with cache entry:**
+
+```typescript
+export const suggestionCache = pgTable("suggestion_cache", {
+  id: serial("id").primaryKey(),
+  scannedItemId: integer("scanned_item_id")
+    .references(() => scannedItems.id)
+    .notNull(),
+  userId: varchar("user_id")
+    .references(() => users.id)
+    .notNull(),
+  profileHash: varchar("profile_hash", { length: 64 }).notNull(), // Store hash
+  suggestions: jsonb("suggestions").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+});
+```
+
+**Cache lookup includes hash in WHERE clause:**
+
+```typescript
+// Cache hit only if profileHash matches current profile state
+const cached = await storage.getSuggestionCache(itemId, userId, profileHash);
+```
+
+**Eager invalidation on profile update:**
+
+```typescript
+app.patch("/api/profile", requireAuth, async (req, res) => {
+  const fieldsAffectingCache = [
+    "allergies",
+    "dietType",
+    "cookingSkillLevel",
+    "cookingTimeAvailable",
+  ];
+  const changedCacheFields = fieldsAffectingCache.some(
+    (field) => field in req.body,
+  );
+
+  const profile = await storage.updateUserProfile(req.userId!, req.body);
+
+  // Eagerly invalidate cache if relevant fields changed
+  if (changedCacheFields) {
+    storage.invalidateCacheForUser(req.userId!).catch(console.error);
+  }
+
+  res.json(profile);
+});
+```
+
+**When to use:**
+
+- AI-generated content personalized to user preferences
+- Computed results that depend on user settings
+- Any cache where content correctness depends on user profile state
+
+**Why hash instead of timestamp:** Hash provides content-based invalidation. A user could update their profile (changing timestamp) without changing relevant fields, so timestamp-based invalidation would over-invalidate.
+
+### Parent-Child Cache with Cascade Delete
+
+When caching hierarchical data (parent suggestions with child instructions), use foreign key cascade delete for automatic cleanup:
+
+```typescript
+// Schema: Parent cache
+export const suggestionCache = pgTable("suggestion_cache", {
+  id: serial("id").primaryKey(),
+  scannedItemId: integer("scanned_item_id")
+    .references(() => scannedItems.id, { onDelete: "cascade" })
+    .notNull(),
+  userId: varchar("user_id")
+    .references(() => users.id, { onDelete: "cascade" })
+    .notNull(),
+  suggestions: jsonb("suggestions").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+});
+
+// Schema: Child cache with cascade delete from parent
+export const instructionCache = pgTable("instruction_cache", {
+  id: serial("id").primaryKey(),
+  suggestionCacheId: integer("suggestion_cache_id")
+    .references(() => suggestionCache.id, { onDelete: "cascade" }) // Auto-delete when parent deleted
+    .notNull(),
+  suggestionIndex: integer("suggestion_index").notNull(),
+  instructions: text("instructions").notNull(),
+});
+```
+
+**Pass parent cacheId to enable child lookups:**
+
+```typescript
+// Parent response includes cacheId
+res.json({ suggestions: cached.suggestions, cacheId: cached.id });
+
+// Client passes cacheId when requesting child data
+const { data } = useQuery({
+  queryKey: [`/api/items/${itemId}/suggestions/${index}/instructions`],
+  queryFn: () => apiRequest("POST", url, { cacheId, ... }),
+  enabled: !!cacheId,
+});
+```
+
+**When to use:**
+
+- Suggestions with expandable instructions
+- Search results with cached detail views
+- Any parent-child content relationship where child validity depends on parent
+
+**Benefits:**
+
+- Single delete operation cleans up all related cache entries
+- No orphaned child cache entries
+- Database enforces consistency
 
 ### Indexes for Foreign Keys and Sort Columns
 

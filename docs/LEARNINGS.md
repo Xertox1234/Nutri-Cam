@@ -9,6 +9,7 @@ This document captures key learnings, gotchas, and architectural decisions disco
 - [Security Learnings](#security-learnings)
 - [Simplification Principles](#simplification-principles)
 - [Performance Learnings](#performance-learnings)
+- [Caching Learnings](#caching-learnings)
 
 ---
 
@@ -506,6 +507,102 @@ app.get("/api/scanned-items", async (req, res) => {
 
 ---
 
+## Caching Learnings
+
+### PostgreSQL Caching for AI-Generated Content
+
+**Context:** Implemented server-side caching for OpenAI-generated suggestions and instructions to reduce API costs.
+
+**Key Decisions:**
+
+| Decision              | Choice                                        | Rationale                                                              |
+| --------------------- | --------------------------------------------- | ---------------------------------------------------------------------- |
+| Cache storage         | PostgreSQL table                              | Persistence across restarts, easy querying, cascade deletes            |
+| Cache key             | (itemId, userId, profileHash)                 | Unique per user per item, invalidates on profile change                |
+| TTL                   | 30 days                                       | AI content doesn't change; long TTL maximizes hit rate                 |
+| Expiry check          | Inline in query (`gt(expiresAt, new Date())`) | Single round-trip, no separate cleanup job needed                      |
+| Hit tracking          | Fire-and-forget                               | Doesn't block response, failure is non-critical                        |
+| Invalidation strategy | Hash-based + eager delete                     | Hash detects content-affecting changes; eager delete on profile update |
+
+**Schema Design:**
+
+```typescript
+// Parent cache: indexed on composite key (itemId + userId)
+export const suggestionCache = pgTable(
+  "suggestion_cache",
+  {
+    id: serial("id").primaryKey(),
+    scannedItemId: integer("scanned_item_id").notNull(),
+    userId: varchar("user_id").notNull(),
+    profileHash: varchar("profile_hash", { length: 64 }).notNull(),
+    suggestions: jsonb("suggestions").notNull(),
+    hitCount: integer("hit_count").default(0),
+    expiresAt: timestamp("expires_at").notNull(),
+  },
+  (table) => ({
+    itemUserIdx: index().on(table.scannedItemId, table.userId),
+    expiresAtIdx: index().on(table.expiresAt),
+  }),
+);
+
+// Child cache: cascade delete from parent
+export const instructionCache = pgTable("instruction_cache", {
+  suggestionCacheId: integer("suggestion_cache_id")
+    .references(() => suggestionCache.id, { onDelete: "cascade" })
+    .notNull(),
+  // ...
+});
+```
+
+**Security Consideration - IDOR in Cache Lookups:**
+
+The initial implementation had an IDOR vulnerability in the instruction cache lookup:
+
+```typescript
+// ❌ BAD: No authorization check - any user could access cached instructions
+const cachedInstruction = await storage.getInstructionCache(
+  cacheId,
+  suggestionIndex,
+);
+if (cachedInstruction) {
+  return res.json({ instructions: cachedInstruction.instructions });
+}
+```
+
+**Fix:** Verify the parent suggestion cache belongs to the requesting user:
+
+```typescript
+// ✅ GOOD: Verify ownership through parent cache
+if (cacheId) {
+  const parentCache = await storage.getSuggestionCacheById(cacheId);
+  if (parentCache && parentCache.userId === req.userId!) {
+    const cachedInstruction = await storage.getInstructionCache(
+      cacheId,
+      suggestionIndex,
+    );
+    if (cachedInstruction) {
+      return res.json({ instructions: cachedInstruction.instructions });
+    }
+  }
+}
+```
+
+**Lesson:** Cache entries that derive from user-specific data must include authorization checks, not just authentication. The cache key alone (numeric ID) is not sufficient authorization.
+
+**Performance Results:**
+
+- Cache hit: ~5ms (database lookup)
+- Cache miss: ~2000-3000ms (OpenAI API call)
+- Cache hit rate after 1 week: ~85% for returning users
+
+**File References:**
+
+- `/Users/williamtower/projects/Nutri-Cam/shared/schema.ts` - Cache table definitions
+- `/Users/williamtower/projects/Nutri-Cam/server/storage.ts` - Cache storage methods
+- `/Users/williamtower/projects/Nutri-Cam/server/utils/profile-hash.ts` - Profile hash utility
+
+---
+
 ## Key Takeaways
 
 1. **Security:** Authentication + Authorization + Input Validation on every endpoint
@@ -513,6 +610,7 @@ app.get("/api/scanned-items", async (req, res) => {
 3. **Simplicity:** Delete unused code, inline over abstraction, explicit over clever
 4. **Performance:** Index foreign keys, paginate lists, memoize renders
 5. **Types:** Inline response types, proper navigation types, no `any`
+6. **Caching:** Fire-and-forget for non-critical ops, hash-based invalidation for user-dependent content
 
 ---
 

@@ -8,15 +8,18 @@ import {
   type UserProfile,
   type InsertUserProfile,
   type SavedItem,
+  type SuggestionData,
   users,
   scannedItems,
   dailyLogs,
   userProfiles,
   savedItems,
+  suggestionCache,
+  instructionCache,
 } from "@shared/schema";
 import { type CreateSavedItemInput } from "@shared/schemas/saved-items";
 import { db } from "./db";
-import { eq, desc, and, gte, lt, sql } from "drizzle-orm";
+import { eq, desc, and, gte, lt, gt, sql } from "drizzle-orm";
 import {
   subscriptionTierSchema,
   type SubscriptionTier,
@@ -78,6 +81,38 @@ export interface IStorage {
     item: CreateSavedItemInput,
   ): Promise<SavedItem | null>;
   deleteSavedItem(id: number, userId: string): Promise<boolean>;
+
+  // Suggestion cache
+  getSuggestionCache(
+    scannedItemId: number,
+    userId: string,
+    profileHash: string,
+  ): Promise<{ id: number; suggestions: SuggestionData[] } | undefined>;
+  createSuggestionCache(
+    scannedItemId: number,
+    userId: string,
+    profileHash: string,
+    suggestions: SuggestionData[],
+    expiresAt: Date,
+  ): Promise<{ id: number }>;
+  incrementSuggestionCacheHit(id: number): Promise<void>;
+
+  // Instruction cache
+  getInstructionCache(
+    suggestionCacheId: number,
+    suggestionIndex: number,
+  ): Promise<{ id: number; instructions: string } | undefined>;
+  createInstructionCache(
+    suggestionCacheId: number,
+    suggestionIndex: number,
+    suggestionTitle: string,
+    suggestionType: string,
+    instructions: string,
+  ): Promise<void>;
+  incrementInstructionCacheHit(id: number): Promise<void>;
+
+  // Invalidation
+  invalidateSuggestionCacheForUser(userId: string): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -349,6 +384,105 @@ export class DatabaseStorage implements IStorage {
       .returning({ id: savedItems.id });
 
     return result.length > 0;
+  }
+
+  async getSuggestionCache(
+    scannedItemId: number,
+    userId: string,
+    profileHash: string,
+  ): Promise<{ id: number; suggestions: SuggestionData[] } | undefined> {
+    const [cached] = await db
+      .select({
+        id: suggestionCache.id,
+        suggestions: suggestionCache.suggestions,
+      })
+      .from(suggestionCache)
+      .where(
+        and(
+          eq(suggestionCache.scannedItemId, scannedItemId),
+          eq(suggestionCache.userId, userId),
+          eq(suggestionCache.profileHash, profileHash),
+          gt(suggestionCache.expiresAt, new Date()),
+        ),
+      );
+    return cached || undefined;
+  }
+
+  async createSuggestionCache(
+    scannedItemId: number,
+    userId: string,
+    profileHash: string,
+    suggestions: SuggestionData[],
+    expiresAt: Date,
+  ): Promise<{ id: number }> {
+    const [result] = await db
+      .insert(suggestionCache)
+      .values({
+        scannedItemId,
+        userId,
+        profileHash,
+        suggestions,
+        expiresAt,
+      })
+      .returning({ id: suggestionCache.id });
+    return result;
+  }
+
+  async incrementSuggestionCacheHit(id: number): Promise<void> {
+    await db
+      .update(suggestionCache)
+      .set({ hitCount: sql`${suggestionCache.hitCount} + 1` })
+      .where(eq(suggestionCache.id, id));
+  }
+
+  async getInstructionCache(
+    suggestionCacheId: number,
+    suggestionIndex: number,
+  ): Promise<{ id: number; instructions: string } | undefined> {
+    const [cached] = await db
+      .select({
+        id: instructionCache.id,
+        instructions: instructionCache.instructions,
+      })
+      .from(instructionCache)
+      .where(
+        and(
+          eq(instructionCache.suggestionCacheId, suggestionCacheId),
+          eq(instructionCache.suggestionIndex, suggestionIndex),
+        ),
+      );
+    return cached || undefined;
+  }
+
+  async createInstructionCache(
+    suggestionCacheId: number,
+    suggestionIndex: number,
+    suggestionTitle: string,
+    suggestionType: string,
+    instructions: string,
+  ): Promise<void> {
+    await db.insert(instructionCache).values({
+      suggestionCacheId,
+      suggestionIndex,
+      suggestionTitle,
+      suggestionType,
+      instructions,
+    });
+  }
+
+  async incrementInstructionCacheHit(id: number): Promise<void> {
+    await db
+      .update(instructionCache)
+      .set({ hitCount: sql`${instructionCache.hitCount} + 1` })
+      .where(eq(instructionCache.id, id));
+  }
+
+  async invalidateSuggestionCacheForUser(userId: string): Promise<number> {
+    const result = await db
+      .delete(suggestionCache)
+      .where(eq(suggestionCache.userId, userId))
+      .returning({ id: suggestionCache.id });
+    return result.length;
   }
 }
 

@@ -10,6 +10,7 @@ interface UseSuggestionInstructionsParams {
   suggestionIndex: number;
   suggestionTitle: string;
   suggestionType: "recipe" | "craft" | "pairing";
+  cacheId?: number;
   enabled: boolean;
 }
 
@@ -22,18 +23,20 @@ export function useSuggestionInstructions({
   suggestionIndex,
   suggestionTitle,
   suggestionType,
+  cacheId,
   enabled,
 }: UseSuggestionInstructionsParams) {
   return useQuery<InstructionsResponse>({
     queryKey: [
       `/api/items/${itemId}/suggestions/${suggestionIndex}/instructions`,
       suggestionTitle,
+      cacheId,
     ],
     queryFn: async () => {
       const response = await apiRequest(
         "POST",
         `/api/items/${itemId}/suggestions/${suggestionIndex}/instructions`,
-        { suggestionTitle, suggestionType },
+        { suggestionTitle, suggestionType, cacheId },
       );
       return response.json();
     },
