@@ -43,6 +43,7 @@ import {
   userPhysicalProfileSchema,
   type CalculatedGoals,
 } from "./services/goal-calculator";
+import { calculateProfileHash } from "./utils/profile-hash";
 
 /**
  * Type guard to validate if a string is a valid subscription tier.
@@ -72,7 +73,7 @@ const photoRateLimit = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max: 10, // 10 requests per minute
   message: { error: "Too many photo uploads. Please wait." },
-  keyGenerator: (req) => req.userId || req.ip || "anonymous",
+  keyGenerator: (req) => req.userId || ipKeyGenerator(req),
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -81,7 +82,7 @@ const instructionsRateLimit = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max: 20, // 20 requests per minute per user
   message: { error: "Too many instruction requests. Please wait." },
-  keyGenerator: (req) => req.userId || req.ip || "anonymous",
+  keyGenerator: (req) => req.userId || ipKeyGenerator(req),
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -162,6 +163,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             id: user.id,
             username: user.username,
             displayName: user.displayName,
+            avatarUrl: user.avatarUrl,
             dailyCalorieGoal: user.dailyCalorieGoal,
             onboardingCompleted: user.onboardingCompleted,
             subscriptionTier: user.subscriptionTier || "free",
@@ -208,6 +210,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             id: user.id,
             username: user.username,
             displayName: user.displayName,
+            avatarUrl: user.avatarUrl,
             dailyCalorieGoal: user.dailyCalorieGoal,
             onboardingCompleted: user.onboardingCompleted,
             subscriptionTier: user.subscriptionTier || "free",
@@ -236,6 +239,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       id: user.id,
       username: user.username,
       displayName: user.displayName,
+      avatarUrl: user.avatarUrl,
       dailyCalorieGoal: user.dailyCalorieGoal,
       onboardingCompleted: user.onboardingCompleted,
       subscriptionTier: user.subscriptionTier || "free",
@@ -270,6 +274,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           id: user.id,
           username: user.username,
           displayName: user.displayName,
+          avatarUrl: user.avatarUrl,
           dailyCalorieGoal: user.dailyCalorieGoal,
           onboardingCompleted: user.onboardingCompleted,
           subscriptionTier: user.subscriptionTier || "free",
@@ -361,6 +366,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     },
   );
 
+  // Fields that affect AI-generated suggestions - if any change, invalidate cache
+  const cacheAffectingFields = [
+    "allergies",
+    "dietType",
+    "cookingSkillLevel",
+    "cookingTimeAvailable",
+  ];
+
   app.put(
     "/api/user/dietary-profile",
     requireAuth,
@@ -376,6 +389,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         if (!profile) {
           return res.status(404).json({ error: "Profile not found" });
+        }
+
+        // Invalidate suggestion cache if dietary-affecting fields changed
+        // Fire-and-forget: don't block the response on cache invalidation
+        const changedCacheFields = cacheAffectingFields.some(
+          (f) => f in validated,
+        );
+        if (changedCacheFields) {
+          storage
+            .invalidateSuggestionCacheForUser(req.userId!)
+            .catch(console.error);
         }
 
         res.json(profile);
@@ -609,11 +633,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const item = await storage.getScannedItem(itemId);
 
-        if (!item) {
+        // IDOR protection: verify user owns the item
+        if (!item || item.userId !== req.userId) {
           return res.status(404).json({ error: "Item not found" });
         }
 
         const userProfile = await storage.getUserProfile(req.userId!);
+        const profileHash = calculateProfileHash(userProfile);
+
+        // Check cache first
+        const cached = await storage.getSuggestionCache(
+          itemId,
+          req.userId!,
+          profileHash,
+        );
+        if (cached) {
+          // Increment hit count in background
+          storage.incrementSuggestionCacheHit(cached.id).catch(console.error);
+          return res.json({
+            suggestions: cached.suggestions,
+            cacheId: cached.id,
+          });
+        }
 
         let dietaryContext = "";
         if (userProfile) {
@@ -689,7 +730,20 @@ Keep descriptions concise. Make recipes practical and kid activities fun and saf
         const responseText = completion.choices[0]?.message?.content || "{}";
         const suggestions = JSON.parse(responseText);
 
-        res.json(suggestions);
+        // Cache the result (30 days TTL)
+        const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+        const cacheEntry = await storage.createSuggestionCache(
+          itemId,
+          req.userId!,
+          profileHash,
+          suggestions.suggestions,
+          expiresAt,
+        );
+
+        res.json({
+          suggestions: suggestions.suggestions,
+          cacheId: cacheEntry.id,
+        });
       } catch (error) {
         console.error("Error generating suggestions:", error);
         res.status(500).json({ error: "Failed to generate suggestions" });
@@ -701,6 +755,7 @@ Keep descriptions concise. Make recipes practical and kid activities fun and saf
   const instructionsRequestSchema = z.object({
     suggestionTitle: z.string().min(1).max(200),
     suggestionType: z.enum(["recipe", "craft", "pairing"]),
+    cacheId: z.number().int().positive().optional(),
   });
 
   app.post(
@@ -739,7 +794,23 @@ Keep descriptions concise. Make recipes practical and kid activities fun and saf
             .json({ error: "Invalid input", details: parsed.error.flatten() });
         }
 
-        const { suggestionTitle, suggestionType } = parsed.data;
+        const { suggestionTitle, suggestionType, cacheId } = parsed.data;
+
+        // Check instruction cache if cacheId provided
+        if (cacheId) {
+          const cachedInstruction = await storage.getInstructionCache(
+            cacheId,
+            suggestionIndex,
+          );
+          if (cachedInstruction) {
+            // Increment hit count in background
+            storage
+              .incrementInstructionCacheHit(cachedInstruction.id)
+              .catch(console.error);
+            return res.json({ instructions: cachedInstruction.instructions });
+          }
+        }
+
         const userProfile = await storage.getUserProfile(req.userId!);
 
         let dietaryContext = "";
@@ -821,6 +892,19 @@ Format as plain text with clear sections.`;
           completion.choices[0]?.message?.content ||
           "Unable to generate instructions.";
 
+        // Cache the instruction if we have a cacheId
+        if (cacheId) {
+          storage
+            .createInstructionCache(
+              cacheId,
+              suggestionIndex,
+              suggestionTitle,
+              suggestionType,
+              instructions,
+            )
+            .catch(console.error);
+        }
+
         res.json({ instructions });
       } catch (error) {
         console.error("Error generating instructions:", error);
@@ -848,6 +932,80 @@ Format as plain text with clear sections.`;
       }
     },
   });
+
+  // Avatar upload rate limiter
+  const avatarRateLimit = rateLimit({
+    windowMs: 60 * 1000, // 1 minute
+    max: 5, // 5 uploads per minute
+    message: { error: "Too many avatar uploads. Please wait." },
+    keyGenerator: (req) => req.userId || ipKeyGenerator(req),
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
+
+  // Avatar upload endpoint - converts image to base64 data URL
+  app.post(
+    "/api/user/avatar",
+    requireAuth,
+    avatarRateLimit,
+    upload.single("avatar"),
+    async (req: Request, res: Response) => {
+      try {
+        if (!req.file) {
+          return res.status(400).json({ error: "No image provided" });
+        }
+
+        // Convert to base64 data URL (stored directly in DB for simplicity)
+        const base64 = req.file.buffer.toString("base64");
+        const mimeType = req.file.mimetype;
+        const dataUrl = `data:${mimeType};base64,${base64}`;
+
+        // Limit size check (already handled by multer, but double-check data URL)
+        if (dataUrl.length > 1.5 * 1024 * 1024) {
+          return res
+            .status(400)
+            .json({ error: "Image too large after encoding" });
+        }
+
+        const user = await storage.updateUser(req.userId!, {
+          avatarUrl: dataUrl,
+        });
+
+        if (!user) {
+          return res.status(404).json({ error: "User not found" });
+        }
+
+        res.json({
+          avatarUrl: user.avatarUrl,
+        });
+      } catch (error) {
+        console.error("Avatar upload error:", error);
+        res.status(500).json({ error: "Failed to upload avatar" });
+      }
+    },
+  );
+
+  // Avatar delete endpoint
+  app.delete(
+    "/api/user/avatar",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      try {
+        const user = await storage.updateUser(req.userId!, {
+          avatarUrl: null,
+        });
+
+        if (!user) {
+          return res.status(404).json({ error: "User not found" });
+        }
+
+        res.json({ success: true });
+      } catch (error) {
+        console.error("Avatar delete error:", error);
+        res.status(500).json({ error: "Failed to delete avatar" });
+      }
+    },
+  );
 
   // In-memory store for analysis sessions
   // TODO: Replace with Redis for horizontal scaling in production

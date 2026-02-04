@@ -1,11 +1,13 @@
-import React, { ComponentProps, useState } from "react";
+import React, { ComponentProps, useState, useRef } from "react";
 import {
   StyleSheet,
   View,
   Pressable,
   TextInput,
   ActivityIndicator,
+  Image,
 } from "react-native";
+import * as ImagePicker from "expo-image-picker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
@@ -18,19 +20,31 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollViewCompat";
 import { ThemedText } from "@/components/ThemedText";
 import { Card } from "@/components/Card";
-import { Button } from "@/components/Button";
 import { useTheme } from "@/hooks/useTheme";
 import { useHaptics } from "@/hooks/useHaptics";
 import { useAccessibility } from "@/hooks/useAccessibility";
 import { useAuthContext } from "@/context/AuthContext";
 import { useSavedItemCount } from "@/hooks/useSavedItems";
 import { Spacing, BorderRadius } from "@/constants/theme";
+import { compressImage, cleanupImage } from "@/lib/image-compression";
+import { getApiUrl } from "@/lib/query-client";
+import { tokenStorage } from "@/lib/token-storage";
+import { uploadAsync, FileSystemUploadType } from "expo-file-system/legacy";
 import type { RootStackParamList } from "@/navigation/RootStackNavigator";
 import type { ProfileStackParamList } from "@/navigation/ProfileStackNavigator";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { CompositeNavigationProp } from "@react-navigation/native";
 import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import type { MainTabParamList } from "@/navigation/MainTabNavigator";
+
+import {
+  DIET_LABELS,
+  GOAL_LABELS,
+  ACTIVITY_LABELS,
+  SKILL_LABELS,
+  TIME_LABELS,
+  CONDITION_LABELS,
+} from "@/constants/dietary-options";
 
 type ProfileScreenNavigationProp = CompositeNavigationProp<
   NativeStackNavigationProp<ProfileStackParamList, "Profile">,
@@ -52,61 +66,6 @@ interface DietaryProfile {
   cookingSkillLevel?: string | null;
   cookingTimeAvailable?: string | null;
 }
-
-const DIET_LABELS: Record<string, string> = {
-  omnivore: "Omnivore",
-  vegetarian: "Vegetarian",
-  vegan: "Vegan",
-  pescatarian: "Pescatarian",
-  keto: "Keto",
-  paleo: "Paleo",
-  mediterranean: "Mediterranean",
-  halal: "Halal",
-  kosher: "Kosher",
-  low_fodmap: "Low FODMAP",
-};
-
-const GOAL_LABELS: Record<string, string> = {
-  lose_weight: "Lose Weight",
-  gain_muscle: "Build Muscle",
-  maintain: "Maintain Weight",
-  eat_healthier: "Eat Healthier",
-  manage_condition: "Manage Health Condition",
-};
-
-const ACTIVITY_LABELS: Record<string, string> = {
-  sedentary: "Sedentary",
-  light: "Lightly Active",
-  moderate: "Moderately Active",
-  active: "Very Active",
-  athlete: "Athlete",
-};
-
-const SKILL_LABELS: Record<string, string> = {
-  beginner: "Beginner",
-  intermediate: "Intermediate",
-  advanced: "Advanced",
-};
-
-const TIME_LABELS: Record<string, string> = {
-  quick: "Quick (< 15 min)",
-  moderate: "Moderate (15-30 min)",
-  extended: "Extended (30-60 min)",
-  leisurely: "Leisurely (60+ min)",
-};
-
-const CONDITION_LABELS: Record<string, string> = {
-  diabetes_type1: "Type 1 Diabetes",
-  diabetes_type2: "Type 2 Diabetes",
-  heart_disease: "Heart Disease",
-  high_blood_pressure: "High Blood Pressure",
-  high_cholesterol: "High Cholesterol",
-  ibs: "IBS",
-  celiac: "Celiac Disease",
-  kidney_disease: "Kidney Disease",
-  pcos: "PCOS",
-  gerd: "GERD/Acid Reflux",
-};
 
 interface DailySummary {
   totalCalories: number;
@@ -191,12 +150,17 @@ export default function ProfileScreen() {
   const { theme } = useTheme();
   const haptics = useHaptics();
   const { reducedMotion } = useAccessibility();
-  const { user, logout, updateUser } = useAuthContext();
+  const { user, logout, updateUser, checkAuth } = useAuthContext();
   const navigation = useNavigation<ProfileScreenNavigationProp>();
 
   const [isEditing, setIsEditing] = useState(false);
   const [displayName, setDisplayName] = useState(user?.displayName || "");
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [nameSelection, setNameSelection] = useState<
+    { start: number; end: number } | undefined
+  >(undefined);
+  const nameInputRef = useRef<TextInput>(null);
 
   const { data: todaySummary } = useQuery<DailySummary>({
     queryKey: ["/api/daily-summary"],
@@ -240,6 +204,71 @@ export default function ProfileScreen() {
     await logout();
   };
 
+  const handleAvatarPress = async () => {
+    haptics.impact(Haptics.ImpactFeedbackStyle.Light);
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+
+    if (result.canceled || !result.assets[0]) {
+      return;
+    }
+
+    setIsUploadingAvatar(true);
+    try {
+      const token = await tokenStorage.get();
+      if (!token) {
+        throw new Error("Not authenticated");
+      }
+
+      // Compress the image
+      const compressed = await compressImage(result.assets[0].uri, {
+        maxWidth: 400,
+        maxHeight: 400,
+        quality: 0.8,
+        targetSizeKB: 500,
+      });
+
+      try {
+        // Upload using expo-file-system (same as photo analysis)
+        const uploadResult = await uploadAsync(
+          `${getApiUrl()}/api/user/avatar`,
+          compressed.uri,
+          {
+            httpMethod: "POST",
+            uploadType: FileSystemUploadType.MULTIPART,
+            fieldName: "avatar",
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        );
+
+        if (uploadResult.status !== 200) {
+          const errorData = JSON.parse(uploadResult.body || "{}");
+          throw new Error(errorData.error || "Failed to upload avatar");
+        }
+
+        // Refresh user state to get new avatar
+        await checkAuth();
+
+        haptics.notification(Haptics.NotificationFeedbackType.Success);
+      } finally {
+        // Clean up compressed image
+        await cleanupImage(compressed.uri);
+      }
+    } catch (error) {
+      console.error("Avatar upload error:", error);
+      haptics.notification(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
+
   const calorieProgress = todaySummary
     ? Math.min(
         (todaySummary.totalCalories / (user?.dailyCalorieGoal || 2000)) * 100,
@@ -263,33 +292,134 @@ export default function ProfileScreen() {
         }
         style={styles.profileHeader}
       >
-        <View
-          style={[styles.avatar, { backgroundColor: theme.success + "20" }]}
+        <Pressable
+          onPress={handleAvatarPress}
+          accessibilityLabel="Tap to change profile picture"
+          accessibilityRole="button"
+          style={({ pressed }) => [
+            styles.avatar,
+            {
+              backgroundColor: theme.success + "20",
+              opacity: pressed ? 0.8 : 1,
+            },
+          ]}
         >
-          <Feather name="user" size={40} color={theme.success} />
-        </View>
+          {isUploadingAvatar ? (
+            <ActivityIndicator size="large" color={theme.success} />
+          ) : user?.avatarUrl ? (
+            <Image
+              source={{ uri: user.avatarUrl }}
+              style={styles.avatarImage}
+            />
+          ) : (
+            <Feather name="user" size={40} color={theme.success} />
+          )}
+          <View
+            style={[styles.avatarEditBadge, { backgroundColor: theme.success }]}
+          >
+            <Feather name="camera" size={14} color="#FFFFFF" />
+          </View>
+        </Pressable>
 
         {isEditing ? (
-          <TextInput
-            style={[
-              styles.nameInput,
-              {
-                backgroundColor: theme.backgroundDefault,
-                color: theme.text,
-                borderColor: theme.border,
-              },
-            ]}
-            value={displayName}
-            onChangeText={setDisplayName}
-            placeholder="Display Name"
-            placeholderTextColor={theme.textSecondary}
-            accessibilityLabel="Display name"
-            autoFocus
-          />
+          <>
+            <TextInput
+              ref={nameInputRef}
+              style={[
+                styles.nameInput,
+                {
+                  backgroundColor: theme.backgroundDefault,
+                  color: theme.text,
+                  borderColor: theme.success,
+                },
+              ]}
+              value={displayName}
+              onChangeText={(text) => {
+                setDisplayName(text);
+                // Clear controlled selection after first input
+                if (nameSelection) {
+                  setNameSelection(undefined);
+                }
+              }}
+              selection={nameSelection}
+              onSelectionChange={() => {
+                // Clear controlled selection after user interacts with cursor
+                // This allows normal cursor behavior after initial select-all
+                if (nameSelection) {
+                  setNameSelection(undefined);
+                }
+              }}
+              placeholder="Display Name"
+              placeholderTextColor={theme.textSecondary}
+              accessibilityLabel="Display name"
+              autoFocus
+            />
+            <View style={styles.inlineEditButtons}>
+              <Pressable
+                onPress={handleSave}
+                disabled={isSaving}
+                accessibilityLabel={
+                  isSaving ? "Saving changes" : "Save changes"
+                }
+                accessibilityRole="button"
+                style={[
+                  styles.inlineSaveButton,
+                  { backgroundColor: theme.success },
+                ]}
+              >
+                {isSaving ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                  <>
+                    <Feather name="check" size={16} color="#FFFFFF" />
+                    <ThemedText
+                      type="small"
+                      style={{ color: "#FFFFFF", fontWeight: "600" }}
+                    >
+                      Save
+                    </ThemedText>
+                  </>
+                )}
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  setIsEditing(false);
+                  setDisplayName(user?.displayName || "");
+                }}
+                accessibilityLabel="Cancel editing"
+                accessibilityRole="button"
+                style={[
+                  styles.inlineCancelButton,
+                  { backgroundColor: theme.backgroundSecondary },
+                ]}
+              >
+                <Feather name="x" size={16} color={theme.text} />
+                <ThemedText type="small">Cancel</ThemedText>
+              </Pressable>
+            </View>
+          </>
         ) : (
-          <ThemedText type="h3" style={styles.userName}>
-            {user?.displayName || user?.username || "User"}
-          </ThemedText>
+          <Pressable
+            onPress={() => {
+              const currentName = user?.displayName || user?.username || "";
+              setDisplayName(currentName);
+              // Select all text so typing replaces it
+              setNameSelection({ start: 0, end: currentName.length });
+              setIsEditing(true);
+              haptics.impact(Haptics.ImpactFeedbackStyle.Light);
+            }}
+            accessibilityLabel="Tap to edit display name"
+            accessibilityRole="button"
+            style={({ pressed }) => [
+              styles.nameRow,
+              { opacity: pressed ? 0.7 : 1 },
+            ]}
+          >
+            <ThemedText type="h3" style={styles.userName}>
+              {user?.displayName || user?.username || "User"}
+            </ThemedText>
+            <Feather name="edit-2" size={14} color={theme.textSecondary} />
+          </Pressable>
         )}
 
         <ThemedText type="small" style={{ color: theme.textSecondary }}>
@@ -592,9 +722,28 @@ export default function ProfileScreen() {
           reducedMotion ? undefined : FadeInDown.delay(400).duration(400)
         }
       >
-        <ThemedText type="h4" style={styles.sectionTitle}>
-          Dietary Preferences
-        </ThemedText>
+        <View style={styles.sectionHeaderRow}>
+          <ThemedText type="h4" style={styles.sectionTitle}>
+            Dietary Preferences
+          </ThemedText>
+          <Pressable
+            onPress={() => navigation.navigate("EditDietaryProfile")}
+            accessibilityLabel="Edit dietary preferences"
+            accessibilityRole="button"
+            style={({ pressed }) => [
+              styles.setupGoalsButton,
+              {
+                backgroundColor: theme.success + "20",
+                opacity: pressed ? 0.7 : 1,
+              },
+            ]}
+          >
+            <Feather name="edit-2" size={14} color={theme.success} />
+            <ThemedText type="small" style={{ color: theme.success }}>
+              Edit
+            </ThemedText>
+          </Pressable>
+        </View>
         <Card elevation={1} style={styles.dietaryCard}>
           {dietaryProfile ? (
             <>
@@ -949,53 +1098,24 @@ export default function ProfileScreen() {
           Account
         </ThemedText>
         <Card elevation={1} style={styles.settingsCard}>
-          {isEditing ? (
-            <View style={styles.editButtons}>
-              <Button
-                onPress={handleSave}
-                disabled={isSaving}
-                accessibilityLabel={
-                  isSaving ? "Saving changes" : "Save Changes"
-                }
-                style={{ flex: 1, backgroundColor: theme.success }}
-              >
-                {isSaving ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
-                ) : (
-                  "Save Changes"
-                )}
-              </Button>
-              <Pressable
-                onPress={() => setIsEditing(false)}
-                accessibilityLabel="Cancel editing"
-                accessibilityRole="button"
-                style={[
-                  styles.cancelButton,
-                  { backgroundColor: theme.backgroundSecondary },
-                ]}
-              >
-                <ThemedText type="body">Cancel</ThemedText>
-              </Pressable>
-            </View>
-          ) : (
-            <>
-              <SettingsItem
-                icon="edit-2"
-                label="Edit Profile"
-                onPress={() => setIsEditing(true)}
-              />
-              <View
-                style={[styles.divider, { backgroundColor: theme.border }]}
-              />
-              <SettingsItem
-                icon="log-out"
-                label="Sign Out"
-                onPress={handleLogout}
-                showChevron={false}
-                danger
-              />
-            </>
-          )}
+          <SettingsItem
+            icon="edit-2"
+            label="Edit Profile"
+            onPress={() => {
+              const currentName = user?.displayName || user?.username || "";
+              setDisplayName(currentName);
+              setNameSelection({ start: 0, end: currentName.length });
+              setIsEditing(true);
+            }}
+          />
+          <View style={[styles.divider, { backgroundColor: theme.border }]} />
+          <SettingsItem
+            icon="log-out"
+            label="Sign Out"
+            onPress={handleLogout}
+            showChevron={false}
+            danger
+          />
         </Card>
       </Animated.View>
     </KeyboardAwareScrollViewCompat>
@@ -1014,6 +1134,29 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginBottom: Spacing.lg,
+    position: "relative",
+  },
+  avatarImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+  },
+  avatarEditBadge: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#FFFFFF",
+  },
+  nameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.xs,
   },
   userName: {
     marginBottom: Spacing.xs,
@@ -1026,8 +1169,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     borderRadius: BorderRadius.xs,
     borderWidth: 1,
-    marginBottom: Spacing.xs,
+    marginBottom: Spacing.sm,
     minWidth: 200,
+  },
+  inlineEditButtons: {
+    flexDirection: "row",
+    gap: Spacing.sm,
+    marginBottom: Spacing.sm,
+  },
+  inlineSaveButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.xs,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.full,
+  },
+  inlineCancelButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.xs,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.full,
   },
   todayCard: {
     padding: Spacing.xl,
@@ -1108,18 +1272,6 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.xs,
     minWidth: 100,
     textAlign: "right",
-  },
-  editButtons: {
-    flexDirection: "row",
-    gap: Spacing.md,
-    padding: Spacing.lg,
-  },
-  cancelButton: {
-    paddingVertical: Spacing.lg,
-    paddingHorizontal: Spacing["2xl"],
-    borderRadius: BorderRadius.full,
-    justifyContent: "center",
-    alignItems: "center",
   },
   dietaryCard: {
     padding: Spacing.lg,

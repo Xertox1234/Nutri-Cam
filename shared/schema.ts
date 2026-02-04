@@ -21,6 +21,7 @@ export const users = pgTable("users", {
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
   displayName: text("display_name"),
+  avatarUrl: text("avatar_url"),
   dailyCalorieGoal: integer("daily_calorie_goal").default(2000),
   dailyProteinGoal: integer("daily_protein_goal"),
   dailyCarbsGoal: integer("daily_carbs_goal"),
@@ -151,6 +152,68 @@ export const nutritionCache = pgTable(
   }),
 );
 
+// Type for suggestions JSONB
+export interface SuggestionData {
+  type: "recipe" | "craft" | "pairing";
+  title: string;
+  description: string;
+  difficulty?: string;
+  timeEstimate?: string;
+}
+
+// Suggestion cache - stores the 4 suggestions per item per user
+export const suggestionCache = pgTable(
+  "suggestion_cache",
+  {
+    id: serial("id").primaryKey(),
+    scannedItemId: integer("scanned_item_id")
+      .references(() => scannedItems.id, { onDelete: "cascade" })
+      .notNull(),
+    userId: varchar("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    profileHash: varchar("profile_hash", { length: 64 }).notNull(),
+    suggestions: jsonb("suggestions").$type<SuggestionData[]>().notNull(),
+    hitCount: integer("hit_count").default(0),
+    createdAt: timestamp("created_at")
+      .default(sql`CURRENT_TIMESTAMP`)
+      .notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+  },
+  (table) => ({
+    itemUserIdx: index("suggestion_cache_item_user_idx").on(
+      table.scannedItemId,
+      table.userId,
+    ),
+    expiresAtIdx: index("suggestion_cache_expires_at_idx").on(table.expiresAt),
+  }),
+);
+
+// Instruction cache - stores individual instruction per suggestion
+export const instructionCache = pgTable(
+  "instruction_cache",
+  {
+    id: serial("id").primaryKey(),
+    suggestionCacheId: integer("suggestion_cache_id")
+      .references(() => suggestionCache.id, { onDelete: "cascade" })
+      .notNull(),
+    suggestionIndex: integer("suggestion_index").notNull(),
+    suggestionTitle: text("suggestion_title").notNull(),
+    suggestionType: text("suggestion_type").notNull(),
+    instructions: text("instructions").notNull(),
+    hitCount: integer("hit_count").default(0),
+    createdAt: timestamp("created_at")
+      .default(sql`CURRENT_TIMESTAMP`)
+      .notNull(),
+  },
+  (table) => ({
+    cacheIndexIdx: index("instruction_cache_suggestion_idx").on(
+      table.suggestionCacheId,
+      table.suggestionIndex,
+    ),
+  }),
+);
+
 // Saved items types (recipes and activities from suggestions)
 export const savedItemTypes = ["recipe", "activity"] as const;
 export type SavedItemType = (typeof savedItemTypes)[number];
@@ -273,5 +336,7 @@ export type DailyLog = typeof dailyLogs.$inferSelect;
 export type InsertUserProfile = z.infer<typeof insertUserProfileSchema>;
 export type UserProfile = typeof userProfiles.$inferSelect;
 export type NutritionCache = typeof nutritionCache.$inferSelect;
+export type SuggestionCache = typeof suggestionCache.$inferSelect;
+export type InstructionCache = typeof instructionCache.$inferSelect;
 export type SavedItem = typeof savedItems.$inferSelect;
 export type InsertSavedItem = typeof savedItems.$inferInsert;
