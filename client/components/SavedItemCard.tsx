@@ -143,11 +143,12 @@ export function SavedItemCard({ item, onPress }: SavedItemCardProps) {
         ) : null}
       </View>
 
-      <View style={styles.actions}>
+      <View style={[styles.actions, { borderTopColor: theme.border }]}>
         <Pressable
           onPress={handleShare}
           accessibilityLabel="Share this item"
           accessibilityRole="button"
+          hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
           style={({ pressed }) => [
             styles.actionButton,
             { backgroundColor: theme.backgroundSecondary },
@@ -161,6 +162,7 @@ export function SavedItemCard({ item, onPress }: SavedItemCardProps) {
           disabled={deleteMutation.isPending}
           accessibilityLabel="Delete this item"
           accessibilityRole="button"
+          hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
           style={({ pressed }) => [
             styles.actionButton,
             { backgroundColor: theme.error + "20" },

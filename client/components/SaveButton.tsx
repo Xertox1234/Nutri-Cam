@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   StyleSheet,
   Pressable,
@@ -13,7 +13,7 @@ import * as Haptics from "expo-haptics";
 import { useTheme } from "@/hooks/useTheme";
 import { useHaptics } from "@/hooks/useHaptics";
 import { useCreateSavedItem } from "@/hooks/useSavedItems";
-import { BorderRadius, Spacing } from "@/constants/theme";
+import { BorderRadius } from "@/constants/theme";
 import type { CreateSavedItemInput } from "@shared/schemas/saved-items";
 
 type SaveState = "idle" | "saving" | "saved" | "error";
@@ -29,6 +29,16 @@ export function SaveButton({ item, style, onSaved }: SaveButtonProps) {
   const haptics = useHaptics();
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const createSavedItem = useCreateSavedItem();
+  const resetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (resetTimeoutRef.current) {
+        clearTimeout(resetTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handlePress = async () => {
     if (saveState === "saving" || saveState === "saved") return;
@@ -58,7 +68,7 @@ export function SaveButton({ item, style, onSaved }: SaveButtonProps) {
       haptics.notification(Haptics.NotificationFeedbackType.Error);
 
       // Reset to idle after a short delay
-      setTimeout(() => setSaveState("idle"), 2000);
+      resetTimeoutRef.current = setTimeout(() => setSaveState("idle"), 2000);
     }
   };
 

@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/query-client";
+import { apiRequest, getApiUrl } from "@/lib/query-client";
+import { tokenStorage } from "@/lib/token-storage";
 import type { SavedItem } from "@shared/schema";
 import type { CreateSavedItemInput } from "@shared/schemas/saved-items";
 
@@ -30,22 +31,22 @@ export function useCreateSavedItem() {
 
   return useMutation({
     mutationFn: async (item: CreateSavedItemInput) => {
-      const response = await fetch(
-        `${process.env.EXPO_PUBLIC_DOMAIN || "http://192.168.137.175:3000"}/api/saved-items`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${await getToken()}`,
-          },
-          body: JSON.stringify(item),
+      const baseUrl = getApiUrl();
+      const token = await tokenStorage.get();
+
+      const response = await fetch(`${baseUrl}/api/saved-items`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token && { Authorization: `Bearer ${token}` }),
         },
-      );
+        body: JSON.stringify(item),
+      });
 
       // Check for limit reached (403)
       if (response.status === 403) {
         const data = await response.json();
-        if (data.code === "LIMIT_REACHED") {
+        if (data.error === "LIMIT_REACHED") {
           return { limitReached: true as const };
         }
         throw new Error(data.message || "Forbidden");
@@ -83,10 +84,4 @@ export function useDeleteSavedItem() {
       queryClient.invalidateQueries({ queryKey: ["/api/saved-items/count"] });
     },
   });
-}
-
-// Helper to get token (matching existing pattern)
-async function getToken(): Promise<string | null> {
-  const { tokenStorage } = await import("@/lib/token-storage");
-  return tokenStorage.get();
 }

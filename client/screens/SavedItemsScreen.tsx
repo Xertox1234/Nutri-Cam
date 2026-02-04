@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useCallback } from "react";
 import {
   StyleSheet,
   View,
@@ -41,18 +41,22 @@ export default function SavedItemsScreen() {
   const itemCount = countData?.count ?? 0;
   const limit = isPremium ? null : 6;
 
-  const renderItem = ({ item, index }: { item: SavedItem; index: number }) => (
-    <Animated.View
-      entering={
-        reducedMotion ? undefined : FadeInDown.delay(index * 50).duration(300)
-      }
-    >
-      <SavedItemCard item={item} />
-    </Animated.View>
+  const renderItem = useCallback(
+    ({ item, index }: { item: SavedItem; index: number }) => (
+      <Animated.View
+        entering={
+          reducedMotion ? undefined : FadeInDown.delay(index * 50).duration(300)
+        }
+      >
+        <SavedItemCard item={item} />
+      </Animated.View>
+    ),
+    [reducedMotion],
   );
 
-  const renderSeparator = () => (
-    <View style={{ height: ITEM_SEPARATOR_HEIGHT }} />
+  const renderSeparator = useCallback(
+    () => <View style={{ height: ITEM_SEPARATOR_HEIGHT }} />,
+    [],
   );
 
   const renderEmpty = () => (
