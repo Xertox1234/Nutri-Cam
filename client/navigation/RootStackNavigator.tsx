@@ -7,6 +7,7 @@ import LoginScreen from "@/screens/LoginScreen";
 import NutritionDetailScreen from "@/screens/NutritionDetailScreen";
 import PhotoAnalysisScreen from "@/screens/PhotoAnalysisScreen";
 import GoalSetupScreen from "@/screens/GoalSetupScreen";
+import EditDietaryProfileScreen from "@/screens/EditDietaryProfileScreen";
 import OnboardingNavigator from "@/navigation/OnboardingNavigator";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
 import { useAuthContext } from "@/context/AuthContext";
@@ -26,6 +27,7 @@ export type RootStackParamList = {
     imageUri: string;
   };
   GoalSetup: undefined;
+  EditDietaryProfile: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -87,6 +89,14 @@ export default function RootStackNavigator() {
             component={GoalSetupScreen}
             options={{
               headerTitle: "Set Goals",
+              presentation: "modal",
+            }}
+          />
+          <Stack.Screen
+            name="EditDietaryProfile"
+            component={EditDietaryProfileScreen}
+            options={{
+              headerTitle: "Edit Preferences",
               presentation: "modal",
             }}
           />

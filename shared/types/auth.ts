@@ -21,6 +21,7 @@ export interface User {
   id: string;
   username: string;
   displayName?: string;
+  avatarUrl?: string | null;
   dailyCalorieGoal?: number;
   onboardingCompleted?: boolean;
   subscriptionTier?: "free" | "premium";
