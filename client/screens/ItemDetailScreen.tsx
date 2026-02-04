@@ -30,6 +30,7 @@ type ItemDetailRouteProp = RouteProp<
 
 interface SuggestionsResponse {
   suggestions: Suggestion[];
+  cacheId?: number;
 }
 
 function NutritionRow({
@@ -98,6 +99,7 @@ export default function ItemDetailScreen() {
   });
 
   const suggestions = suggestionsData?.suggestions ?? [];
+  const cacheId = suggestionsData?.cacheId;
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
@@ -310,6 +312,7 @@ export default function ItemDetailScreen() {
                 itemId={itemId}
                 suggestionIndex={index}
                 productName={item.productName}
+                cacheId={cacheId}
               />
             ))}
           </View>

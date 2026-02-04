@@ -9,9 +9,8 @@ export function getApiUrl(): string {
   let host = process.env.EXPO_PUBLIC_DOMAIN;
 
   if (!host) {
-    // Use local network IP (more stable than localtunnel)
-    // Device must be on same WiFi network as your Mac
-    return "http://192.168.137.175:3000";
+    // Localtunnel URL for mobile device testing
+    return "https://tender-spoons-prove.loca.lt";
   }
 
   // Check if host starts with http:// or https://

@@ -45,6 +45,7 @@ interface SuggestionCardProps {
   itemId: number;
   suggestionIndex: number;
   productName: string;
+  cacheId?: number;
 }
 
 type CardState = "collapsed" | "loading" | "expanded";
@@ -128,6 +129,7 @@ export function SuggestionCard({
   itemId,
   suggestionIndex,
   productName,
+  cacheId,
 }: SuggestionCardProps) {
   const { theme } = useTheme();
   const { reducedMotion } = useAccessibility();
@@ -145,6 +147,7 @@ export function SuggestionCard({
       suggestionIndex,
       suggestionTitle: suggestion.title,
       suggestionType: suggestion.type,
+      cacheId,
       enabled: cardState === "loading" || cardState === "expanded",
     });
 
