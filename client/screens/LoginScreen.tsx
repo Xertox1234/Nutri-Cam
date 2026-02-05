@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import {
   StyleSheet,
   View,
-  TextInput,
   Pressable,
   Image,
   ActivityIndicator,
@@ -15,6 +14,7 @@ import { KeyboardAwareScrollViewCompat } from "@/components/KeyboardAwareScrollV
 import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 import { Button } from "@/components/Button";
+import { TextInput } from "@/components/TextInput";
 import { useTheme } from "@/hooks/useTheme";
 import { useHaptics } from "@/hooks/useHaptics";
 import { useAuthContext } from "@/context/AuthContext";
@@ -107,105 +107,44 @@ export default function LoginScreen() {
         </View>
 
         <View style={styles.form}>
-          <View style={styles.inputContainer}>
-            <Feather
-              name="user"
-              size={20}
-              color={theme.textSecondary}
-              style={styles.inputIcon}
-            />
-            <TextInput
-              style={[
-                styles.input,
-                {
-                  backgroundColor: theme.backgroundDefault,
-                  color: theme.text,
-                  borderColor: theme.border,
-                },
-              ]}
-              placeholder="Username"
-              placeholderTextColor={theme.textSecondary}
-              value={username}
-              onChangeText={setUsername}
-              autoCapitalize="none"
-              autoCorrect={false}
-              testID="input-username"
-              accessibilityLabel="Username"
-              accessibilityHint="Enter your username"
-            />
-          </View>
+          <TextInput
+            leftIcon="user"
+            placeholder="Username"
+            value={username}
+            onChangeText={setUsername}
+            autoCapitalize="none"
+            autoCorrect={false}
+            testID="input-username"
+            accessibilityLabel="Username"
+            accessibilityHint="Enter your username"
+          />
 
-          <View style={styles.inputContainer}>
-            <Feather
-              name="lock"
-              size={20}
-              color={theme.textSecondary}
-              style={styles.inputIcon}
-            />
-            <TextInput
-              style={[
-                styles.input,
-                {
-                  backgroundColor: theme.backgroundDefault,
-                  color: theme.text,
-                  borderColor: theme.border,
-                },
-              ]}
-              placeholder="Password"
-              placeholderTextColor={theme.textSecondary}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry={!showPassword}
-              autoCapitalize="none"
-              testID="input-password"
-              accessibilityLabel="Password"
-              accessibilityHint="Enter your password"
-            />
-            <Pressable
-              onPress={() => setShowPassword(!showPassword)}
-              style={styles.eyeButton}
-              accessibilityLabel={
-                showPassword ? "Hide password" : "Show password"
-              }
-              accessibilityRole="button"
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Feather
-                name={showPassword ? "eye-off" : "eye"}
-                size={20}
-                color={theme.textSecondary}
-              />
-            </Pressable>
-          </View>
+          <TextInput
+            leftIcon="lock"
+            rightIcon={showPassword ? "eye-off" : "eye"}
+            onRightIconPress={() => setShowPassword(!showPassword)}
+            placeholder="Password"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry={!showPassword}
+            autoCapitalize="none"
+            testID="input-password"
+            accessibilityLabel="Password"
+            accessibilityHint="Enter your password"
+          />
 
           {mode === "register" ? (
-            <View style={styles.inputContainer}>
-              <Feather
-                name="lock"
-                size={20}
-                color={theme.textSecondary}
-                style={styles.inputIcon}
-              />
-              <TextInput
-                style={[
-                  styles.input,
-                  {
-                    backgroundColor: theme.backgroundDefault,
-                    color: theme.text,
-                    borderColor: theme.border,
-                  },
-                ]}
-                placeholder="Confirm Password"
-                placeholderTextColor={theme.textSecondary}
-                value={confirmPassword}
-                onChangeText={setConfirmPassword}
-                secureTextEntry={!showPassword}
-                autoCapitalize="none"
-                testID="input-confirm-password"
-                accessibilityLabel="Confirm password"
-                accessibilityHint="Re-enter your password to confirm"
-              />
-            </View>
+            <TextInput
+              leftIcon="lock"
+              placeholder="Confirm Password"
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              secureTextEntry={!showPassword}
+              autoCapitalize="none"
+              testID="input-confirm-password"
+              accessibilityLabel="Confirm password"
+              accessibilityHint="Re-enter your password to confirm"
+            />
           ) : null}
 
           {error ? (
@@ -237,7 +176,7 @@ export default function LoginScreen() {
                   ? "Sign In"
                   : "Create Account"
             }
-            style={[styles.button, { backgroundColor: theme.success }]}
+            style={styles.button}
           >
             {isLoading ? (
               <ActivityIndicator color="#FFFFFF" size="small" />
@@ -265,7 +204,7 @@ export default function LoginScreen() {
           >
             <ThemedText
               type="body"
-              style={[styles.linkText, { color: theme.success }]}
+              style={[styles.linkText, { color: theme.link }]}
             >
               {mode === "login" ? "Sign Up" : "Sign In"}
             </ThemedText>
@@ -306,34 +245,12 @@ const styles = StyleSheet.create({
     gap: Spacing.lg,
     marginBottom: Spacing["3xl"],
   },
-  inputContainer: {
-    position: "relative",
-  },
-  inputIcon: {
-    position: "absolute",
-    left: Spacing.lg,
-    top: 14,
-    zIndex: 1,
-  },
-  input: {
-    height: Spacing.inputHeight,
-    borderRadius: BorderRadius.sm,
-    borderWidth: 1,
-    paddingHorizontal: Spacing.lg,
-    paddingLeft: Spacing["4xl"] + Spacing.sm,
-    fontSize: 16,
-  },
-  eyeButton: {
-    position: "absolute",
-    right: Spacing.lg,
-    top: 14,
-  },
   errorContainer: {
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.sm,
     padding: Spacing.md,
-    borderRadius: BorderRadius.xs,
+    borderRadius: BorderRadius.input,
   },
   errorText: {
     flex: 1,
