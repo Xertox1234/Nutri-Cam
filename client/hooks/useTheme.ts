@@ -11,8 +11,14 @@ interface ThemeContextType {
   setPreference: (pref: ThemePreference) => Promise<void>;
 }
 
-// Reference to ThemeContext - set by ThemeProvider
-let _themeContext: React.Context<ThemeContextType | undefined> | null = null;
+// Default context with undefined value - always exists so hooks can be called unconditionally
+const DefaultThemeContext = createContext<ThemeContextType | undefined>(
+  undefined,
+);
+
+// Reference to actual ThemeContext - set by ThemeProvider
+let _themeContext: React.Context<ThemeContextType | undefined> =
+  DefaultThemeContext;
 
 export function registerThemeContext(
   ctx: React.Context<ThemeContextType | undefined>,
@@ -23,16 +29,12 @@ export function registerThemeContext(
 export function useTheme() {
   const systemColorScheme = useColorScheme();
 
-  // Try to get theme from context if available
-  let resolvedColorScheme: "light" | "dark" = systemColorScheme ?? "light";
+  // Always call useContext unconditionally (rules of hooks)
+  const themeCtx = useContext(_themeContext);
 
-  if (_themeContext) {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    const themeCtx = useContext(_themeContext);
-    if (themeCtx) {
-      resolvedColorScheme = themeCtx.colorScheme;
-    }
-  }
+  // Use context value if available, otherwise fall back to system
+  const resolvedColorScheme: "light" | "dark" =
+    themeCtx?.colorScheme ?? systemColorScheme ?? "light";
 
   const isDark = resolvedColorScheme === "dark";
   const theme = Colors[resolvedColorScheme];

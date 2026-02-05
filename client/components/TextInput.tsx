@@ -6,6 +6,7 @@ import {
   View,
   ViewStyle,
   StyleProp,
+  Pressable,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 
@@ -90,15 +91,25 @@ export const TextInput = forwardRef<RNTextInput, TextInputProps>(
           ]}
           {...props}
         />
-        {rightIcon && (
-          <Feather
-            name={rightIcon}
-            size={20}
-            color={theme.textSecondary}
-            style={styles.rightIcon}
-            onPress={onRightIconPress}
-          />
-        )}
+        {rightIcon &&
+          (onRightIconPress ? (
+            <Pressable
+              onPress={onRightIconPress}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              accessibilityRole="button"
+              accessibilityLabel="Toggle visibility"
+              style={styles.rightIcon}
+            >
+              <Feather name={rightIcon} size={20} color={theme.textSecondary} />
+            </Pressable>
+          ) : (
+            <Feather
+              name={rightIcon}
+              size={20}
+              color={theme.textSecondary}
+              style={styles.rightIcon}
+            />
+          ))}
       </View>
     );
   },
