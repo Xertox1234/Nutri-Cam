@@ -17,7 +17,13 @@ import Animated, {
 import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
 import { useAccessibility } from "@/hooks/useAccessibility";
-import { Spacing, BorderRadius, Colors, FontFamily } from "@/constants/theme";
+import {
+  Spacing,
+  BorderRadius,
+  Colors,
+  FontFamily,
+  withOpacity,
+} from "@/constants/theme";
 import { pressSpringConfig } from "@/constants/animations";
 
 type Theme = (typeof Colors)["light"] | (typeof Colors)["dark"];
@@ -76,15 +82,15 @@ const getBadgeColors = (
 ): { bg: string; text: string } => {
   switch (variant) {
     case "success":
-      return { bg: theme.success + "20", text: theme.success };
+      return { bg: withOpacity(theme.success, 0.2), text: theme.success };
     case "warning":
-      return { bg: theme.warning + "20", text: theme.warning };
+      return { bg: withOpacity(theme.warning, 0.2), text: theme.warning };
     case "error":
-      return { bg: theme.error + "20", text: theme.error };
+      return { bg: withOpacity(theme.error, 0.2), text: theme.error };
     case "info":
-      return { bg: theme.info + "20", text: theme.info };
+      return { bg: withOpacity(theme.info, 0.2), text: theme.info };
     default:
-      return { bg: theme.link + "20", text: theme.link };
+      return { bg: withOpacity(theme.link, 0.2), text: theme.link };
   }
 };
 

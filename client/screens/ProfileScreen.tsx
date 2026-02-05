@@ -340,7 +340,7 @@ export default function ProfileScreen() {
           <View
             style={[styles.avatarEditBadge, { backgroundColor: theme.success }]}
           >
-            <Feather name="camera" size={14} color="#FFFFFF" />
+            <Feather name="camera" size={14} color={theme.buttonText} />
           </View>
         </Pressable>
 
@@ -391,13 +391,13 @@ export default function ProfileScreen() {
                 ]}
               >
                 {isSaving ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
+                  <ActivityIndicator color={theme.buttonText} size="small" />
                 ) : (
                   <>
-                    <Feather name="check" size={16} color="#FFFFFF" />
+                    <Feather name="check" size={16} color={theme.buttonText} />
                     <ThemedText
                       type="small"
-                      style={{ color: "#FFFFFF", fontWeight: "600" }}
+                      style={{ color: theme.buttonText, fontWeight: "600" }}
                     >
                       Save
                     </ThemedText>
@@ -730,7 +730,7 @@ export default function ProfileScreen() {
               >
                 <ThemedText
                   type="body"
-                  style={{ color: "#FFFFFF", fontWeight: "600" }}
+                  style={{ color: theme.buttonText, fontWeight: "600" }}
                 >
                   Set Up Goals
                 </ThemedText>

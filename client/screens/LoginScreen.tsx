@@ -267,9 +267,7 @@ const styles = StyleSheet.create({
   title: {
     marginBottom: Spacing.xs,
   },
-  subtitle: {
-    textAlign: "center",
-  },
+  subtitle: {},
   form: {
     gap: Spacing.lg,
     marginBottom: Spacing["3xl"],

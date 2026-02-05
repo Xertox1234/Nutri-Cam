@@ -1,9 +1,9 @@
 ---
 title: "Fix __dirname error in check-accessibility.js"
-status: backlog
+status: complete
 priority: low
 created: 2026-02-04
-updated: 2026-02-04
+updated: 2026-02-05
 assignee:
 labels: [lint, scripts]
 ---
@@ -20,8 +20,8 @@ The script uses ES module syntax but references `__dirname`, which is only avail
 
 ## Acceptance Criteria
 
-- [ ] ESLint passes without the `__dirname` error
-- [ ] Script functionality remains unchanged
+- [x] ESLint passes without the `__dirname` error
+- [x] Script functionality remains unchanged
 
 ## Implementation Notes
 
