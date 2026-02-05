@@ -14,8 +14,12 @@
  *   node scripts/check-accessibility.js client/screens/ScanScreen.tsx
  */
 
-const fs = require("fs");
-const path = require("path");
+import fs from "fs";
+import path, { dirname } from "path";
+import { fileURLToPath } from "url";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // ANSI color codes
 const colors = {
@@ -221,7 +225,7 @@ function findTsxFiles(dir) {
         files.push(fullPath);
       }
     }
-  } catch (err) {
+  } catch (_err) {
     // Directory doesn't exist or can't be read
   }
   return files;

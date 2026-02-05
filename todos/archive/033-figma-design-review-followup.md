@@ -1,6 +1,6 @@
 ---
 title: "Figma design review follow-up items"
-status: backlog
+status: complete
 priority: low
 created: 2026-02-05
 updated: 2026-02-05
@@ -22,14 +22,14 @@ Code review of the Figma design integration identified several non-critical issu
 
 ### Medium Priority
 
-- [ ] Fix magic number in Chip borderRadius - add `BorderRadius.chipFilled: 19` to theme.ts instead of `BorderRadius.chip - 9`
-- [ ] Create color opacity utility function - replace string concatenation like `theme.link + "20"` with `withOpacity(color, 0.2)`
-- [ ] Fix conflicting text alignment in LoginScreen - header has `alignItems: "flex-start"` but subtitle has unused `textAlign: "center"`
+- [x] Fix magic number in Chip borderRadius - add `BorderRadius.chipFilled: 19` to theme.ts instead of `BorderRadius.chip - 9`
+- [x] Create color opacity utility function - replace string concatenation like `theme.link + "20"` with `withOpacity(color, 0.2)`
+- [x] Fix conflicting text alignment in LoginScreen - header has `alignItems: "flex-start"` but subtitle has unused `textAlign: "center"`
 
 ### Low Priority
 
-- [ ] Remove unused `Colors` import in MainTabNavigator.tsx
-- [ ] Replace hardcoded `#FFFFFF` with `theme.buttonText` in ProfileScreen.tsx
+- [x] Remove unused `Colors` import in MainTabNavigator.tsx
+- [x] Replace hardcoded `#FFFFFF` with `theme.buttonText` in ProfileScreen.tsx
 
 ## Implementation Notes
 

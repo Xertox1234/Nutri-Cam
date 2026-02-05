@@ -91,6 +91,7 @@ export const BorderRadius = {
   button: 8,
   card: 15,
   chip: 28,
+  chipFilled: 19,
   tag: 28,
   thumbnail: 10,
   avatar: 9999,
@@ -169,6 +170,19 @@ export const Fonts = Platform.select({
     mono: "monospace",
   },
 });
+
+/**
+ * Creates a hex color with alpha/opacity value.
+ * @param hexColor - A hex color string (e.g., "#FF6B35")
+ * @param opacity - Opacity value from 0 to 1
+ * @returns Hex color with alpha suffix (e.g., "#FF6B3533")
+ */
+export function withOpacity(hexColor: string, opacity: number): string {
+  const alpha = Math.round(opacity * 255)
+    .toString(16)
+    .padStart(2, "0");
+  return `${hexColor}${alpha}`;
+}
 
 export const Shadows = {
   small: {

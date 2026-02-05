@@ -135,7 +135,7 @@ const styles = StyleSheet.create({
   chipFilled: {
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.chip - 9, // 19px as per Figma
+    borderRadius: BorderRadius.chipFilled,
   },
   textOutline: {
     fontFamily: FontFamily.medium,

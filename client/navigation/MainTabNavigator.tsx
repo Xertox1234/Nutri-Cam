@@ -8,7 +8,7 @@ import HistoryStackNavigator from "@/navigation/HistoryStackNavigator";
 import ScanStackNavigator from "@/navigation/ScanStackNavigator";
 import ProfileStackNavigator from "@/navigation/ProfileStackNavigator";
 import { useTheme } from "@/hooks/useTheme";
-import { Colors, Spacing, BorderRadius, FontFamily } from "@/constants/theme";
+import { Spacing, BorderRadius, FontFamily } from "@/constants/theme";
 
 export type MainTabParamList = {
   HistoryTab: undefined;
