@@ -5,8 +5,10 @@ import {
   Pressable,
   Image,
   ActivityIndicator,
+  Dimensions,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 
@@ -20,11 +22,13 @@ import { useHaptics } from "@/hooks/useHaptics";
 import { useAuthContext } from "@/context/AuthContext";
 import { Spacing, BorderRadius } from "@/constants/theme";
 
+const HERO_HEIGHT = Dimensions.get("window").height * 0.25;
+
 type Mode = "login" | "register";
 
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
-  const { theme } = useTheme();
+  const { theme, isDark } = useTheme();
   const haptics = useHaptics();
   const { login, register } = useAuthContext();
 
@@ -77,31 +81,44 @@ export default function LoginScreen() {
 
   return (
     <ThemedView style={styles.container}>
+      {/* Hero Image with Gradient Fade */}
+      <View style={styles.heroContainer}>
+        <Image
+          source={require("../../assets/images/login-hero.jpg")}
+          style={styles.heroImage}
+          resizeMode="cover"
+        />
+        <LinearGradient
+          colors={[
+            "transparent",
+            isDark ? "rgba(33,40,50,0.6)" : "rgba(255,255,255,0.6)",
+            isDark ? "#212832" : "#FFFFFF",
+          ]}
+          locations={[0, 0.5, 1]}
+          style={styles.heroGradient}
+        />
+      </View>
+
       <KeyboardAwareScrollViewCompat
         style={styles.scrollView}
         contentContainerStyle={[
           styles.content,
           {
-            paddingTop: insets.top + Spacing["4xl"],
+            paddingTop: Spacing.xl,
             paddingBottom: insets.bottom + Spacing["2xl"],
           },
         ]}
       >
         <View style={styles.header}>
-          <Image
-            source={require("../../assets/images/icon.png")}
-            style={styles.logo}
-            resizeMode="contain"
-          />
           <ThemedText type="h2" style={styles.title}>
-            NutriScan
+            Welcome!
           </ThemedText>
           <ThemedText
             type="body"
             style={[styles.subtitle, { color: theme.textSecondary }]}
           >
             {mode === "login"
-              ? "Welcome back! Sign in to continue"
+              ? "Sign in to continue"
               : "Create an account to get started"}
           </ThemedText>
         </View>
@@ -219,6 +236,23 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  heroContainer: {
+    height: HERO_HEIGHT,
+    width: "100%",
+    position: "relative",
+  },
+  heroImage: {
+    width: "100%",
+    height: "100%",
+    opacity: 0.85,
+  },
+  heroGradient: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: HERO_HEIGHT * 0.6,
+  },
   scrollView: {
     flex: 1,
   },
@@ -227,16 +261,11 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   header: {
-    alignItems: "center",
-    marginBottom: Spacing["4xl"],
-  },
-  logo: {
-    width: 100,
-    height: 100,
-    marginBottom: Spacing.lg,
+    alignItems: "flex-start",
+    marginBottom: Spacing["3xl"],
   },
   title: {
-    marginBottom: Spacing.sm,
+    marginBottom: Spacing.xs,
   },
   subtitle: {
     textAlign: "center",
