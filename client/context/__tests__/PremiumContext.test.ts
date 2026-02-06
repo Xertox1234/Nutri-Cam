@@ -1,10 +1,4 @@
-import { describe, it, expect } from "vitest";
-import {
-  TIER_FEATURES,
-  type SubscriptionTier,
-  type PremiumFeatures,
-  type SubscriptionStatus,
-} from "@shared/types/premium";
+import { TIER_FEATURES, type SubscriptionStatus } from "@shared/types/premium";
 
 // Test the PremiumContext logic directly without React
 describe("PremiumContext", () => {

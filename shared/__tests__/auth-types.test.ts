@@ -1,4 +1,3 @@
-import { describe, it, expect } from "vitest";
 import { isAccessTokenPayload } from "../types/auth";
 
 describe("Auth Types", () => {

@@ -1,5 +1,3 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-
 // Mock AsyncStorage
 const mockAsyncStorage = {
   getItem: vi.fn(),

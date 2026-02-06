@@ -1,5 +1,3 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-
 // Mock React hooks
 const mockUseRef = vi.fn();
 const mockUseCallback = vi.fn((fn: Function) => fn);
@@ -318,8 +316,6 @@ describe("useCamera debouncing logic", () => {
 
       // First scan sets timeout
       handleBarcodeScanned({ data: "123456789", type: "ean13" });
-      const firstTimeout = scanTimeoutRef.current;
-
       // Wait for debounce, allow new scan
       vi.advanceTimersByTime(2000);
 

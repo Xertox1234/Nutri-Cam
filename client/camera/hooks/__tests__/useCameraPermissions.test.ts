@@ -1,4 +1,3 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { CameraPermissionResult } from "../../types";
 
 // Test the permission mapping logic directly
