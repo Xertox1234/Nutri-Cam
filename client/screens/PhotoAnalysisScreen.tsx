@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+} from "react";
 import {
   StyleSheet,
   View,
@@ -31,7 +37,9 @@ import { Button } from "@/components/Button";
 import { useTheme } from "@/hooks/useTheme";
 import { useHaptics } from "@/hooks/useHaptics";
 import { useAccessibility } from "@/hooks/useAccessibility";
-import { Spacing, BorderRadius } from "@/constants/theme";
+import { Spacing, BorderRadius, withOpacity } from "@/constants/theme";
+import { usePremiumContext } from "@/context/PremiumContext";
+import { RecipeGenerationModal } from "@/components/RecipeGenerationModal";
 import type { RootStackParamList } from "@/navigation/RootStackNavigator";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import {
@@ -74,7 +82,7 @@ function ConfidenceBadge({ confidence }: { confidence: number }) {
     <View
       style={[
         styles.confidenceBadge,
-        { backgroundColor: getConfidenceColor() + "20" },
+        { backgroundColor: withOpacity(getConfidenceColor(), 0.12) },
       ]}
     >
       <ThemedText type="small" style={{ color: getConfidenceColor() }}>
@@ -89,11 +97,15 @@ function FoodItemCard({
   index,
   onEdit,
   reducedMotion,
+  isSelected,
+  onToggleSelect,
 }: {
   food: FoodItem;
   index: number;
   onEdit: (index: number, field: "name" | "quantity", value: string) => void;
   reducedMotion: boolean;
+  isSelected: boolean;
+  onToggleSelect: () => void;
 }) {
   const { theme } = useTheme();
   const [isEditing, setIsEditing] = useState(false);
@@ -112,8 +124,29 @@ function FoodItemCard({
         reducedMotion ? undefined : FadeInUp.delay(index * 100).duration(400)
       }
     >
-      <Card elevation={1} style={styles.foodItemCard}>
+      <Card
+        elevation={1}
+        style={[styles.foodItemCard, !isSelected && styles.foodItemUnselected]}
+      >
         <View style={styles.foodItemHeader}>
+          {/* Checkbox */}
+          <Pressable
+            onPress={onToggleSelect}
+            accessibilityLabel={
+              isSelected ? `Unselect ${food.name}` : `Select ${food.name}`
+            }
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: isSelected }}
+            style={styles.checkboxButton}
+            hitSlop={{ top: 11, bottom: 11, left: 11, right: 11 }}
+          >
+            <Feather
+              name={isSelected ? "check-square" : "square"}
+              size={22}
+              color={isSelected ? theme.success : theme.textSecondary}
+            />
+          </Pressable>
+
           {isEditing ? (
             <View style={styles.editFields}>
               <TextInput
@@ -212,7 +245,7 @@ function FoodItemCard({
           <View
             style={[
               styles.clarificationBanner,
-              { backgroundColor: theme.warning + "15" },
+              { backgroundColor: withOpacity(theme.warning, 0.15) },
             ]}
           >
             <Feather name="help-circle" size={14} color={theme.warning} />
@@ -320,6 +353,8 @@ export default function PhotoAnalysisScreen() {
 
   const { imageUri } = route.params;
 
+  const { features, canGenerateRecipe } = usePremiumContext();
+
   const [analysisResult, setAnalysisResult] =
     useState<PhotoAnalysisResponse | null>(null);
   const [foods, setFoods] = useState<FoodItem[]>([]);
@@ -328,6 +363,12 @@ export default function PhotoAnalysisScreen() {
   const [error, setError] = useState<string | null>(null);
   const [showFollowUp, setShowFollowUp] = useState(false);
   const [followUpIndex, setFollowUpIndex] = useState(0);
+
+  // Track which items are selected for logging
+  const [selectedItems, setSelectedItems] = useState<Set<number>>(new Set());
+
+  // Recipe modal visibility
+  const [showRecipeModal, setShowRecipeModal] = useState(false);
 
   // Refs for synchronous checks (from institutional learning: stale-closure-callback-refs)
   const isUploadingRef = useRef(false);
@@ -349,6 +390,18 @@ export default function PhotoAnalysisScreen() {
       };
     }, [imageUri]),
   );
+
+  // Initialize all items as selected when foods array populates.
+  // We intentionally only track foods.length (not the foods array reference) because:
+  // 1. handleEditFood creates new array references but preserves length
+  // 2. We only want to reset selections when AI analysis returns NEW foods (length changes from 0)
+  // 3. This avoids resetting user's selections when they edit food names/quantities
+  useEffect(() => {
+    if (foods.length > 0) {
+      setSelectedItems(new Set(foods.map((_, i) => i)));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [foods.length]);
 
   // Upload and analyze photo
   useEffect(() => {
@@ -395,6 +448,19 @@ export default function PhotoAnalysisScreen() {
     });
   };
 
+  const toggleItemSelection = (index: number) => {
+    haptics.selection();
+    setSelectedItems((prev) => {
+      const updated = new Set(prev);
+      if (updated.has(index)) {
+        updated.delete(index);
+      } else {
+        updated.add(index);
+      }
+      return updated;
+    });
+  };
+
   const handleFollowUpAnswer = async (question: string, answer: string) => {
     if (!analysisResult) return;
 
@@ -428,14 +494,17 @@ export default function PhotoAnalysisScreen() {
     }
   };
 
-  const handleConfirm = async () => {
-    if (!analysisResult || foods.length === 0) return;
+  const handleLogSelected = async () => {
+    if (!analysisResult || selectedItems.size === 0) return;
+
+    // Filter to only selected items
+    const selectedFoods = foods.filter((_, index) => selectedItems.has(index));
 
     setIsConfirming(true);
     try {
       await confirmPhotoAnalysis({
         sessionId: analysisResult.sessionId,
-        foods: foods.map((f) => ({
+        foods: selectedFoods.map((f) => ({
           name: f.name,
           quantity: f.quantity,
           calories: f.nutrition?.calories || 0,
@@ -459,7 +528,34 @@ export default function PhotoAnalysisScreen() {
     }
   };
 
-  const totals = calculateTotals(foods);
+  const handleJustIdentify = () => {
+    haptics.notification(Haptics.NotificationFeedbackType.Success);
+    // Navigate back without logging - no database writes
+    navigation.goBack();
+  };
+
+  const handleGenerateRecipe = () => {
+    if (isRecipeGenerationAvailable) {
+      haptics.impact(Haptics.ImpactFeedbackStyle.Medium);
+      setShowRecipeModal(true);
+    } else {
+      // Show haptic feedback for locked feature
+      haptics.notification(Haptics.NotificationFeedbackType.Warning);
+    }
+  };
+
+  // Calculate totals for only selected items (memoized to avoid recalculation on every render)
+  const { selectedFoods, totals } = useMemo(() => {
+    const selected = foods.filter((_, index) => selectedItems.has(index));
+    return {
+      selectedFoods: selected,
+      totals: calculateTotals(selected),
+    };
+  }, [foods, selectedItems]);
+
+  // Extract premium recipe feature check to avoid repetition
+  const isRecipeGenerationAvailable =
+    features.recipeGeneration && canGenerateRecipe;
 
   if (isAnalyzing) {
     return (
@@ -516,7 +612,7 @@ export default function PhotoAnalysisScreen() {
             <View
               style={[
                 styles.errorContainer,
-                { backgroundColor: theme.error + "20" },
+                { backgroundColor: withOpacity(theme.error, 0.12) },
               ]}
             >
               <Feather name="alert-circle" size={20} color={theme.error} />
@@ -549,7 +645,7 @@ export default function PhotoAnalysisScreen() {
                 <View
                   style={[
                     styles.warningBanner,
-                    { backgroundColor: theme.warning + "15" },
+                    { backgroundColor: withOpacity(theme.warning, 0.15) },
                   ]}
                 >
                   <Feather
@@ -575,6 +671,8 @@ export default function PhotoAnalysisScreen() {
                   index={index}
                   onEdit={handleEditFood}
                   reducedMotion={reducedMotion}
+                  isSelected={selectedItems.has(index)}
+                  onToggleSelect={() => toggleItemSelection(index)}
                 />
               ))}
 
@@ -593,9 +691,15 @@ export default function PhotoAnalysisScreen() {
                     { borderColor: theme.calorieAccent, borderWidth: 2 },
                   ]}
                 >
-                  <ThemedText type="h4" style={styles.totalsTitle}>
-                    Meal Totals
-                  </ThemedText>
+                  <View style={styles.totalsTitleRow}>
+                    <ThemedText type="h4">Meal Totals</ThemedText>
+                    <ThemedText
+                      type="small"
+                      style={{ color: theme.textSecondary }}
+                    >
+                      ({selectedItems.size} of {foods.length} items)
+                    </ThemedText>
+                  </View>
                   <View style={styles.totalsGrid}>
                     <View style={styles.totalItem}>
                       <ThemedText
@@ -654,21 +758,101 @@ export default function PhotoAnalysisScreen() {
                 </Card>
               </Animated.View>
 
-              {/* Confirm Button */}
-              <View style={styles.buttonContainer}>
+              {/* Action Bar */}
+              <View style={styles.actionBar}>
+                {/* Secondary Actions Row */}
+                <View style={styles.secondaryActionsRow}>
+                  <Pressable
+                    onPress={handleJustIdentify}
+                    disabled={isConfirming}
+                    accessibilityLabel="Just identify, don't log"
+                    accessibilityRole="button"
+                    style={[
+                      styles.secondaryButton,
+                      {
+                        borderColor: theme.border,
+                        backgroundColor: theme.backgroundDefault,
+                      },
+                    ]}
+                  >
+                    <Feather
+                      name="eye"
+                      size={18}
+                      color={theme.text}
+                      style={styles.buttonIcon}
+                    />
+                    <ThemedText type="body">Just Identify</ThemedText>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={handleGenerateRecipe}
+                    disabled={isConfirming}
+                    accessibilityLabel={
+                      isRecipeGenerationAvailable
+                        ? "Generate recipe from detected foods"
+                        : "Recipe generation requires premium"
+                    }
+                    accessibilityHint={
+                      isRecipeGenerationAvailable
+                        ? undefined
+                        : "Upgrade to premium to unlock this feature"
+                    }
+                    accessibilityRole="button"
+                    style={[
+                      styles.secondaryButton,
+                      {
+                        borderColor: theme.border,
+                        backgroundColor: theme.backgroundDefault,
+                      },
+                    ]}
+                  >
+                    <Feather
+                      name="book-open"
+                      size={18}
+                      color={
+                        isRecipeGenerationAvailable
+                          ? theme.text
+                          : theme.textSecondary
+                      }
+                      style={styles.buttonIcon}
+                    />
+                    <ThemedText
+                      type="body"
+                      style={{
+                        color: isRecipeGenerationAvailable
+                          ? theme.text
+                          : theme.textSecondary,
+                      }}
+                    >
+                      Recipe
+                    </ThemedText>
+                    {!isRecipeGenerationAvailable && (
+                      <View
+                        style={[
+                          styles.lockBadge,
+                          { backgroundColor: withOpacity(theme.warning, 0.15) },
+                        ]}
+                      >
+                        <Feather name="lock" size={12} color={theme.warning} />
+                      </View>
+                    )}
+                  </Pressable>
+                </View>
+
+                {/* Primary Action */}
                 <Button
-                  onPress={handleConfirm}
-                  disabled={isConfirming || foods.length === 0}
-                  accessibilityLabel="Add meal to today's log"
+                  onPress={handleLogSelected}
+                  disabled={isConfirming || selectedItems.size === 0}
+                  accessibilityLabel={`Log ${selectedItems.size} items to today`}
                   style={[
-                    styles.confirmButton,
+                    styles.primaryButton,
                     { backgroundColor: theme.success },
                   ]}
                 >
                   {isConfirming ? (
                     <ActivityIndicator color="#FFFFFF" size="small" />
                   ) : (
-                    "Add to Today"
+                    `Log ${selectedItems.size} Item${selectedItems.size !== 1 ? "s" : ""} to Today`
                   )}
                 </Button>
               </View>
@@ -686,6 +870,21 @@ export default function PhotoAnalysisScreen() {
           />
         )}
       </KeyboardAvoidingView>
+
+      {/* Recipe Generation Modal */}
+      <RecipeGenerationModal
+        visible={showRecipeModal}
+        onClose={() => setShowRecipeModal(false)}
+        onComplete={() => {
+          setShowRecipeModal(false);
+          haptics.notification(Haptics.NotificationFeedbackType.Success);
+        }}
+        productName={foods.map((f) => f.name).join(", ")}
+        foods={selectedFoods.map((f) => ({
+          name: f.name,
+          quantity: f.quantity,
+        }))}
+      />
     </ThemedView>
   );
 }
@@ -753,10 +952,17 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
     marginBottom: Spacing.md,
   },
+  foodItemUnselected: {
+    opacity: 0.6,
+  },
   foodItemHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
+  },
+  checkboxButton: {
+    marginRight: Spacing.md,
+    paddingTop: 2,
   },
   foodItemInfo: {
     flex: 1,
@@ -806,8 +1012,10 @@ const styles = StyleSheet.create({
     marginTop: Spacing.lg,
     marginBottom: Spacing.lg,
   },
-  totalsTitle: {
-    textAlign: "center",
+  totalsTitleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: Spacing.lg,
   },
   totalsGrid: {
@@ -817,11 +1025,35 @@ const styles = StyleSheet.create({
   totalItem: {
     alignItems: "center",
   },
-  buttonContainer: {
-    marginTop: Spacing.lg,
+  actionBar: {
+    marginTop: Spacing.xl,
+    gap: Spacing.md,
   },
-  confirmButton: {
-    marginBottom: Spacing.md,
+  secondaryActionsRow: {
+    flexDirection: "row",
+    gap: Spacing.md,
+  },
+  secondaryButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    borderRadius: BorderRadius.button,
+    borderWidth: 1,
+  },
+  buttonIcon: {
+    marginRight: Spacing.sm,
+  },
+  lockBadge: {
+    marginLeft: Spacing.sm,
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: Spacing.xs / 2,
+    borderRadius: BorderRadius.xs,
+  },
+  primaryButton: {
+    marginTop: Spacing.sm,
   },
   followUpModal: {
     position: "absolute",
