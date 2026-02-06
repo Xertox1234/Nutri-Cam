@@ -51,7 +51,7 @@ export function OnboardingProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<OnboardingData>(defaultData);
   const [currentStep, setCurrentStep] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const { checkAuth, updateUser } = useAuthContext();
+  const { updateUser } = useAuthContext();
   const totalSteps = 6;
 
   const updateData = (updates: Partial<OnboardingData>) => {

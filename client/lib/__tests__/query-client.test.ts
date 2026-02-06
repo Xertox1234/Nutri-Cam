@@ -1,5 +1,3 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-
 // Test the getApiUrl function logic
 describe("getApiUrl", () => {
   const originalEnv = process.env;

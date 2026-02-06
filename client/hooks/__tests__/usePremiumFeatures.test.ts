@@ -1,9 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import {
-  TIER_FEATURES,
-  type SubscriptionTier,
-  type PremiumFeatures,
-} from "@shared/types/premium";
+import { TIER_FEATURES, type SubscriptionTier } from "@shared/types/premium";
 import {
   FREE_BARCODE_TYPES,
   PREMIUM_BARCODE_TYPES,

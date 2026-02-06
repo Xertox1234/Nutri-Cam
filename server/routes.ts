@@ -3,7 +3,7 @@ import { createServer, type Server } from "node:http";
 import crypto from "crypto";
 import bcrypt from "bcrypt";
 import OpenAI from "openai";
-import rateLimit from "express-rate-limit";
+import { rateLimit } from "express-rate-limit";
 import { z, ZodError } from "zod";
 import multer, { MulterError } from "multer";
 import { storage } from "./storage";
@@ -43,12 +43,10 @@ import {
 import {
   batchNutritionLookup,
   lookupNutrition,
-  type NutritionData,
 } from "./services/nutrition-lookup";
 import {
   calculateGoals,
   userPhysicalProfileSchema,
-  type CalculatedGoals,
 } from "./services/goal-calculator";
 import { calculateProfileHash } from "./utils/profile-hash";
 import {
@@ -1379,7 +1377,7 @@ Format as plain text with clear sections.`;
         const goals = calculateGoals(validated);
 
         // Update user with physical profile and calculated goals
-        const updatedUser = await storage.updateUser(req.userId!, {
+        await storage.updateUser(req.userId!, {
           weight: validated.weight.toString(),
           height: validated.height.toString(),
           age: validated.age,
