@@ -6,6 +6,13 @@ import type {
 
 const SPOONACULAR_BASE = "https://api.spoonacular.com";
 
+const SPOONACULAR_API_KEY = process.env.SPOONACULAR_API_KEY;
+if (!SPOONACULAR_API_KEY) {
+  console.warn(
+    "SPOONACULAR_API_KEY is not set. Catalog search will be disabled.",
+  );
+}
+
 // ── Zod Schemas for Spoonacular responses ────────────────────────────
 
 const catalogSearchResultSchema = z.object({
@@ -82,12 +89,8 @@ export interface CatalogSearchParams {
 // ── Helpers ──────────────────────────────────────────────────────────
 
 function getApiKey(): string | null {
-  const key = process.env.SPOONACULAR_API_KEY;
-  if (!key) {
-    console.warn("SPOONACULAR_API_KEY is not set");
-    return null;
-  }
-  return key;
+  if (!SPOONACULAR_API_KEY) return null;
+  return SPOONACULAR_API_KEY;
 }
 
 function findNutrient(

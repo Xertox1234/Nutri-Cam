@@ -1,5 +1,14 @@
 import { z } from "zod";
 import * as cheerio from "cheerio";
+import type {
+  ParsedIngredient,
+  ImportedRecipeData,
+} from "@shared/types/recipe-import";
+
+export type {
+  ParsedIngredient,
+  ImportedRecipeData,
+} from "@shared/types/recipe-import";
 
 // ── Zod Schema for schema.org Recipe LD+JSON ─────────────────────────
 
@@ -38,30 +47,6 @@ const schemaOrgRecipeSchema = z.object({
 });
 
 // ── Types ────────────────────────────────────────────────────────────
-
-export interface ParsedIngredient {
-  name: string;
-  quantity: string | null;
-  unit: string | null;
-}
-
-export interface ImportedRecipeData {
-  title: string;
-  description: string | null;
-  servings: number | null;
-  prepTimeMinutes: number | null;
-  cookTimeMinutes: number | null;
-  cuisine: string | null;
-  dietTags: string[];
-  ingredients: ParsedIngredient[];
-  instructions: string | null;
-  imageUrl: string | null;
-  caloriesPerServing: string | null;
-  proteinPerServing: string | null;
-  carbsPerServing: string | null;
-  fatPerServing: string | null;
-  sourceUrl: string;
-}
 
 export type ImportResult =
   | { success: true; data: ImportedRecipeData }
@@ -190,7 +175,38 @@ export function findRecipeInLdJson(data: unknown): unknown | null {
 
 // ── Main Import Function ─────────────────────────────────────────────
 
+const BLOCKED_HOSTS = new Set([
+  "localhost",
+  "127.0.0.1",
+  "0.0.0.0",
+  "[::1]",
+  "::1",
+]);
+
+function isBlockedUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (!["http:", "https:"].includes(parsed.protocol)) return true;
+    if (BLOCKED_HOSTS.has(parsed.hostname)) return true;
+    // Block private IP ranges (10.x, 172.16-31.x, 192.168.x, 169.254.x)
+    const parts = parsed.hostname.split(".").map(Number);
+    if (parts.length === 4 && parts.every((p) => !isNaN(p))) {
+      if (parts[0] === 10) return true;
+      if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+      if (parts[0] === 192 && parts[1] === 168) return true;
+      if (parts[0] === 169 && parts[1] === 254) return true;
+    }
+    return false;
+  } catch {
+    return true;
+  }
+}
+
 export async function importRecipeFromUrl(url: string): Promise<ImportResult> {
+  if (isBlockedUrl(url)) {
+    return { success: false, error: "FETCH_FAILED" };
+  }
+
   let html: string;
   try {
     const res = await fetch(url, {

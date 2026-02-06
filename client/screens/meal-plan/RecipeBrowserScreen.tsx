@@ -284,6 +284,13 @@ export default function RecipeBrowserScreen() {
     }, 300);
   }, []);
 
+  // Cleanup debounce timer on unmount
+  React.useEffect(() => {
+    return () => {
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    };
+  }, []);
+
   const searchParams: CatalogSearchParams | null = useMemo(() => {
     if (!debouncedQuery) return null;
     return {

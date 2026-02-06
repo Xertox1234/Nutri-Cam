@@ -8,7 +8,7 @@ import RecipeCreateScreen from "@/screens/meal-plan/RecipeCreateScreen";
 import RecipeImportScreen from "@/screens/meal-plan/RecipeImportScreen";
 import { HeaderTitle } from "@/components/HeaderTitle";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
-import type { ImportedRecipeData } from "../../server/services/recipe-import";
+import type { ImportedRecipeData } from "@shared/types/recipe-import";
 
 export type MealPlanStackParamList = {
   MealPlanHome: undefined;
