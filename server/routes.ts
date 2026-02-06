@@ -28,6 +28,12 @@ import {
   type SubscriptionStatus,
 } from "@shared/types/premium";
 import {
+  photoIntentSchema,
+  INTENT_CONFIG,
+  type PhotoIntent,
+  preparationMethodSchema,
+} from "@shared/constants/preparation";
+import {
   analyzePhoto,
   refineAnalysis,
   needsFollowUp,
@@ -1117,45 +1123,59 @@ Format as plain text with clear sections.`;
           return res.status(400).json({ error: "No photo provided" });
         }
 
+        // Parse intent from multipart form parameters (default: "log")
+        const intentRaw = (req.body?.intent as string) || "log";
+        const intentParsed = photoIntentSchema.safeParse(intentRaw);
+        const intent: PhotoIntent = intentParsed.success
+          ? intentParsed.data
+          : "log";
+        const intentConfig = INTENT_CONFIG[intent];
+
         // Convert buffer to base64
         const imageBase64 = req.file.buffer.toString("base64");
 
-        // Analyze photo with Vision API
-        const analysisResult = await analyzePhoto(imageBase64);
+        // Analyze photo with Vision API (intent-aware prompt)
+        const analysisResult = await analyzePhoto(imageBase64, intent);
 
-        // Look up nutrition data for identified foods
-        const foodNames = analysisResult.foods.map(
-          (f) => `${f.quantity} ${f.name}`,
-        );
-        const nutritionMap = await batchNutritionLookup(foodNames);
-
-        // Combine analysis with nutrition data
-        const foodsWithNutrition = analysisResult.foods.map((food, index) => {
-          const query = foodNames[index];
-          const nutrition = nutritionMap.get(query);
-          return {
+        // Conditionally look up nutrition data
+        let foodsWithNutrition;
+        if (intentConfig.needsNutrition) {
+          const foodNames = analysisResult.foods.map(
+            (f) => `${f.quantity} ${f.name}`,
+          );
+          const nutritionMap = await batchNutritionLookup(foodNames);
+          foodsWithNutrition = analysisResult.foods.map((food, index) => {
+            const query = foodNames[index];
+            const nutrition = nutritionMap.get(query);
+            return { ...food, nutrition: nutrition || null };
+          });
+        } else {
+          foodsWithNutrition = analysisResult.foods.map((food) => ({
             ...food,
-            nutrition: nutrition || null,
-          };
-        });
+            nutrition: null,
+          }));
+        }
 
-        // Generate session ID for follow-up
+        // Generate session ID (needed for follow-ups and confirm)
         const sessionId = crypto.randomUUID();
-        analysisSessionStore.set(sessionId, {
-          userId: req.userId!,
-          result: analysisResult,
-          imageBase64,
-        });
+        if (intentConfig.needsSession) {
+          analysisSessionStore.set(sessionId, {
+            userId: req.userId!,
+            result: analysisResult,
+            imageBase64,
+          });
 
-        // Clean up old sessions after timeout, tracking the timeout reference
-        const timeoutId = setTimeout(() => {
-          analysisSessionStore.delete(sessionId);
-          sessionTimeouts.delete(sessionId);
-        }, SESSION_TIMEOUT);
-        sessionTimeouts.set(sessionId, timeoutId);
+          // Clean up old sessions after timeout, tracking the timeout reference
+          const timeoutId = setTimeout(() => {
+            analysisSessionStore.delete(sessionId);
+            sessionTimeouts.delete(sessionId);
+          }, SESSION_TIMEOUT);
+          sessionTimeouts.set(sessionId, timeoutId);
+        }
 
         const response = {
           sessionId,
+          intent,
           foods: foodsWithNutrition,
           overallConfidence: analysisResult.overallConfidence,
           needsFollowUp: needsFollowUp(analysisResult),
@@ -1252,6 +1272,8 @@ Format as plain text with clear sections.`;
       }),
     ),
     mealType: z.string().optional(),
+    preparationMethods: z.array(preparationMethodSchema).optional(),
+    analysisIntent: photoIntentSchema.optional(),
   });
 
   app.post(
@@ -1295,6 +1317,8 @@ Format as plain text with clear sections.`;
               fat: totals.fat.toString(),
               sourceType: "photo",
               aiConfidence: confidence?.toString(),
+              preparationMethods: validated.preparationMethods || null,
+              analysisIntent: validated.analysisIntent || null,
             })
             .returning();
 

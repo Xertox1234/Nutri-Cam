@@ -168,7 +168,7 @@ export default function ScanScreen() {
     });
 
     if (!result.canceled && result.assets[0]) {
-      navigation.navigate("PhotoAnalysis", {
+      navigation.navigate("PhotoIntent", {
         imageUri: result.assets[0].uri,
       });
       refreshScanCount();
@@ -197,7 +197,7 @@ export default function ScanScreen() {
         });
 
         if (photo?.uri) {
-          navigation.navigate("PhotoAnalysis", { imageUri: photo.uri });
+          navigation.navigate("PhotoIntent", { imageUri: photo.uri });
           refreshScanCount();
         }
       } catch {

@@ -96,6 +96,10 @@ export const scannedItems = pgTable(
     sourceType: text("source_type").default("barcode"),
     photoUrl: text("photo_url"),
     aiConfidence: decimal("ai_confidence", { precision: 3, scale: 2 }),
+    preparationMethods: jsonb("preparation_methods").$type<
+      { name: string; method: string }[]
+    >(),
+    analysisIntent: text("analysis_intent"),
     scannedAt: timestamp("scanned_at")
       .default(sql`CURRENT_TIMESTAMP`)
       .notNull(),
