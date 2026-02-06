@@ -147,6 +147,10 @@ export interface IStorage {
   getUserRecipes(userId: string): Promise<CommunityRecipe[]>;
 
   // Meal plan recipes
+  findMealPlanRecipeByExternalId(
+    userId: string,
+    externalId: string,
+  ): Promise<MealPlanRecipe | undefined>;
   getMealPlanRecipe(id: number): Promise<MealPlanRecipe | undefined>;
   getMealPlanRecipeWithIngredients(
     id: number,
@@ -688,6 +692,22 @@ export class DatabaseStorage implements IStorage {
   // ============================================================================
   // MEAL PLAN RECIPES
   // ============================================================================
+
+  async findMealPlanRecipeByExternalId(
+    userId: string,
+    externalId: string,
+  ): Promise<MealPlanRecipe | undefined> {
+    const [recipe] = await db
+      .select()
+      .from(mealPlanRecipes)
+      .where(
+        and(
+          eq(mealPlanRecipes.userId, userId),
+          eq(mealPlanRecipes.externalId, externalId),
+        ),
+      );
+    return recipe || undefined;
+  }
 
   async getMealPlanRecipe(id: number): Promise<MealPlanRecipe | undefined> {
     const [recipe] = await db

@@ -462,12 +462,14 @@ export default function MealPlanHomeScreen() {
   );
 
   const handleAddItem = useCallback(
-    (_mealType: string) => {
+    (mealType: string) => {
       haptics.selection();
-      // TODO: Phase 2 will add RecipeBrowser navigation
-      // For now, users can create recipes via the API
+      navigation.navigate("RecipeBrowser", {
+        mealType,
+        plannedDate: selectedDateStr,
+      });
     },
-    [haptics],
+    [haptics, navigation, selectedDateStr],
   );
 
   const handleRefresh = useCallback(() => {
