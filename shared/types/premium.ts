@@ -16,6 +16,9 @@ export interface PremiumFeatures {
   dailyRecipeGenerations: number;
 }
 
+/** Represents effectively unlimited scans (JSON-safe alternative to Infinity). */
+export const UNLIMITED_SCANS = 999999;
+
 export const TIER_FEATURES: Record<SubscriptionTier, PremiumFeatures> = {
   free: {
     maxDailyScans: 10,
@@ -28,7 +31,7 @@ export const TIER_FEATURES: Record<SubscriptionTier, PremiumFeatures> = {
     dailyRecipeGenerations: 0,
   },
   premium: {
-    maxDailyScans: 999999,
+    maxDailyScans: UNLIMITED_SCANS,
     advancedBarcodes: true,
     highQualityCapture: true,
     videoRecording: true,

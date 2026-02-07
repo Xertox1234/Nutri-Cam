@@ -1046,10 +1046,12 @@ export default function ProfileScreen() {
 
   const { data: savedItemCount } = useSavedItemCount();
 
-  // Announce profile loaded for screen readers
+  // Announce profile loaded for screen readers once on initial load
   const isInitialLoading = summaryLoading || goalsLoading;
+  const hasAnnouncedProfileRef = useRef(false);
   useEffect(() => {
-    if (!isInitialLoading && user) {
+    if (!isInitialLoading && user && !hasAnnouncedProfileRef.current) {
+      hasAnnouncedProfileRef.current = true;
       AccessibilityInfo.announceForAccessibility(
         `Profile loaded for ${user.displayName || user.username}`,
       );
@@ -1358,7 +1360,7 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.full,
   },
   saveButtonText: {
-    color: "#FFFFFF",
+    color: "#FFFFFF", // hardcoded
     fontWeight: "600",
   },
   settingsValue: {
@@ -1546,7 +1548,7 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.full,
   },
   setGoalsButtonText: {
-    color: "#FFFFFF",
+    color: "#FFFFFF", // hardcoded
     fontWeight: "600",
   },
   libraryCard: {

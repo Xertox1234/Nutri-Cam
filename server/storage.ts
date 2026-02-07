@@ -743,8 +743,8 @@ export class DatabaseStorage implements IStorage {
   ): Promise<
     (MealPlanRecipe & { ingredients: RecipeIngredient[] }) | undefined
   > {
-    const [recipeResult, ingredients] = await Promise.all([
-      db.select().from(mealPlanRecipes).where(eq(mealPlanRecipes.id, id)),
+    const [recipe, ingredients] = await Promise.all([
+      this.getMealPlanRecipe(id),
       db
         .select()
         .from(recipeIngredients)
@@ -752,7 +752,6 @@ export class DatabaseStorage implements IStorage {
         .orderBy(recipeIngredients.displayOrder),
     ]);
 
-    const recipe = recipeResult[0];
     if (!recipe) return undefined;
 
     return { ...recipe, ingredients };

@@ -89,40 +89,23 @@ app.get(
 
 ### SSRF Protection for Server-Side URL Fetching
 
-When the server fetches a user-provided URL (e.g., recipe import, link previews), validate the URL before making the request to prevent Server-Side Request Forgery:
+When the server fetches a user-provided URL (e.g., recipe import, link previews), use the hardened `safeFetch` implementation in `server/services/recipe-import.ts`. It provides:
+
+- **URL blocklist** (`isBlockedUrl`): Blocks localhost, private IPs (IPv4 and IPv6), link-local, hex-encoded IPs, and non-HTTP(S) protocols.
+- **DNS rebinding prevention** (`resolveAndValidateHost`): Resolves hostnames via `dns.promises.lookup` and validates the resolved IP against the same blocklist, preventing attackers from using DNS that initially resolves to a public IP then rebinds to a private one.
+- **Redirect validation**: Follows redirects manually (`redirect: "manual"`) up to `MAX_REDIRECTS`, re-validating each redirect target against the blocklist and DNS check.
+- **Response size limits**: Enforces `MAX_RESPONSE_BYTES` via both `Content-Length` header check and streaming byte count.
+- **Timeout**: Uses `AbortSignal.timeout()` to cap total fetch duration.
 
 ```typescript
-const BLOCKED_HOSTS = new Set([
-  "localhost",
-  "127.0.0.1",
-  "0.0.0.0",
-  "[::1]",
-  "::1",
-]);
-
-function isBlockedUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    if (!["http:", "https:"].includes(parsed.protocol)) return true;
-    if (BLOCKED_HOSTS.has(parsed.hostname)) return true;
-    // Block private IP ranges
-    const parts = parsed.hostname.split(".").map(Number);
-    if (parts.length === 4 && parts.every((p) => !isNaN(p))) {
-      if (parts[0] === 10) return true;
-      if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
-      if (parts[0] === 192 && parts[1] === 168) return true;
-      if (parts[0] === 169 && parts[1] === 254) return true;
-    }
-    return false;
-  } catch {
-    return true;
-  }
-}
-
-// Use before any server-side fetch of user-provided URLs
+// For URL validation without fetching:
+import { isBlockedUrl } from "./services/recipe-import";
 if (isBlockedUrl(url)) {
   return { success: false, error: "FETCH_FAILED" };
 }
+
+// For full protected fetch, use importRecipeFromUrl which calls safeFetch internally.
+// See server/services/recipe-import.ts for the full implementation.
 ```
 
 **When to use:** Any endpoint where the server fetches a URL supplied by the user (import flows, link previews, webhook callbacks).

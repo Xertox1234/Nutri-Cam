@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isValidCalendarDate } from "../utils/date-validation";
 
 // Test the validation schemas used in routes
 const registerSchema = z.object({
@@ -333,17 +334,6 @@ describe("Item ID Validation", () => {
     expect(parseItemId("5.7")).toBe(5);
   });
 });
-
-// Inline the helper to avoid importing routes.ts (which triggers OpenAI init)
-function isValidCalendarDate(dateStr: string): boolean {
-  const [year, month, day] = dateStr.split("-").map(Number);
-  const d = new Date(Date.UTC(year, month - 1, day));
-  return (
-    d.getUTCFullYear() === year &&
-    d.getUTCMonth() === month - 1 &&
-    d.getUTCDate() === day
-  );
-}
 
 describe("isValidCalendarDate", () => {
   it("accepts valid dates", () => {

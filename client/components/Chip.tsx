@@ -73,7 +73,7 @@ export function Chip({
         backgroundColor: selected ? theme.link : withOpacity(theme.text, 0.06),
         borderWidth: 0,
         borderColor: "transparent",
-        textColor: selected ? "#FFFFFF" : theme.text,
+        textColor: selected ? theme.buttonText : theme.text,
       };
     }
 

@@ -416,12 +416,6 @@ async function safeFetch(
 
     // Resolve relative redirect URLs against the current URL
     currentUrl = new URL(location, currentUrl).href;
-
-    // Check if we have exceeded the redirect limit (next iteration would be redirects+1)
-    if (redirects === MAX_REDIRECTS - 1) {
-      // We used the last allowed redirect; the next fetch (if also a redirect)
-      // will be caught by the loop bound
-    }
   }
 
   throw new Error("TOO_MANY_REDIRECTS");

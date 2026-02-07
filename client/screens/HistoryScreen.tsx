@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useEffect } from "react";
+import React, { useCallback, useMemo, useEffect, useRef } from "react";
 import {
   StyleSheet,
   View,
@@ -661,9 +661,11 @@ export default function HistoryScreen() {
   const userName = user?.displayName || user?.username || "there";
   const itemCount = todaySummary?.itemCount || 0;
 
-  // Announce calorie summary for screen readers on dashboard load
+  // Announce calorie summary for screen readers once on dashboard load
+  const hasAnnouncedRef = useRef(false);
   useEffect(() => {
-    if (!showAll && !isLoading && todaySummary) {
+    if (!showAll && !isLoading && todaySummary && !hasAnnouncedRef.current) {
+      hasAnnouncedRef.current = true;
       AccessibilityInfo.announceForAccessibility(
         `Today: ${currentCalories} of ${calorieGoal} calories, ${itemCount} items scanned`,
       );

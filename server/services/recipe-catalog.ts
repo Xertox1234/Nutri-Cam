@@ -98,18 +98,17 @@ const detailCache = new Map<
   CacheEntry<z.infer<typeof recipeDetailSchema>>
 >();
 const DETAIL_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+const MAX_CACHE_ENTRIES = 200;
 
 function getCachedDetail(
   id: number,
 ): z.infer<typeof recipeDetailSchema> | null {
   const entry = detailCache.get(id);
   if (entry && Date.now() - entry.timestamp < DETAIL_CACHE_TTL) {
-    console.log(`[recipe-catalog] Cache HIT for spoonacular id ${id}`);
     return entry.data;
   }
   if (entry) {
     detailCache.delete(id);
-    console.log(`[recipe-catalog] Cache EXPIRED for spoonacular id ${id}`);
   }
   return null;
 }
@@ -118,10 +117,12 @@ function setCachedDetail(
   id: number,
   data: z.infer<typeof recipeDetailSchema>,
 ): void {
+  // Evict oldest entry if cache is full
+  if (detailCache.size >= MAX_CACHE_ENTRIES) {
+    const oldestKey = detailCache.keys().next().value;
+    if (oldestKey !== undefined) detailCache.delete(oldestKey);
+  }
   detailCache.set(id, { data, timestamp: Date.now() });
-  console.log(
-    `[recipe-catalog] Cache SET for spoonacular id ${id} (${detailCache.size} entries)`,
-  );
 }
 
 /** Clear the detail cache. Exported for testing. */
@@ -241,10 +242,6 @@ export async function getCatalogRecipeDetail(spoonacularId: number): Promise<{
   if (cached) {
     return mapToMealPlanRecipe(cached, "");
   }
-
-  console.log(
-    `[recipe-catalog] Cache MISS for spoonacular id ${spoonacularId}`,
-  );
 
   if (!SPOONACULAR_API_KEY) return null;
 
