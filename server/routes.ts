@@ -68,6 +68,21 @@ function isValidSubscriptionTier(tier: string): tier is SubscriptionTier {
   return (subscriptionTiers as readonly string[]).includes(tier);
 }
 
+/**
+ * Validate that a YYYY-MM-DD string represents a real calendar date.
+ * The regex format check must happen before calling this function.
+ * Rejects values like "2024-13-45" or "2024-02-30".
+ */
+export function isValidCalendarDate(dateStr: string): boolean {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  const d = new Date(Date.UTC(year, month - 1, day));
+  return (
+    d.getUTCFullYear() === year &&
+    d.getUTCMonth() === month - 1 &&
+    d.getUTCDate() === day
+  );
+}
+
 /** Extract IP address for rate limiting fallback when user is not authenticated */
 function ipKeyGenerator(req: Request): string {
   return req.ip || req.socket.remoteAddress || "unknown";
@@ -1930,20 +1945,6 @@ Format as plain text with clear sections.`;
     scannedItemId: z.number().int().positive().optional().nullable(),
     plannedDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     mealType: z.enum(["breakfast", "lunch", "dinner", "snack"]),
-    displayOrder: z.number().int().min(0).optional(),
-    servings: z
-      .union([z.string(), z.number()])
-      .optional()
-      .transform((v) => v?.toString()),
-  });
-
-  const updateMealPlanItemSchema = z.object({
-    plannedDate: z
-      .string()
-      .regex(/^\d{4}-\d{2}-\d{2}$/)
-      .optional(),
-    mealType: z.enum(["breakfast", "lunch", "dinner", "snack"]).optional(),
-    displayOrder: z.number().int().min(0).optional(),
     servings: z
       .union([z.string(), z.number()])
       .optional()
@@ -2029,6 +2030,7 @@ Format as plain text with clear sections.`;
   app.put(
     "/api/meal-plan/recipes/:id",
     requireAuth,
+    mealPlanRateLimit,
     async (req: Request, res: Response): Promise<void> => {
       try {
         const id = parseInt(req.params.id as string, 10);
@@ -2072,6 +2074,7 @@ Format as plain text with clear sections.`;
   app.delete(
     "/api/meal-plan/recipes/:id",
     requireAuth,
+    mealPlanRateLimit,
     async (req: Request, res: Response): Promise<void> => {
       try {
         const id = parseInt(req.params.id as string, 10);
@@ -2111,6 +2114,33 @@ Format as plain text with clear sections.`;
         ) {
           res.status(400).json({
             error: "start and end query parameters required (YYYY-MM-DD)",
+          });
+          return;
+        }
+
+        // Validate that the strings represent real calendar dates
+        if (!isValidCalendarDate(start) || !isValidCalendarDate(end)) {
+          res.status(400).json({
+            error: "Invalid calendar date",
+          });
+          return;
+        }
+
+        // Validate start <= end
+        if (start > end) {
+          res.status(400).json({
+            error: "start must be on or before end",
+          });
+          return;
+        }
+
+        // Validate max range of 90 days
+        const startMs = new Date(start + "T00:00:00Z").getTime();
+        const endMs = new Date(end + "T00:00:00Z").getTime();
+        const diffDays = (endMs - startMs) / (1000 * 60 * 60 * 24);
+        if (diffDays > 90) {
+          res.status(400).json({
+            error: "Date range must not exceed 90 days",
           });
           return;
         }
@@ -2173,46 +2203,6 @@ Format as plain text with clear sections.`;
         }
         console.error("Add meal plan item error:", error);
         res.status(500).json({ error: "Failed to add item to plan" });
-      }
-    },
-  );
-
-  // PUT /api/meal-plan/items/:id - Update a meal plan item
-  app.put(
-    "/api/meal-plan/items/:id",
-    requireAuth,
-    async (req: Request, res: Response): Promise<void> => {
-      try {
-        const id = parseInt(req.params.id as string, 10);
-        if (isNaN(id) || id <= 0) {
-          res.status(400).json({ error: "Invalid item ID" });
-          return;
-        }
-
-        const parsed = updateMealPlanItemSchema.safeParse(req.body);
-        if (!parsed.success) {
-          res.status(400).json({ error: formatZodError(parsed.error) });
-          return;
-        }
-
-        const item = await storage.updateMealPlanItem(
-          id,
-          req.userId!,
-          parsed.data,
-        );
-        if (!item) {
-          res.status(404).json({ error: "Item not found" });
-          return;
-        }
-
-        res.json(item);
-      } catch (error) {
-        if (error instanceof ZodError) {
-          res.status(400).json({ error: formatZodError(error) });
-          return;
-        }
-        console.error("Update meal plan item error:", error);
-        res.status(500).json({ error: "Failed to update item" });
       }
     },
   );
@@ -2402,6 +2392,8 @@ Format as plain text with clear sections.`;
             FETCH_FAILED: "Could not fetch the URL",
             NO_RECIPE_DATA: "No recipe data found on this page",
             PARSE_ERROR: "Could not parse recipe data from this page",
+            TIMEOUT: "The request timed out while fetching the URL",
+            RESPONSE_TOO_LARGE: "The page is too large to import (max 5 MB)",
           };
           res.status(422).json({
             error: result.error,

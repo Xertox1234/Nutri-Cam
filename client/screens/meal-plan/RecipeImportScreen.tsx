@@ -14,7 +14,7 @@ import { useNavigation } from "@react-navigation/native";
 import { Feather } from "@expo/vector-icons";
 
 import { ThemedText } from "@/components/ThemedText";
-import * as Haptics from "expo-haptics";
+import { NotificationFeedbackType } from "expo-haptics";
 import { useTheme } from "@/hooks/useTheme";
 import { useHaptics } from "@/hooks/useHaptics";
 import {
@@ -62,10 +62,10 @@ export default function RecipeImportScreen() {
         caloriesPerServing: recipe.caloriesPerServing,
       });
       setState("success");
-      haptics.notification(Haptics.NotificationFeedbackType.Success);
+      haptics.notification(NotificationFeedbackType.Success);
     } catch (error) {
       setState("error");
-      haptics.notification(Haptics.NotificationFeedbackType.Error);
+      haptics.notification(NotificationFeedbackType.Error);
       const msg =
         error instanceof Error ? error.message : "Failed to import recipe";
       if (msg.includes("422") || msg.includes("NO_RECIPE_DATA")) {

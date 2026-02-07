@@ -1,9 +1,22 @@
+// Mock node:dns before importing recipe-import so DNS resolution succeeds in tests
 import {
   parseIsoDuration,
   normalizeInstructions,
   parseIngredientString,
   findRecipeInLdJson,
+  importRecipeFromUrl,
+  MAX_RESPONSE_BYTES,
 } from "../recipe-import";
+
+vi.mock("node:dns", () => {
+  const lookup = vi
+    .fn()
+    .mockResolvedValue({ address: "93.184.216.34", family: 4 });
+  return {
+    default: { promises: { lookup } },
+    promises: { lookup },
+  };
+});
 
 describe("Recipe Import", () => {
   describe("parseIsoDuration", () => {
@@ -161,6 +174,137 @@ describe("Recipe Import", () => {
 
     it("returns null for empty object", () => {
       expect(findRecipeInLdJson({})).toBeNull();
+    });
+  });
+
+  describe("importRecipeFromUrl – timeout and size limits", () => {
+    const originalFetch = globalThis.fetch;
+
+    afterEach(() => {
+      globalThis.fetch = originalFetch;
+    });
+
+    it("returns TIMEOUT when fetch exceeds the time limit", async () => {
+      globalThis.fetch = vi.fn().mockImplementation((_url, opts) => {
+        const signal = opts?.signal as AbortSignal | undefined;
+        return new Promise((_resolve, reject) => {
+          // Simulate a slow server: wait until abort fires
+          if (signal) {
+            signal.addEventListener("abort", () => {
+              const err = new DOMException(
+                "The operation was aborted.",
+                "AbortError",
+              );
+              reject(err);
+            });
+          }
+        });
+      });
+
+      const result = await importRecipeFromUrl("https://example.com/slow");
+      expect(result).toEqual({ success: false, error: "TIMEOUT" });
+    }, 15_000);
+
+    it("returns RESPONSE_TOO_LARGE when Content-Length exceeds limit", async () => {
+      const oversizedLength = MAX_RESPONSE_BYTES + 1;
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-length": String(oversizedLength) }),
+        body: null,
+      });
+
+      const result = await importRecipeFromUrl("https://example.com/huge-page");
+      expect(result).toEqual({ success: false, error: "RESPONSE_TOO_LARGE" });
+    });
+
+    it("returns RESPONSE_TOO_LARGE when streamed body exceeds limit", async () => {
+      // Create a ReadableStream that emits more than MAX_RESPONSE_BYTES
+      const chunkSize = 1024 * 1024; // 1 MB per chunk
+      const totalChunks = 6; // 6 MB > 5 MB limit
+      let chunksSent = 0;
+
+      const stream = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (chunksSent < totalChunks) {
+            controller.enqueue(new Uint8Array(chunkSize));
+            chunksSent++;
+          } else {
+            controller.close();
+          }
+        },
+      });
+
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: new Headers(), // No Content-Length header
+        body: stream,
+      });
+
+      const result = await importRecipeFromUrl(
+        "https://example.com/stream-big",
+      );
+      expect(result).toEqual({ success: false, error: "RESPONSE_TOO_LARGE" });
+    });
+
+    it("accepts a response within the size limit", async () => {
+      // Build a small HTML page with valid LD+JSON recipe data
+      const recipeJson = JSON.stringify({
+        "@type": "Recipe",
+        name: "Small Recipe",
+        recipeIngredient: ["1 cup flour"],
+      });
+      const html = `<html><head><script type="application/ld+json">${recipeJson}</script></head><body></body></html>`;
+      const encoder = new TextEncoder();
+      const encoded = encoder.encode(html);
+
+      const stream = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(encoded);
+          controller.close();
+        },
+      });
+
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: new Headers({ "content-length": String(encoded.byteLength) }),
+        body: stream,
+      });
+
+      const result = await importRecipeFromUrl(
+        "https://example.com/small-recipe",
+      );
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.title).toBe("Small Recipe");
+      }
+    });
+
+    it("returns FETCH_FAILED for non-ok responses", async () => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        headers: new Headers(),
+      });
+
+      const result = await importRecipeFromUrl(
+        "https://example.com/error-page",
+      );
+      expect(result).toEqual({ success: false, error: "FETCH_FAILED" });
+    });
+
+    it("returns FETCH_FAILED for network errors", async () => {
+      globalThis.fetch = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
+
+      const result = await importRecipeFromUrl("https://example.com/down");
+      expect(result).toEqual({ success: false, error: "FETCH_FAILED" });
+    });
+
+    it("returns FETCH_FAILED for blocked URLs", async () => {
+      const result = await importRecipeFromUrl("https://127.0.0.1/recipe");
+      expect(result).toEqual({ success: false, error: "FETCH_FAILED" });
     });
   });
 });

@@ -86,12 +86,50 @@ export interface CatalogSearchParams {
   number?: number;
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────
+// ── Detail Cache (module-level singleton) ────────────────────────────
 
-function getApiKey(): string | null {
-  if (!SPOONACULAR_API_KEY) return null;
-  return SPOONACULAR_API_KEY;
+interface CacheEntry<T> {
+  data: T;
+  timestamp: number;
 }
+
+const detailCache = new Map<
+  number,
+  CacheEntry<z.infer<typeof recipeDetailSchema>>
+>();
+const DETAIL_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+
+function getCachedDetail(
+  id: number,
+): z.infer<typeof recipeDetailSchema> | null {
+  const entry = detailCache.get(id);
+  if (entry && Date.now() - entry.timestamp < DETAIL_CACHE_TTL) {
+    console.log(`[recipe-catalog] Cache HIT for spoonacular id ${id}`);
+    return entry.data;
+  }
+  if (entry) {
+    detailCache.delete(id);
+    console.log(`[recipe-catalog] Cache EXPIRED for spoonacular id ${id}`);
+  }
+  return null;
+}
+
+function setCachedDetail(
+  id: number,
+  data: z.infer<typeof recipeDetailSchema>,
+): void {
+  detailCache.set(id, { data, timestamp: Date.now() });
+  console.log(
+    `[recipe-catalog] Cache SET for spoonacular id ${id} (${detailCache.size} entries)`,
+  );
+}
+
+/** Clear the detail cache. Exported for testing. */
+export function clearDetailCache(): void {
+  detailCache.clear();
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────
 
 function findNutrient(
   nutrients: z.infer<typeof nutrientSchema>[],
@@ -160,13 +198,12 @@ function mapToMealPlanRecipe(
 export async function searchCatalogRecipes(
   params: CatalogSearchParams,
 ): Promise<CatalogSearchResponse> {
-  const apiKey = getApiKey();
-  if (!apiKey) {
+  if (!SPOONACULAR_API_KEY) {
     return { results: [], offset: 0, number: 0, totalResults: 0 };
   }
 
   const url = new URL(`${SPOONACULAR_BASE}/recipes/complexSearch`);
-  url.searchParams.set("apiKey", apiKey);
+  url.searchParams.set("apiKey", SPOONACULAR_API_KEY);
   url.searchParams.set("query", params.query);
   url.searchParams.set("number", String(params.number || 10));
   url.searchParams.set("offset", String(params.offset || 0));
@@ -199,10 +236,19 @@ export async function getCatalogRecipeDetail(spoonacularId: number): Promise<{
   recipe: InsertMealPlanRecipe;
   ingredients: InsertRecipeIngredient[];
 } | null> {
-  const apiKey = getApiKey();
-  if (!apiKey) return null;
+  // Check cache first
+  const cached = getCachedDetail(spoonacularId);
+  if (cached) {
+    return mapToMealPlanRecipe(cached, "");
+  }
 
-  const url = `${SPOONACULAR_BASE}/recipes/${spoonacularId}/information?includeNutrition=true&apiKey=${apiKey}`;
+  console.log(
+    `[recipe-catalog] Cache MISS for spoonacular id ${spoonacularId}`,
+  );
+
+  if (!SPOONACULAR_API_KEY) return null;
+
+  const url = `${SPOONACULAR_BASE}/recipes/${spoonacularId}/information?includeNutrition=true&apiKey=${SPOONACULAR_API_KEY}`;
   const res = await fetch(url);
 
   if (res.status === 402) {
@@ -218,6 +264,9 @@ export async function getCatalogRecipeDetail(spoonacularId: number): Promise<{
     console.error("Spoonacular detail parse error:", parsed.error.flatten());
     return null;
   }
+
+  // Store in cache before returning
+  setCachedDetail(spoonacularId, parsed.data);
 
   // userId will be set by the route handler; use empty string as placeholder
   return mapToMealPlanRecipe(parsed.data, "");

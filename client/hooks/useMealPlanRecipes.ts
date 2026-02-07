@@ -91,24 +91,6 @@ export function useCreateMealPlanRecipe() {
   });
 }
 
-export function useDeleteMealPlanRecipe() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: async (id: number) => {
-      const res = await apiRequest("DELETE", `/api/meal-plan/recipes/${id}`);
-      if (!res.ok && res.status !== 204) {
-        const text = await res.text();
-        throw new Error(`${res.status}: ${text}`);
-      }
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/meal-plan/recipes"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/meal-plan"] });
-    },
-  });
-}
-
 export function useCatalogSearch(params: CatalogSearchParams | null) {
   const qs = params
     ? new URLSearchParams(

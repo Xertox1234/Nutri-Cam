@@ -15,6 +15,7 @@ import { Feather } from "@expo/vector-icons";
 import type { RouteProp } from "@react-navigation/native";
 
 import { ThemedText } from "@/components/ThemedText";
+import { Chip } from "@/components/Chip";
 import { SkeletonBox } from "@/components/SkeletonLoader";
 import { useTheme } from "@/hooks/useTheme";
 import { useHaptics } from "@/hooks/useHaptics";
@@ -41,6 +42,12 @@ type RecipeBrowserRouteProp = RouteProp<
   "RecipeBrowser"
 >;
 
+// ── Item Separator ──────────────────────────────────────────────────
+
+function ItemSeparator() {
+  return <View style={{ height: Spacing.sm }} />;
+}
+
 const CUISINE_PRESETS = [
   "Italian",
   "Mexican",
@@ -50,82 +57,6 @@ const CUISINE_PRESETS = [
   "Indian",
 ];
 const DIET_PRESETS = ["Vegetarian", "Vegan", "Gluten Free", "Keto", "Paleo"];
-
-// ── Tab Chip ─────────────────────────────────────────────────────────
-
-function TabChip({
-  label,
-  active,
-  onPress,
-}: {
-  label: string;
-  active: boolean;
-  onPress: () => void;
-}) {
-  const { theme } = useTheme();
-
-  return (
-    <Pressable
-      onPress={onPress}
-      style={[
-        styles.tabChip,
-        {
-          backgroundColor: active ? theme.link : withOpacity(theme.text, 0.06),
-        },
-      ]}
-      accessibilityRole="tab"
-      accessibilityLabel={label}
-      accessibilityState={{ selected: active }}
-    >
-      <ThemedText
-        style={[styles.tabChipText, { color: active ? "#FFFFFF" : theme.text }]}
-      >
-        {label}
-      </ThemedText>
-    </Pressable>
-  );
-}
-
-// ── Filter Chip ──────────────────────────────────────────────────────
-
-function FilterChip({
-  label,
-  active,
-  onPress,
-}: {
-  label: string;
-  active: boolean;
-  onPress: () => void;
-}) {
-  const { theme } = useTheme();
-
-  return (
-    <Pressable
-      onPress={onPress}
-      style={[
-        styles.filterChip,
-        {
-          backgroundColor: active
-            ? withOpacity(theme.link, 0.15)
-            : withOpacity(theme.text, 0.04),
-          borderColor: active ? theme.link : withOpacity(theme.text, 0.1),
-        },
-      ]}
-      accessibilityRole="button"
-      accessibilityLabel={`Filter by ${label}`}
-      accessibilityState={{ selected: active }}
-    >
-      <ThemedText
-        style={[
-          styles.filterChipText,
-          { color: active ? theme.link : theme.textSecondary },
-        ]}
-      >
-        {label}
-      </ThemedText>
-    </Pressable>
-  );
-}
 
 // ── Catalog Card ─────────────────────────────────────────────────────
 
@@ -456,14 +387,16 @@ export default function RecipeBrowserScreen() {
 
         {/* Tabs */}
         <View style={styles.tabRow}>
-          <TabChip
+          <Chip
             label="Catalog"
-            active={tab === "catalog"}
+            variant="tab"
+            selected={tab === "catalog"}
             onPress={() => setTab("catalog")}
           />
-          <TabChip
+          <Chip
             label="My Recipes"
-            active={tab === "my"}
+            variant="tab"
+            selected={tab === "my"}
             onPress={() => setTab("my")}
           />
           <View style={{ flex: 1 }} />
@@ -512,20 +445,24 @@ export default function RecipeBrowserScreen() {
             contentContainerStyle={styles.filterRow}
           >
             {CUISINE_PRESETS.map((c) => (
-              <FilterChip
+              <Chip
                 key={c}
                 label={c}
-                active={activeCuisine === c}
+                variant="filter"
+                selected={activeCuisine === c}
                 onPress={() => handleToggleCuisine(c)}
+                accessibilityLabel={`Filter by ${c}`}
               />
             ))}
             <View style={styles.filterDivider} />
             {DIET_PRESETS.map((d) => (
-              <FilterChip
+              <Chip
                 key={d}
                 label={d}
-                active={activeDiet === d}
+                variant="filter"
+                selected={activeDiet === d}
                 onPress={() => handleToggleDiet(d)}
+                accessibilityLabel={`Filter by ${d}`}
               />
             ))}
           </ScrollView>
@@ -578,9 +515,7 @@ export default function RecipeBrowserScreen() {
                 paddingHorizontal: Spacing.lg,
                 paddingBottom: insets.bottom + Spacing.xl,
               }}
-              ItemSeparatorComponent={() => (
-                <View style={{ height: Spacing.sm }} />
-              )}
+              ItemSeparatorComponent={ItemSeparator}
             />
           )}
         </>
@@ -616,9 +551,7 @@ export default function RecipeBrowserScreen() {
                 paddingHorizontal: Spacing.lg,
                 paddingBottom: insets.bottom + Spacing.xl,
               }}
-              ItemSeparatorComponent={() => (
-                <View style={{ height: Spacing.sm }} />
-              )}
+              ItemSeparatorComponent={ItemSeparator}
             />
           )}
         </>
@@ -656,15 +589,6 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     marginBottom: Spacing.md,
   },
-  tabChip: {
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm,
-    borderRadius: BorderRadius.chip,
-  },
-  tabChipText: {
-    fontSize: 13,
-    fontFamily: FontFamily.semiBold,
-  },
   headerAction: {
     flexDirection: "row",
     alignItems: "center",
@@ -681,16 +605,6 @@ const styles = StyleSheet.create({
   filterRow: {
     gap: Spacing.xs,
     paddingBottom: Spacing.xs,
-  },
-  filterChip: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.xs,
-    borderRadius: BorderRadius.chip,
-    borderWidth: 1,
-  },
-  filterChipText: {
-    fontSize: 12,
-    fontFamily: FontFamily.medium,
   },
   filterDivider: {
     width: 1,

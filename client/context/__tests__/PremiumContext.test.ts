@@ -63,7 +63,7 @@ describe("PremiumContext", () => {
       const features = subscriptionData?.features ?? TIER_FEATURES.free;
 
       expect(features).toEqual(TIER_FEATURES.premium);
-      expect(features.maxDailyScans).toBe(Infinity);
+      expect(features.maxDailyScans).toBe(999999);
       expect(features.advancedBarcodes).toBe(true);
       expect(features.highQualityCapture).toBe(true);
       expect(features.videoRecording).toBe(true);

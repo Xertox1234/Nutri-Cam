@@ -1,5 +1,6 @@
 import { z } from "zod";
 import * as cheerio from "cheerio";
+import dns from "node:dns";
 import type {
   ParsedIngredient,
   ImportedRecipeData,
@@ -52,8 +53,18 @@ export type ImportResult =
   | { success: true; data: ImportedRecipeData }
   | {
       success: false;
-      error: "NO_RECIPE_DATA" | "FETCH_FAILED" | "PARSE_ERROR";
+      error:
+        | "NO_RECIPE_DATA"
+        | "FETCH_FAILED"
+        | "PARSE_ERROR"
+        | "TIMEOUT"
+        | "RESPONSE_TOO_LARGE";
     };
+
+// ── Fetch Safety Constants ───────────────────────────────────────────
+
+export const FETCH_TIMEOUT_MS = 10_000; // 10 seconds
+export const MAX_RESPONSE_BYTES = 5 * 1024 * 1024; // 5 MB
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -173,7 +184,9 @@ export function findRecipeInLdJson(data: unknown): unknown | null {
   return null;
 }
 
-// ── Main Import Function ─────────────────────────────────────────────
+// ── SSRF Protection ─────────────────────────────────────────────────
+
+export const MAX_REDIRECTS = 3;
 
 const BLOCKED_HOSTS = new Set([
   "localhost",
@@ -183,23 +196,235 @@ const BLOCKED_HOSTS = new Set([
   "::1",
 ]);
 
-function isBlockedUrl(url: string): boolean {
+/**
+ * Check whether an IPv4 address string falls within blocked private/reserved ranges.
+ *
+ * Blocked ranges:
+ *   - 0.0.0.0/8        (current network)
+ *   - 10.0.0.0/8       (private)
+ *   - 100.64.0.0/10    (CGNAT / carrier-grade NAT)
+ *   - 127.0.0.0/8      (loopback)
+ *   - 169.254.0.0/16   (link-local)
+ *   - 172.16.0.0/12    (private)
+ *   - 192.168.0.0/16   (private)
+ */
+export function isBlockedIPv4(ip: string): boolean {
+  const parts = ip.split(".").map(Number);
+  if (parts.length !== 4 || parts.some((p) => isNaN(p) || p < 0 || p > 255)) {
+    return true; // malformed = blocked
+  }
+  const [a, b] = parts;
+  if (a === 0) return true; // 0.0.0.0/8
+  if (a === 10) return true; // 10.0.0.0/8
+  if (a === 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10
+  if (a === 127) return true; // 127.0.0.0/8
+  if (a === 169 && b === 254) return true; // 169.254.0.0/16
+  if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12
+  if (a === 192 && b === 168) return true; // 192.168.0.0/16
+  return false;
+}
+
+/**
+ * Check whether an IPv6 address string falls within blocked ranges.
+ *
+ * Blocked:
+ *   - ::1               (loopback)
+ *   - ::ffff:x.x.x.x   (IPv4-mapped — delegates to isBlockedIPv4)
+ *   - fc00::/7          (unique local addresses, i.e. fc00:: and fd00::)
+ *   - fe80::/10         (link-local)
+ */
+export function isBlockedIPv6(ip: string): boolean {
+  const normalized = ip.toLowerCase().trim();
+
+  // Loopback
+  if (normalized === "::1") return true;
+
+  // IPv4-mapped IPv6: "::ffff:127.0.0.1"
+  const v4MappedMatch = normalized.match(
+    /^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/,
+  );
+  if (v4MappedMatch) {
+    return isBlockedIPv4(v4MappedMatch[1]);
+  }
+
+  // fc00::/7 covers fc00:: through fdff::
+  if (normalized.startsWith("fc") || normalized.startsWith("fd")) return true;
+
+  // fe80::/10 (link-local)
+  if (normalized.startsWith("fe80")) return true;
+
+  return false;
+}
+
+/**
+ * Validate a resolved IP address against all blocked ranges.
+ * Handles both IPv4 and IPv6 (including IPv4-mapped IPv6 and hex representations).
+ */
+export function isBlockedIP(ip: string): boolean {
+  // Handle hex IPv4 representations like 0x7f000001
+  if (ip.startsWith("0x") || ip.startsWith("0X")) {
+    const num = parseInt(ip, 16);
+    if (isNaN(num) || num < 0 || num > 0xffffffff) return true;
+    const a = (num >>> 24) & 0xff;
+    const b = (num >>> 16) & 0xff;
+    const c = (num >>> 8) & 0xff;
+    const d = num & 0xff;
+    return isBlockedIPv4(`${a}.${b}.${c}.${d}`);
+  }
+
+  // IPv6 check (contains colon)
+  if (ip.includes(":")) {
+    return isBlockedIPv6(ip);
+  }
+
+  // IPv4 check
+  return isBlockedIPv4(ip);
+}
+
+/**
+ * Check whether a URL should be blocked based on its protocol, hostname,
+ * and (if the hostname is a literal IP) IP range.
+ */
+export function isBlockedUrl(url: string): boolean {
   try {
     const parsed = new URL(url);
     if (!["http:", "https:"].includes(parsed.protocol)) return true;
     if (BLOCKED_HOSTS.has(parsed.hostname)) return true;
-    // Block private IP ranges (10.x, 172.16-31.x, 192.168.x, 169.254.x)
-    const parts = parsed.hostname.split(".").map(Number);
-    if (parts.length === 4 && parts.every((p) => !isNaN(p))) {
-      if (parts[0] === 10) return true;
-      if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
-      if (parts[0] === 192 && parts[1] === 168) return true;
-      if (parts[0] === 169 && parts[1] === 254) return true;
+
+    // Strip brackets from IPv6 literal hostnames like [::1]
+    const rawHost = parsed.hostname.startsWith("[")
+      ? parsed.hostname.slice(1, -1)
+      : parsed.hostname;
+
+    // If hostname looks like an IP (v4 or v6), validate it directly
+    if (rawHost.includes(":") || /^\d/.test(rawHost)) {
+      if (isBlockedIP(rawHost)) return true;
     }
+
     return false;
   } catch {
     return true;
   }
+}
+
+/**
+ * Resolve hostname via DNS and validate the resolved IP against blocked ranges.
+ * Prevents DNS rebinding by checking the *actual* IP that will be connected to.
+ * Returns `true` if the host is safe, `false` if it should be blocked.
+ */
+export async function resolveAndValidateHost(
+  hostname: string,
+): Promise<boolean> {
+  // Skip resolution for literal IPs — already checked by isBlockedUrl
+  if (hostname.includes(":") || /^\d{1,3}(\.\d{1,3}){3}$/.test(hostname)) {
+    return !isBlockedIP(hostname);
+  }
+
+  try {
+    const { address } = await dns.promises.lookup(hostname);
+    return !isBlockedIP(address);
+  } catch {
+    // DNS resolution failed — block
+    return false;
+  }
+}
+
+// ── Main Import Function ─────────────────────────────────────────────
+
+/**
+ * Read response body as text while enforcing a byte-size limit.
+ * Streams the body and aborts if the accumulated size exceeds maxBytes.
+ * Throws an error with message "RESPONSE_TOO_LARGE" if limit is exceeded.
+ */
+async function readBodyWithLimit(
+  res: Response,
+  maxBytes: number,
+): Promise<string> {
+  const reader = res.body?.getReader();
+  if (!reader) {
+    return "";
+  }
+
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    totalBytes += value.byteLength;
+    if (totalBytes > maxBytes) {
+      await reader.cancel();
+      throw new Error("RESPONSE_TOO_LARGE");
+    }
+    chunks.push(value);
+  }
+
+  const decoder = new TextDecoder();
+  return (
+    chunks.map((chunk) => decoder.decode(chunk, { stream: true })).join("") +
+    decoder.decode()
+  );
+}
+
+/**
+ * Perform a single fetch with manual redirect handling, DNS validation,
+ * timeout, and response size limits.
+ *
+ * - Uses `redirect: "manual"` to intercept redirects
+ * - Validates each redirect target with `isBlockedUrl()` and DNS resolution
+ * - Follows at most MAX_REDIRECTS redirects
+ */
+async function safeFetch(
+  initialUrl: string,
+  signal: AbortSignal,
+): Promise<Response> {
+  let currentUrl = initialUrl;
+
+  for (let redirects = 0; redirects <= MAX_REDIRECTS; redirects++) {
+    // Validate URL against blocklist
+    if (isBlockedUrl(currentUrl)) {
+      throw new Error("BLOCKED_URL");
+    }
+
+    // Resolve DNS and validate the resolved IP to prevent DNS rebinding
+    const hostname = new URL(currentUrl).hostname;
+    const hostSafe = await resolveAndValidateHost(hostname);
+    if (!hostSafe) {
+      throw new Error("BLOCKED_URL");
+    }
+
+    const res = await fetch(currentUrl, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (compatible; NutriScan/1.0; +https://nutriscan.app)",
+        Accept: "text/html",
+      },
+      redirect: "manual",
+      signal,
+    });
+
+    // Not a redirect — return the response
+    if (res.status < 300 || res.status >= 400) {
+      return res;
+    }
+
+    // Handle redirect
+    const location = res.headers.get("location");
+    if (!location) {
+      throw new Error("REDIRECT_NO_LOCATION");
+    }
+
+    // Resolve relative redirect URLs against the current URL
+    currentUrl = new URL(location, currentUrl).href;
+
+    // Check if we have exceeded the redirect limit (next iteration would be redirects+1)
+    if (redirects === MAX_REDIRECTS - 1) {
+      // We used the last allowed redirect; the next fetch (if also a redirect)
+      // will be caught by the loop bound
+    }
+  }
+
+  throw new Error("TOO_MANY_REDIRECTS");
 }
 
 export async function importRecipeFromUrl(url: string): Promise<ImportResult> {
@@ -207,21 +432,44 @@ export async function importRecipeFromUrl(url: string): Promise<ImportResult> {
     return { success: false, error: "FETCH_FAILED" };
   }
 
+  // Validate DNS resolution of the initial URL before fetching
+  const initialHostname = new URL(url).hostname;
+  const initialHostSafe = await resolveAndValidateHost(initialHostname);
+  if (!initialHostSafe) {
+    return { success: false, error: "FETCH_FAILED" };
+  }
+
   let html: string;
   try {
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (compatible; NutriScan/1.0; +https://nutriscan.app)",
-        Accept: "text/html",
-      },
-      redirect: "follow",
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+    let res: Response;
+    try {
+      res = await safeFetch(url, controller.signal);
+    } finally {
+      clearTimeout(timeout);
+    }
+
     if (!res.ok) {
       return { success: false, error: "FETCH_FAILED" };
     }
-    html = await res.text();
-  } catch {
+
+    // Reject early if Content-Length header advertises an oversized response
+    const contentLength = res.headers.get("content-length");
+    if (contentLength && parseInt(contentLength, 10) > MAX_RESPONSE_BYTES) {
+      return { success: false, error: "RESPONSE_TOO_LARGE" };
+    }
+
+    // Stream body with size enforcement (handles missing/inaccurate Content-Length)
+    html = await readBodyWithLimit(res, MAX_RESPONSE_BYTES);
+  } catch (err) {
+    if (err instanceof Error && err.message === "RESPONSE_TOO_LARGE") {
+      return { success: false, error: "RESPONSE_TOO_LARGE" };
+    }
+    if (err instanceof Error && err.name === "AbortError") {
+      return { success: false, error: "TIMEOUT" };
+    }
     return { success: false, error: "FETCH_FAILED" };
   }
 

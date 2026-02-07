@@ -16,7 +16,7 @@ import { Feather } from "@expo/vector-icons";
 import type { RouteProp } from "@react-navigation/native";
 
 import { ThemedText } from "@/components/ThemedText";
-import * as Haptics from "expo-haptics";
+import { NotificationFeedbackType } from "expo-haptics";
 import { useTheme } from "@/hooks/useTheme";
 import { useHaptics } from "@/hooks/useHaptics";
 import {
@@ -163,7 +163,7 @@ export default function RecipeCreateScreen() {
       return;
     }
 
-    haptics.notification(Haptics.NotificationFeedbackType.Success);
+    haptics.notification(NotificationFeedbackType.Success);
 
     const validIngredients = ingredients
       .filter((i) => i.name.trim())

@@ -5,10 +5,12 @@ This document captures established patterns for the NutriScan codebase. Follow t
 ## Table of Contents
 
 - [Security Patterns](#security-patterns)
+  - [SSRF Protection for Server-Side URL Fetching](#ssrf-protection-for-server-side-url-fetching)
 - [TypeScript Patterns](#typescript-patterns)
   - [Shared Client API Types](#shared-client-api-types-exception-pattern)
 - [API Patterns](#api-patterns)
 - [External API Patterns](#external-api-patterns)
+  - [External Resource Dedup on Save](#external-resource-dedup-on-save)
 - [Database Patterns](#database-patterns)
   - [Cache-First Pattern for Expensive Operations](#cache-first-pattern-for-expensive-operations)
   - [Fire-and-Forget for Non-Critical Background Operations](#fire-and-forget-for-non-critical-background-operations)
@@ -84,6 +86,50 @@ app.get(
   },
 );
 ```
+
+### SSRF Protection for Server-Side URL Fetching
+
+When the server fetches a user-provided URL (e.g., recipe import, link previews), validate the URL before making the request to prevent Server-Side Request Forgery:
+
+```typescript
+const BLOCKED_HOSTS = new Set([
+  "localhost",
+  "127.0.0.1",
+  "0.0.0.0",
+  "[::1]",
+  "::1",
+]);
+
+function isBlockedUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (!["http:", "https:"].includes(parsed.protocol)) return true;
+    if (BLOCKED_HOSTS.has(parsed.hostname)) return true;
+    // Block private IP ranges
+    const parts = parsed.hostname.split(".").map(Number);
+    if (parts.length === 4 && parts.every((p) => !isNaN(p))) {
+      if (parts[0] === 10) return true;
+      if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+      if (parts[0] === 192 && parts[1] === 168) return true;
+      if (parts[0] === 169 && parts[1] === 254) return true;
+    }
+    return false;
+  } catch {
+    return true;
+  }
+}
+
+// Use before any server-side fetch of user-provided URLs
+if (isBlockedUrl(url)) {
+  return { success: false, error: "FETCH_FAILED" };
+}
+```
+
+**When to use:** Any endpoint where the server fetches a URL supplied by the user (import flows, link previews, webhook callbacks).
+
+**Why:** Without validation, attackers can use the server as a proxy to reach internal services (localhost, AWS metadata at 169.254.169.254, private network hosts). Zod's `z.string().url()` only validates URL syntax, not the target.
+
+**Reference:** `server/services/recipe-import.ts`
 
 ### CORS with Pattern Matching
 
@@ -843,6 +889,51 @@ setIsPer100g(!hasServingData);
 ```
 
 **Why:** Prevents user confusion when displayed values don't match package labels.
+
+### External Resource Dedup on Save
+
+When saving resources from external catalogs or imports, check for an existing record by `externalId + userId` before fetching full details and inserting. This prevents duplicate DB entries and unnecessary API calls:
+
+```typescript
+// In route handler — check for existing record before expensive API call
+const existing = await storage.findMealPlanRecipeByExternalId(
+  req.userId!,
+  externalId,
+);
+if (existing) {
+  return res.json(existing); // Already saved, return existing
+}
+
+// Only now fetch full details from external API
+const detail = await getCatalogRecipeDetail(externalId);
+const saved = await storage.createMealPlanRecipe(detail);
+res.status(201).json(saved);
+```
+
+```typescript
+// In storage layer — composite lookup by userId + externalId
+async findMealPlanRecipeByExternalId(
+  userId: number,
+  externalId: string,
+): Promise<MealPlanRecipe | undefined> {
+  const [recipe] = await db
+    .select()
+    .from(mealPlanRecipes)
+    .where(
+      and(
+        eq(mealPlanRecipes.userId, userId),
+        eq(mealPlanRecipes.externalId, externalId),
+      ),
+    );
+  return recipe;
+}
+```
+
+**When to use:** Any feature that saves external resources into local DB (catalog imports, bookmark/save flows, third-party sync).
+
+**Why:** Users may tap "save" multiple times or revisit a catalog item. Without dedup, you get duplicate rows and wasted API quota. The userId scope ensures different users can independently save the same external resource.
+
+**Reference:** `POST /api/meal-plan/catalog/:id/save` in `server/routes.ts`, `server/storage.ts`
 
 ---
 

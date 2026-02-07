@@ -37,7 +37,7 @@ describe("Premium Types", () => {
 
     it("should have features for premium tier", () => {
       const premiumFeatures = TIER_FEATURES.premium;
-      expect(premiumFeatures.maxDailyScans).toBe(Infinity);
+      expect(premiumFeatures.maxDailyScans).toBe(999999);
       expect(premiumFeatures.advancedBarcodes).toBe(true);
       expect(premiumFeatures.highQualityCapture).toBe(true);
       expect(premiumFeatures.videoRecording).toBe(true);
