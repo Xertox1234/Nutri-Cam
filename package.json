@@ -110,7 +110,8 @@
       "prettier --write"
     ],
     "client/**/*.tsx": [
-      "node scripts/check-accessibility.js"
+      "node scripts/check-accessibility.js",
+      "node scripts/check-hardcoded-colors.js"
     ],
     "*.{js,json,md}": [
       "prettier --write"

@@ -5,7 +5,7 @@ import { registerRoutes } from "./routes";
 import * as path from "path";
 
 const app = express();
-const log = console.log;
+const log = console.warn;
 
 declare module "http" {
   interface IncomingMessage {
