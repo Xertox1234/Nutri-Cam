@@ -35,6 +35,9 @@ This document captures established patterns for the NutriScan codebase. Follow t
   - [Skeleton Loader Pattern](#skeleton-loader-pattern)
   - [Dynamic Loading State Labels](#dynamic-loading-state-labels)
   - [Query Error Retry Pattern](#query-error-retry-pattern)
+  - [Bottom-Sheet Lifecycle State Machine](#bottom-sheet-lifecycle-state-machine)
+  - [Keyboard-to-Sheet Sequencing](#keyboard-to-sheet-sequencing)
+  - [Lazy Modal Mounting](#lazy-modal-mounting)
 - [Animation Patterns](#animation-patterns)
 - [Performance Patterns](#performance-patterns)
   - [React.memo for FlatList Header/Footer](#reactmemo-for-flatlist-headerfooter-components)
@@ -3059,6 +3062,94 @@ Include copy-paste ready code examples in todos for complex changes. This ensure
 - Consistent implementation
 - Faster development
 - Built-in code review
+
+### Bottom-Sheet Lifecycle State Machine
+
+Use a ref-based state machine to prevent race conditions when a screen has bottom sheets and async save operations. The ref (not state) is correct here since transitions are synchronous guards, not rendering triggers.
+
+**When to use:** Any screen with `BottomSheetModal` that also has save/submit actions.
+
+**When NOT to use:** Simple modals with no async operations.
+
+```typescript
+import { useRef } from "react";
+import type { SheetLifecycleState } from "@/components/recipe-builder/types";
+
+// "IDLE" = no sheet open, can open or save
+// "SHEET_OPEN" = sheet is presented, block save and other sheets
+// "SAVING" = mutation in flight, block everything
+const sheetState = useRef<SheetLifecycleState>("IDLE");
+
+const openSheet = (section: SheetSection) => {
+  if (sheetState.current !== "IDLE") return; // gate
+  sheetState.current = "SHEET_OPEN";
+  // ... present sheet
+};
+
+const handleSheetDismiss = () => {
+  sheetState.current = "IDLE";
+};
+
+const handleSave = async () => {
+  if (sheetState.current !== "IDLE") return; // gate
+  sheetState.current = "SAVING";
+  try {
+    await mutation.mutateAsync(payload);
+  } catch {
+    sheetState.current = "IDLE"; // reset on failure
+  }
+};
+```
+
+### Keyboard-to-Sheet Sequencing
+
+Dismiss the keyboard and wait for animations to settle before presenting a bottom sheet. Without this, the keyboard dismiss and sheet present animations collide on iOS, causing visual glitches or the sheet opening behind the keyboard.
+
+**When to use:** Any screen where a `TextInput` might have focus when the user taps to open a `BottomSheetModal`.
+
+**When NOT to use:** Sheets that don't coexist with text inputs.
+
+```typescript
+import { Keyboard, InteractionManager } from "react-native";
+
+const openSheet = (section: SheetSection) => {
+  Keyboard.dismiss();
+  InteractionManager.runAfterInteractions(() => {
+    sheetRefs[section].current?.present();
+  });
+};
+```
+
+### Lazy Modal Mounting
+
+Defer mounting heavy modal/sheet components until the user first opens them. Use a `Set` in state to track which modals have been requested, then conditionally render.
+
+**When to use:** Screens with 3+ `BottomSheetModal` or heavy modal components that most users won't all open.
+
+**When NOT to use:** Single-modal screens or modals that must be ready immediately.
+
+```typescript
+const [mountedSheets, setMountedSheets] = React.useState<Set<SheetSection>>(
+  new Set(),
+);
+
+const openSheet = (section: SheetSection) => {
+  setMountedSheets((prev) => {
+    if (prev.has(section)) return prev; // avoid unnecessary re-render
+    const next = new Set(prev);
+    next.add(section);
+    return next;
+  });
+  // ... then present
+};
+
+// In JSX — sheet only enters tree on first open, stays mounted after
+{mountedSheets.has("ingredients") && (
+  <BottomSheetModal ref={ingredientsRef} ...>
+    <IngredientsSheet />
+  </BottomSheetModal>
+)}
+```
 
 ---
 
