@@ -543,6 +543,173 @@ POST /api/items/:id/suggestions
 
 ---
 
+### Photo Analysis
+
+#### Analyze Photo
+
+Uploads a food photo for AI-powered identification using OpenAI's GPT-4o Vision model. Returns detected foods with optional nutrition data. Rate limited to 10 requests per minute.
+
+```http
+POST /api/photos/analyze
+Content-Type: multipart/form-data
+```
+
+**Request (multipart)**
+
+| Field  | Type   | Required | Description                                                    |
+| ------ | ------ | -------- | -------------------------------------------------------------- |
+| photo  | File   | Yes      | Food photo (JPEG/PNG)                                          |
+| intent | string | No       | One of `log`, `calories`, `recipe`, `identify`. Default: `log` |
+
+**Response** `200 OK`
+
+```json
+{
+  "sessionId": "uuid-string",
+  "intent": "log",
+  "foods": [
+    {
+      "name": "grilled chicken breast",
+      "quantity": "1 piece (~150g)",
+      "confidence": 0.85,
+      "needsClarification": false,
+      "category": "protein",
+      "nutrition": {
+        "name": "grilled chicken breast",
+        "calories": 284,
+        "protein": 53,
+        "carbs": 0,
+        "fat": 6,
+        "fiber": 0,
+        "sugar": 0,
+        "sodium": 120,
+        "servingSize": "150g",
+        "source": "usda"
+      }
+    }
+  ],
+  "overallConfidence": 0.85,
+  "needsFollowUp": false,
+  "followUpQuestions": []
+}
+```
+
+`nutrition` is only populated for intents that need it (`log`, `calories`). For `identify` and `recipe` intents it will be `null`.
+
+**Errors**
+
+| Status | Message                                                     |
+| ------ | ----------------------------------------------------------- |
+| 400    | No photo provided                                           |
+| 401    | Not authenticated                                           |
+| 429    | Daily scan limit reached (free: 10/day, premium: unlimited) |
+| 500    | Vision API error                                            |
+
+#### Submit Follow-up
+
+Refines a previous analysis by answering a clarification question. Only available when `needsFollowUp` was `true` in the analyze response. Sessions expire after 30 minutes.
+
+```http
+POST /api/photos/analyze/:sessionId/followup
+```
+
+**Path Parameters**
+
+| Param     | Description                          |
+| --------- | ------------------------------------ |
+| sessionId | Session ID from the analyze response |
+
+**Request**
+
+```json
+{
+  "question": "Is the chicken grilled or fried?",
+  "answer": "It's grilled with olive oil"
+}
+```
+
+| Field    | Type   | Max Length | Description                |
+| -------- | ------ | ---------- | -------------------------- |
+| question | string | 500 chars  | The clarification question |
+| answer   | string | 1000 chars | User's answer              |
+
+**Response** `200 OK`
+
+Same shape as the analyze response with updated foods, confidence, and follow-up status.
+
+**Errors**
+
+| Status | Message                      |
+| ------ | ---------------------------- |
+| 401    | Not authenticated            |
+| 404    | Session not found or expired |
+
+#### Confirm Photo Analysis
+
+Saves the analysis result to the database as a scanned item and daily log entry. Only applicable for the `log` intent.
+
+```http
+POST /api/photos/confirm
+```
+
+**Request**
+
+```json
+{
+  "sessionId": "uuid-string",
+  "foods": [
+    {
+      "name": "grilled chicken breast",
+      "quantity": "1 piece",
+      "calories": 284,
+      "protein": 53,
+      "carbs": 0,
+      "fat": 6
+    }
+  ],
+  "mealType": "lunch",
+  "preparationMethods": [{ "name": "chicken breast", "method": "Grilled" }],
+  "analysisIntent": "log"
+}
+```
+
+| Field              | Type   | Required | Description                 |
+| ------------------ | ------ | -------- | --------------------------- |
+| sessionId          | string | Yes      | Session ID from analyze     |
+| foods              | array  | Yes      | Foods to log with nutrition |
+| mealType           | string | No       | e.g. "breakfast", "lunch"   |
+| preparationMethods | array  | No       | Per-food `{ name, method }` |
+| analysisIntent     | string | No       | Original intent             |
+
+**Response** `201 Created`
+
+```json
+{
+  "id": 42,
+  "userId": "uuid",
+  "productName": "grilled chicken breast",
+  "calories": "284.00",
+  "protein": "53.00",
+  "carbs": "0.00",
+  "fat": "6.00",
+  "sourceType": "photo",
+  "aiConfidence": "0.85",
+  "preparationMethods": [{ "name": "chicken breast", "method": "Grilled" }],
+  "analysisIntent": "log",
+  "scannedAt": "2026-02-08T12:00:00.000Z"
+}
+```
+
+**Errors**
+
+| Status | Message                      |
+| ------ | ---------------------------- |
+| 400    | Invalid request body         |
+| 401    | Not authenticated            |
+| 404    | Session not found or expired |
+
+---
+
 ### Meal Plan Recipes
 
 #### List User Recipes

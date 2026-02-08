@@ -138,6 +138,13 @@ export type RootStackParamList = {
     imageUri?: string;
     itemId?: number;
   };
+  PhotoIntent: {
+    imageUri: string;
+  };
+  PhotoAnalysis: {
+    imageUri: string;
+    intent: PhotoIntent;
+  };
 };
 
 // client/navigation/MainTabNavigator.tsx
@@ -648,6 +655,55 @@ if (data.notInDatabase) {
   setShowManualSearch(true); // Show name search UI
 }
 ```
+
+### PhotoIntentScreen
+
+First step after capturing a food photo. The user selects what they want to do with the image before analysis begins. Opened as a modal from `ScanScreen` with `{ imageUri }`.
+
+**Intent Options:**
+
+| Intent     | Label                 | Description                                           | Premium |
+| ---------- | --------------------- | ----------------------------------------------------- | ------- |
+| `log`      | "Log this meal"       | Identify foods, get nutrition info, save to daily log | No      |
+| `calories` | "Quick calorie check" | See nutrition info without logging                    | No      |
+| `recipe`   | "Find recipes"        | Identify ingredients and generate recipes             | Yes     |
+| `identify` | "Just identify"       | See what foods are in the photo                       | No      |
+
+**Key behavior:**
+
+- Displays photo thumbnail with 4 animated intent cards (FadeInUp stagger)
+- Recipe intent shows lock badge when user lacks premium (`usePremiumContext()`)
+- On selection: navigates to `PhotoAnalysis` with `{ imageUri, intent }`
+
+### PhotoAnalysisScreen
+
+Main photo analysis screen showing detected foods, nutrition data, and user controls. Opened from `PhotoIntentScreen` with `{ imageUri, intent }`.
+
+**Lifecycle:**
+
+1. **Upload & Analyze** — calls `uploadPhotoForAnalysis(imageUri, intent)` which compresses the image and uploads via multipart to `POST /api/photos/analyze`. For `log`/`calories` intents, the server batch-looks up nutrition and includes it in the response
+2. **Follow-up** — if overall confidence < 0.7 or foods need clarification, shows a bottom panel with AI-generated questions. User answers are sent to `POST /api/photos/analyze/:sessionId/followup`, refining the analysis
+3. **Action** — intent-specific behavior (see below)
+
+**Intent-specific behavior:**
+
+- **log**: Checkboxes per food (all selected by default), preparation method picker per food, nutrition totals card. On confirm: `POST /api/photos/confirm` saves to `scannedItems` + `dailyLogs`
+- **calories**: Read-only nutrition display. No database save
+- **recipe**: Shows identified ingredients, opens `RecipeGenerationModal`
+- **identify**: Read-only food list display
+
+**Key UI components:**
+
+- **FoodItemCard** — name, quantity, confidence badge (High ≥0.8 / Medium ≥0.6 / Low), optional clarification warning, prep picker (log only)
+- **Totals Card** — aggregate calories/protein/carbs/fat for selected items
+- **FollowUpModal** — absolute-positioned bottom panel with question and answer input
+
+**Preparation method picker** (log intent only):
+
+- Per-food dropdown sourced from `PREPARATION_OPTIONS[category]` in `shared/constants/preparation.ts`
+- Changing preparation re-looks up nutrition via `GET /api/nutrition/lookup?name=<prep+food>` (e.g. "steamed broccoli 1 cup")
+
+**Cleanup on unmount:** aborts in-flight requests, deletes temporary image from file system.
 
 ### ProfileScreen
 

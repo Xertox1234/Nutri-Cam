@@ -47,6 +47,9 @@ This document captures established patterns for the NutriScan codebase. Follow t
   - [Form State Hook with Summaries and isDirty](#form-state-hook-with-summaries-and-isdirty)
 - [External API Parsing Patterns](#external-api-parsing-patterns)
   - [ISO 8601 Duration Parsing](#iso-8601-duration-parsing)
+  - [Intent-Driven Config Object](#intent-driven-config-object)
+  - [Compress-Upload-Cleanup for Image Uploads](#compress-upload-cleanup-for-image-uploads)
+  - [Confidence-Based Follow-Up Refinement](#confidence-based-follow-up-refinement)
 - [Animation Patterns](#animation-patterns)
 - [Performance Patterns](#performance-patterns)
   - [React.memo for FlatList Header/Footer](#reactmemo-for-flatlist-headerfooter-components)
@@ -3486,6 +3489,145 @@ parseIsoDuration("invalid"); // → null
 - Case-insensitive (`/i` flag) to handle mixed-case from external sources
 - Seconds component is parsed but not added to the result (recipes don't need second-level precision)
 - Returns `null` (not 0 or throws) for graceful handling in optional fields
+
+### Intent-Driven Config Object
+
+Place a shared config record in `shared/constants/` keyed by intent/mode union type. Both client and server import the same object to drive branching behavior:
+
+```typescript
+// shared/constants/preparation.ts
+export const INTENT_CONFIG: Record<
+  PhotoIntent,
+  {
+    needsNutrition: boolean;
+    needsSession: boolean;
+    canLog: boolean;
+    label: string;
+  }
+> = {
+  log: { needsNutrition: true, needsSession: true, canLog: true, label: "Log this meal" },
+  identify: { needsNutrition: false, needsSession: false, canLog: false, label: "Just identify" },
+  // ...
+};
+
+// Server usage — drives which steps to execute
+const intentConfig = INTENT_CONFIG[intent];
+if (intentConfig.needsNutrition) {
+  foods = await batchNutritionLookup(result.foods);
+}
+if (intentConfig.needsSession) {
+  sessionStore.set(sessionId, { userId, result, createdAt: new Date() });
+}
+
+// Client usage — drives which UI to render
+const config = INTENT_CONFIG[intent];
+{config.canLog && <LogButton onPress={handleConfirm} />}
+```
+
+**When to use:** Multiple code paths share the same feature with mode-dependent behavior (photo intents, notification types, export formats).
+
+**When NOT to use:** Only 2 simple modes with a boolean flag — a simple `if` is clearer.
+
+**Why:** Eliminates scattered `if (intent === "log")` checks across client and server. Adding a new intent means adding one config entry instead of hunting for conditionals.
+
+### Compress-Upload-Cleanup for Image Uploads
+
+When uploading user images, always compress before upload and clean up the temporary file afterward using `try/finally`:
+
+```typescript
+// client/lib/photo-upload.ts
+import { compressImage, cleanupImage } from "./image-compression";
+import { uploadAsync, FileSystemUploadType } from "expo-file-system/legacy";
+
+export async function uploadPhotoForAnalysis(
+  uri: string,
+  intent: PhotoIntent = "log",
+): Promise<PhotoAnalysisResponse> {
+  const compressed = await compressImage(uri);
+
+  try {
+    const uploadResult = await uploadAsync(
+      `${getApiUrl()}/api/photos/analyze`,
+      compressed.uri,
+      {
+        httpMethod: "POST",
+        uploadType: FileSystemUploadType.MULTIPART,
+        fieldName: "photo",
+        parameters: { intent },
+        headers: { Authorization: `Bearer ${token}` },
+      },
+    );
+    return JSON.parse(uploadResult.body) as PhotoAnalysisResponse;
+  } finally {
+    await cleanupImage(compressed.uri); // Always runs, even on error
+  }
+}
+```
+
+The compression step (`client/lib/image-compression.ts`) uses adaptive quality reduction — if the first pass exceeds the target size, it recalculates quality proportionally:
+
+```typescript
+if (sizeKB > targetSizeKB && quality > 0.3) {
+  const newQuality = Math.max(0.3, quality * (targetSizeKB / sizeKB));
+  result = await manipulateAsync(uri, [{ resize }], { compress: newQuality });
+}
+```
+
+**When to use:** Any image upload from the client (photo analysis, profile avatars).
+
+**When NOT to use:** Small files like icons or thumbnails that don't need compression.
+
+**Why:** Reduces upload payload (1024px max, JPEG quality 0.7, <1MB target), prevents temp file buildup on device, and `finally` guarantees cleanup even if the upload fails.
+
+### Confidence-Based Follow-Up Refinement
+
+When AI analysis produces low-confidence results, prompt the user for clarification and re-analyze with the additional context:
+
+```typescript
+// Server: check if follow-up is needed
+const CONFIDENCE_THRESHOLD = 0.7;
+
+export function needsFollowUp(result: AnalysisResult): boolean {
+  return (
+    result.overallConfidence < CONFIDENCE_THRESHOLD ||
+    result.followUpQuestions.length > 0 ||
+    result.foods.some((f) => f.needsClarification)
+  );
+}
+
+// Server: refine with user's answer (text-only, no image re-send)
+export async function refineAnalysis(
+  previousResult: AnalysisResult,
+  question: string,
+  answer: string,
+): Promise<AnalysisResult> {
+  const response = await openai.chat.completions.create({
+    model: "gpt-4o",
+    messages: [
+      {
+        role: "system",
+        content: `Previous analysis: ${JSON.stringify(previousResult)}\nRefine based on user answer.`,
+      },
+      { role: "user", content: `Q: ${question}\nA: ${answer}` },
+    ],
+    response_format: { type: "json_object" },
+  });
+  return analysisResultSchema.parse(
+    JSON.parse(response.choices[0]?.message?.content || "{}"),
+  );
+}
+
+// Client: show follow-up UI conditionally
+if (analysisResult.needsFollowUp) {
+  setShowFollowUp(true); // Renders question + answer input
+}
+```
+
+**When to use:** Any AI analysis where confidence scoring is available and user clarification can improve accuracy.
+
+**When NOT to use:** Deterministic lookups (barcode scans, database queries) where results are either correct or not found.
+
+**Why:** Low-confidence results displayed without refinement erode user trust. The follow-up is text-only (no image re-send), so it's cheap and fast. The threshold (0.7) is tunable — lower values reduce prompts but risk showing inaccurate data.
 
 ---
 

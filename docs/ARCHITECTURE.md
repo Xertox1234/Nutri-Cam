@@ -876,6 +876,113 @@ Client-Side Auth Check:
 └──────────────────┘
 ```
 
+### Photo Analysis Pipeline
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                   Photo Analysis Pipeline                         │
+└─────────────────────────────────────────────────────────────────┘
+
+┌──────────────────┐
+│   ScanScreen     │
+│  (capture photo) │
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────┐     ┌───────────────────────────┐
+│ PhotoIntentScreen│     │  Intent options:           │
+│  Select intent   │────▶│  log | calories | recipe | │
+└────────┬─────────┘     │  identify                 │
+         │               └───────────────────────────┘
+         ▼
+┌──────────────────┐
+│PhotoAnalysisScreen│
+│ Compress & upload│
+│ POST /api/photos/│
+│    analyze       │
+└────────┬─────────┘
+         │ multipart (photo + intent)
+         ▼
+┌──────────────────┐     ┌───────────────────────────┐
+│  Check Scan      │     │  Free: 10/day             │
+│  Quota           │────▶│  Premium: unlimited       │
+└────────┬─────────┘     └───────────────────────────┘
+         │ within quota
+         ▼
+┌──────────────────┐
+│  OpenAI GPT-4o   │
+│  Vision API      │
+│  detail="low"    │
+│  JSON mode       │
+│  Intent-specific │
+│  prompt          │
+└────────┬─────────┘
+         │ AnalysisResult { foods[], overallConfidence }
+         ▼
+┌──────────────────┐
+│ needsNutrition?  │
+│ (log or calories)│
+└────────┬─────────┘
+    ┌────┴────┐
+    │         │
+    ▼         ▼
+┌────────┐ ┌────────┐
+│  Yes   │ │   No   │
+│ Batch  │ │ Skip   │
+│ lookup │ │        │
+└───┬────┘ └───┬────┘
+    │          │
+    ▼          ▼
+┌──────────────────┐
+│ confidence < 0.7 │
+│ or clarifications│
+│ needed?          │
+└────────┬─────────┘
+    ┌────┴────┐
+    │         │
+    ▼         ▼
+┌────────┐ ┌────────────────┐
+│  Yes   │ │  No            │
+│ Show   │ │  Show results  │
+│ Follow │ │  directly      │
+│ Up     │ └────────┬───────┘
+│ Modal  │          │
+└───┬────┘          │
+    │               │
+    ▼               │
+┌──────────────┐    │
+│ POST followup│    │
+│ refineAnalysis│   │
+│ Re-lookup    │    │
+│ nutrition    │    │
+└───────┬──────┘    │
+        │           │
+        ▼           ▼
+┌──────────────────────────┐
+│  Intent-specific action  │
+├──────────────────────────┤
+│ log:      Select items,  │
+│           pick prep,     │
+│           POST /confirm  │
+│           → scannedItems │
+│           → dailyLogs    │
+│                          │
+│ calories: Read-only view │
+│                          │
+│ recipe:   Open recipe    │
+│           generation     │
+│                          │
+│ identify: Read-only list │
+└──────────────────────────┘
+```
+
+**Key implementation details:**
+
+- **In-memory session store** — analysis sessions are stored server-side with a 30-minute TTL and auto-cleanup. Sessions track `userId`, `result`, and `imageBase64`. Only the `log` intent creates a persistent session (`needsSession: true` in `INTENT_CONFIG`)
+- **Intent-aware prompts** — `getPromptForIntent()` returns different system prompts and token limits per intent (e.g. `log`/`calories` get 500 tokens with nutrition detail, `identify` gets 300 tokens)
+- **Image optimization** — client compresses photos to <1MB before upload; server uses Vision API `detail="low"` (512px, 85 tokens) for fast analysis
+- **Preparation-aware nutrition** — changing a food's preparation method (e.g. raw → steamed) triggers a separate `GET /api/nutrition/lookup` call with the modified query
+
 ---
 
 ## Theming System

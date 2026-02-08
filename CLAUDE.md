@@ -76,7 +76,7 @@ Key tables: `users`, `userProfiles`, `scannedItems`, `dailyLogs`, `nutritionCach
 ### AI Integration & Services (`server/services/`)
 
 - `nutrition-lookup.ts` - Multi-source nutrition pipeline (CNF → USDA → API Ninjas)
-- `photo-analysis.ts` - OpenAI Vision food photo analysis
+- `photo-analysis.ts` - OpenAI Vision food photo analysis (4 intents: log/calories/recipe/identify, confidence scoring, follow-up refinement when confidence < 0.7)
 - `goal-calculator.ts` - Calculates nutritional goals from user profiles
 - `recipe-generation.ts` - AI recipe generation (premium)
 - `recipe-catalog.ts` - Spoonacular recipe catalog integration
