@@ -9,6 +9,7 @@ import {
   Keyboard,
   InteractionManager,
   AccessibilityInfo,
+  findNodeHandle,
 } from "react-native";
 import { BottomSheetModal, BottomSheetBackdrop } from "@gorhom/bottom-sheet";
 import type { BottomSheetBackdropProps } from "@gorhom/bottom-sheet";
@@ -133,10 +134,12 @@ export default function RecipeCreateScreen() {
     sheetState.current = "IDLE";
     // Return focus to the section row that triggered this sheet
     if (activeSheetTrigger.current) {
-      const handle = activeSheetTrigger.current;
-      requestAnimationFrame(() => {
-        AccessibilityInfo.setAccessibilityFocus(handle as unknown as number);
-      });
+      const tag = findNodeHandle(activeSheetTrigger.current);
+      if (tag) {
+        requestAnimationFrame(() => {
+          AccessibilityInfo.setAccessibilityFocus(tag);
+        });
+      }
     }
   }, []);
 
