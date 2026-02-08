@@ -11,6 +11,10 @@ This document captures established patterns for the NutriScan codebase. Follow t
 - [API Patterns](#api-patterns)
 - [External API Patterns](#external-api-patterns)
   - [External Resource Dedup on Save](#external-resource-dedup-on-save)
+  - [Multi-Source Nutrition Lookup Chain](#multi-source-nutrition-lookup-chain)
+  - [Barcode Padding Normalization](#barcode-padding-normalization)
+  - [Cross-Validation Between Data Sources](#cross-validation-between-data-sources)
+  - [Graceful 404 Handling with Raw Fetch](#graceful-404-handling-with-raw-fetch)
 - [Database Patterns](#database-patterns)
   - [Cache-First Pattern for Expensive Operations](#cache-first-pattern-for-expensive-operations)
   - [Fire-and-Forget for Non-Critical Background Operations](#fire-and-forget-for-non-critical-background-operations)
@@ -920,6 +924,136 @@ async findMealPlanRecipeByExternalId(
 **Why:** Users may tap "save" multiple times or revisit a catalog item. Without dedup, you get duplicate rows and wasted API quota. The userId scope ensures different users can independently save the same external resource.
 
 **Reference:** `POST /api/meal-plan/catalog/:id/save` in `server/routes.ts`, `server/storage.ts`
+
+### Multi-Source Nutrition Lookup Chain
+
+When a single API cannot reliably provide accurate data, use a priority chain of
+sources with cross-validation:
+
+```typescript
+// server/services/nutrition-lookup.ts
+// Priority: CNF → USDA → API Ninjas
+export async function lookupNutrition(
+  query: string,
+): Promise<NutritionData | null> {
+  // 1. Try Canadian Nutrient File (bilingual, high accuracy)
+  const cnfResult = await lookupCNF(query);
+  if (cnfResult) return { ...cnfResult, source: "cnf" };
+
+  // 2. Try USDA FoodData Central
+  const usdaResult = await lookupUSDA(query);
+  if (usdaResult) return { ...usdaResult, source: "usda" };
+
+  // 3. Last resort: API Ninjas
+  const ninjasResult = await lookupAPINinjas(query);
+  if (ninjasResult) return { ...ninjasResult, source: "api-ninjas" };
+
+  return null;
+}
+```
+
+**When to use:** Any feature requiring reliable data from external sources where
+no single API has complete coverage (nutrition, product catalogs, geocoding, etc.).
+
+**Why:** Individual APIs have gaps. OFF may have French names that confuse USDA.
+CNF is authoritative for Canadian products. The chain ensures best available data.
+
+**Reference:** `server/services/nutrition-lookup.ts`
+
+### Barcode Padding Normalization
+
+Barcodes can be encoded in different formats (UPC-A 12-digit, EAN-13 13-digit).
+Generate all plausible variants and try each one:
+
+```typescript
+function barcodeVariants(raw: string): string[] {
+  const variants = new Set<string>();
+  variants.add(raw);
+
+  // Zero-pad to 12 or 13 digits
+  const padded12 = raw.padStart(12, "0");
+  const padded13 = raw.padStart(13, "0");
+  variants.add(padded12);
+  variants.add(padded13);
+
+  // Compute check digits for UPC-A and EAN-13
+  variants.add(computeUPCA(raw));
+  variants.add(computeEAN13(raw));
+
+  return [...variants].filter((v) => /^\d{8,14}$/.test(v));
+}
+```
+
+**When to use:** Any barcode lookup where the scanned code may differ in
+format from what the database stores (leading zeros, check digits, padding).
+
+**Why:** A scanner may return `"60731142363"` (11 digits) while the database
+stores `"060731142363"` (12-digit UPC-A with leading zero). Without
+normalization, valid products appear as "not found."
+
+**Reference:** `barcodeVariants()`, `computeUPCA()`, `computeEAN13()` in `server/services/nutrition-lookup.ts`
+
+### Cross-Validation Between Data Sources
+
+When primary data is suspect, compare against a secondary source and prefer
+the more plausible result:
+
+```typescript
+// If OFF reports >2× the calories of the secondary source, prefer secondary
+const offCalories = offData.calories;
+const secondaryCalories = secondaryData.calories;
+
+if (offCalories > secondaryCalories * 2) {
+  // OFF likely has a full-box serving size; prefer secondary
+  return { ...secondaryData, productName: offData.productName };
+}
+
+// Sources agree: use OFF but fill gaps from secondary
+return {
+  ...offData,
+  fiber: offData.fiber ?? secondaryData.fiber,
+  sugar: offData.sugar ?? secondaryData.sugar,
+};
+```
+
+**When to use:** Any integration where the primary source may have inaccurate
+data (e.g., community-contributed databases like Open Food Facts).
+
+**Why:** OFF sometimes reports nutrition for the full box instead of one serving
+(e.g., 944 kcal for a Keurig pod box instead of 60 kcal for one pod).
+Cross-validation catches these errors automatically.
+
+**Reference:** Cross-validation logic in `lookupBarcode()`, `server/services/nutrition-lookup.ts`
+
+### Graceful 404 Handling with Raw Fetch
+
+When a 404 is an expected outcome (not an error), bypass `apiRequest()` and use
+raw `fetch` to inspect the response body:
+
+```typescript
+// apiRequest() calls throwIfResNotOk() which throws on 404
+// For barcode lookup, 404 means "product not in database" — not an error
+
+const baseUrl = getApiUrl();
+const token = await tokenStorage.getToken();
+const response = await fetch(`${baseUrl}/api/nutrition/barcode/${barcode}`, {
+  headers: token ? { Authorization: `Bearer ${token}` } : {},
+});
+const data = await response.json();
+
+if (data.notInDatabase) {
+  setShowManualSearch(true); // Expected path, not an error
+}
+```
+
+**When to use:** Any endpoint where specific non-2xx status codes represent valid
+application states rather than errors (404 = "not found, try manual search",
+409 = "already exists", etc.).
+
+**Why:** A shared `apiRequest()` helper that throws on all non-2xx responses is
+a good default, but it prevents handling expected non-2xx responses gracefully.
+
+**Reference:** `fetchBarcodeData()` in `client/screens/NutritionDetailScreen.tsx`
 
 ---
 

@@ -45,6 +45,7 @@ Content-Type: application/json
 ```
 
 **Response** `201 Created`
+
 ```json
 {
   "id": "uuid",
@@ -79,6 +80,7 @@ Content-Type: application/json
 ```
 
 **Response** `200 OK`
+
 ```json
 {
   "id": "uuid",
@@ -107,6 +109,7 @@ POST /api/auth/logout
 ```
 
 **Response** `200 OK`
+
 ```json
 {
   "success": true
@@ -124,6 +127,7 @@ GET /api/auth/me
 ```
 
 **Response** `200 OK`
+
 ```json
 {
   "id": "uuid",
@@ -159,6 +163,7 @@ Content-Type: application/json
 All fields are optional. Only provided fields will be updated.
 
 **Response** `200 OK`
+
 ```json
 {
   "id": "uuid",
@@ -189,6 +194,7 @@ GET /api/user/dietary-profile
 ```
 
 **Response** `200 OK`
+
 ```json
 {
   "id": 1,
@@ -278,6 +284,7 @@ GET /api/scanned-items
 ```
 
 **Response** `200 OK`
+
 ```json
 [
   {
@@ -349,7 +356,110 @@ Content-Type: application/json
 
 ---
 
-### Daily Summary
+### Nutrition Lookup
+
+#### Barcode Lookup
+
+Looks up nutrition data for a product barcode. Uses a multi-source pipeline:
+Open Food Facts → USDA branded UPC fallback → cross-validation with CNF/USDA.
+
+Barcode padding is handled automatically (UPC-A ↔ EAN-13 variants, zero-padding,
+check-digit computation).
+
+```http
+GET /api/nutrition/barcode/:code
+```
+
+**Path Parameters**
+| Parameter | Type | Validation | Description |
+|-----------|------|------------|-------------|
+| code | string | Digits only, max 50 chars | UPC/EAN barcode |
+
+**Response** `200 OK` — Product found
+
+```json
+{
+  "productName": "Good Host Iced Tea",
+  "brandName": "Good Host",
+  "servingSize": "250 ml",
+  "calories": 90,
+  "protein": 0,
+  "carbs": 23,
+  "fat": 0,
+  "fiber": 0,
+  "sugar": 22,
+  "sodium": 15,
+  "imageUrl": "https://images.openfoodfacts.org/...",
+  "source": "cnf"
+}
+```
+
+**Response** `404 Not Found` — Product not in any database
+
+```json
+{
+  "notInDatabase": true,
+  "message": "Product not found in any database"
+}
+```
+
+The `notInDatabase` flag is used by the client to show a manual product name
+search UI instead of an error.
+
+**Response** `400 Bad Request`
+
+```json
+{
+  "error": "Invalid barcode format"
+}
+```
+
+**Source Values**
+| Value | Meaning |
+|-------|---------|
+| `cnf` | Canadian Nutrient File (cross-validated) |
+| `usda` | USDA FoodData Central |
+| `api-ninjas` | API Ninjas fallback |
+| `cache` | Previously cached result |
+
+---
+
+#### Nutrition Text Lookup
+
+Looks up nutrition data by food name. Uses priority chain: CNF → USDA → API Ninjas.
+
+```http
+GET /api/nutrition/lookup?name=coffee+whitener
+```
+
+**Query Parameters**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| name | string | Food name to search for |
+
+**Response** `200 OK`
+
+```json
+{
+  "productName": "Coffee whitener, powder",
+  "calories": 515,
+  "protein": 2.5,
+  "carbs": 55.2,
+  "fat": 33.4,
+  "fiber": 0,
+  "sugar": 54.2,
+  "sodium": 230,
+  "source": "cnf"
+}
+```
+
+**Errors**
+| Status | Message |
+|--------|---------|
+| 400 | Food name is required |
+| 404 | No nutrition data found |
+
+---
 
 #### Get Daily Summary
 
@@ -365,6 +475,7 @@ GET /api/daily-summary?date=2024-01-15
 | date | ISO string | today | Date to get summary for |
 
 **Response** `200 OK`
+
 ```json
 {
   "totalCalories": 1850,
@@ -388,6 +499,7 @@ POST /api/items/:id/suggestions
 ```
 
 **Response** `200 OK`
+
 ```json
 {
   "suggestions": [
@@ -499,21 +611,28 @@ All error responses follow this format:
 
 ### Common HTTP Status Codes
 
-| Status | Meaning |
-|--------|---------|
-| 200 | Success |
-| 201 | Created |
-| 400 | Bad Request - Invalid input |
-| 401 | Unauthorized - Not authenticated |
-| 404 | Not Found |
-| 409 | Conflict - Resource already exists |
-| 500 | Internal Server Error |
+| Status | Meaning                            |
+| ------ | ---------------------------------- |
+| 200    | Success                            |
+| 201    | Created                            |
+| 400    | Bad Request - Invalid input        |
+| 401    | Unauthorized - Not authenticated   |
+| 404    | Not Found                          |
+| 409    | Conflict - Resource already exists |
+| 500    | Internal Server Error              |
 
 ---
 
 ## Rate Limiting
 
 Currently no rate limiting is implemented. The AI suggestions endpoint has a soft limit through OpenAI's API (max 1024 tokens per response).
+
+External nutrition APIs have their own rate limits:
+
+- **Open Food Facts**: No hard limit, but be respectful (User-Agent header sent)
+- **USDA FoodData Central**: 1,000 requests/hour per API key
+- **Canadian Nutrient File**: No documented limit (government API)
+- **API Ninjas**: Depends on plan tier
 
 ---
 
@@ -527,7 +646,7 @@ import { apiRequest } from "@/lib/query-client";
 // Login
 const response = await apiRequest("POST", "/api/auth/login", {
   username: "user",
-  password: "pass"
+  password: "pass",
 });
 const user = await response.json();
 
@@ -538,7 +657,7 @@ const data = await items.json();
 // Create item
 await apiRequest("POST", "/api/scanned-items", {
   productName: "Apple",
-  calories: 95
+  calories: 95,
 });
 ```
 

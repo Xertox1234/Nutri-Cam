@@ -12,21 +12,51 @@ client/
 ├── components/             # Reusable UI components
 │   ├── Button.tsx
 │   ├── Card.tsx
+│   ├── Chip.tsx
 │   ├── ErrorBoundary.tsx
+│   ├── ErrorFallback.tsx
+│   ├── HeaderTitle.tsx
 │   ├── KeyboardAwareScrollViewCompat.tsx
+│   ├── PreparationPicker.tsx
+│   ├── ProgressBar.tsx
+│   ├── RecipeCard.tsx
+│   ├── RecipeGenerationModal.tsx
+│   ├── SaveButton.tsx
+│   ├── SavedItemCard.tsx
+│   ├── SkeletonLoader.tsx
+│   ├── SuggestionCard.tsx
+│   ├── TextInput.tsx
 │   ├── ThemedText.tsx
-│   └── ThemedView.tsx
+│   ├── ThemedView.tsx
+│   └── recipe-builder/
 ├── constants/
-│   └── theme.ts            # Colors, spacing, typography
+│   ├── animations.ts       # Shared animation configs
+│   ├── dietary-options.ts   # Diet/allergy option lists
+│   └── theme.ts             # Colors, spacing, typography
 ├── context/
-│   ├── AuthContext.tsx     # Authentication state
-│   └── OnboardingContext.tsx  # Onboarding data
+│   ├── AuthContext.tsx      # Authentication state
+│   ├── OnboardingContext.tsx # Onboarding data
+│   ├── PremiumContext.tsx   # Premium features
+│   └── ThemeContext.tsx     # Light/dark theme
 ├── hooks/
-│   ├── useAuth.ts          # Auth operations
-│   ├── useScreenOptions.ts # Navigation options
-│   └── useTheme.ts         # Theme hook
+│   ├── useAccessibility.ts  # Accessibility helpers
+│   ├── useAuth.ts           # Auth operations
+│   ├── useColorScheme.ts    # System color scheme
+│   ├── useHaptics.ts        # Haptic feedback
+│   ├── useMealPlan.ts       # Meal planning
+│   ├── usePremiumFeatures.ts # Premium feature checks
+│   ├── useRecipeForm.ts     # Recipe form state
+│   ├── useSavedItems.ts     # Saved items management
+│   ├── useScreenOptions.ts  # Navigation options
+│   └── useTheme.ts          # Theme hook
 ├── lib/
-│   └── query-client.ts     # TanStack Query setup
+│   ├── image-compression.ts # Image compression utils
+│   ├── ingredient-parser.ts # Ingredient text parsing
+│   ├── macro-colors.ts      # Macro nutrient color mapping
+│   ├── photo-upload.ts      # Photo upload helpers
+│   ├── query-client.ts      # TanStack Query setup, apiRequest, getApiUrl
+│   ├── serving-size-utils.ts # Serving size validation & normalization
+│   └── token-storage.ts     # Auth token persistence
 ├── navigation/
 │   ├── RootStackNavigator.tsx
 │   ├── MainTabNavigator.tsx
@@ -265,7 +295,7 @@ function HistoryScreen() {
 export async function apiRequest(
   method: string,
   route: string,
-  data?: unknown
+  data?: unknown,
 ): Promise<Response> {
   const baseUrl = getApiUrl();
   const url = new URL(route, baseUrl);
@@ -306,7 +336,10 @@ await apiRequest("POST", "/api/scanned-items", {
 });
 
 // Fetch daily summary
-const summaryRes = await apiRequest("GET", "/api/daily-summary?date=2024-01-15");
+const summaryRes = await apiRequest(
+  "GET",
+  "/api/daily-summary?date=2024-01-15",
+);
 const summary = await summaryRes.json();
 ```
 
@@ -322,11 +355,11 @@ export const Colors = {
   light: {
     text: "#1A1A1A",
     textSecondary: "#757575",
-    success: "#00C853",         // Primary green
-    calorieAccent: "#FF6B35",   // Orange
-    proteinAccent: "#00C853",   // Green
-    carbsAccent: "#FF6B35",     // Orange
-    fatAccent: "#FFC107",       // Yellow
+    success: "#00C853", // Primary green
+    calorieAccent: "#FF6B35", // Orange
+    proteinAccent: "#00C853", // Green
+    carbsAccent: "#FF6B35", // Orange
+    fatAccent: "#FFC107", // Yellow
     backgroundRoot: "#FAFAFA",
     backgroundDefault: "#FFFFFF",
     error: "#D32F2F",
@@ -449,6 +482,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 ### LoginScreen
 
 Features:
+
 - Toggle between login/register modes
 - Username/password inputs with icons
 - Password visibility toggle
@@ -474,6 +508,7 @@ const handleSubmit = async () => {
 ### ScanScreen
 
 Features:
+
 - CameraView with barcode detection
 - Animated scanning reticle
 - Flashlight toggle
@@ -481,6 +516,7 @@ Features:
 - Gallery image picker
 
 Supported barcode types:
+
 - EAN-13, EAN-8, UPC-A, UPC-E
 - QR Code, Data Matrix
 - Code 128, Code 39
@@ -497,6 +533,7 @@ onBarcodeScanned={(scanningResult) => {
 ### HistoryScreen
 
 Features:
+
 - FlatList of scanned items
 - Pull-to-refresh
 - Item thumbnails with fallback
@@ -505,7 +542,11 @@ Features:
 - Loading skeleton
 
 ```typescript
-const { data: items, isLoading, refetch } = useQuery({
+const {
+  data: items,
+  isLoading,
+  refetch,
+} = useQuery({
   queryKey: ["/api/scanned-items"],
 });
 ```
@@ -513,6 +554,7 @@ const { data: items, isLoading, refetch } = useQuery({
 ### ItemDetailScreen
 
 Features:
+
 - Product header with image
 - Nutrition facts card
 - AI-powered suggestions (4 cards)
@@ -526,9 +568,56 @@ const fetchSuggestions = async () => {
 };
 ```
 
+### NutritionDetailScreen
+
+Displays nutrition data for a barcode scan or photo analysis. Opened as a modal from
+`ScanScreen` with either `{ barcode }` or `{ imageUri }` params.
+
+**Barcode Flow:**
+
+1. Calls `GET /api/nutrition/barcode/:code` using **raw `fetch`** (not `apiRequest`)
+   to properly handle 404 responses without throwing
+2. If product found → displays nutrition data with serving controls
+3. If `notInDatabase: true` → shows manual product name search UI
+4. Manual search calls `GET /api/nutrition/lookup?name=...`
+
+**Key state variables:**
+
+- `showManualSearch` — toggles the search UI when barcode not found
+- `manualSearchQuery` — user-entered food name
+- `isSearching` — loading state for text search
+
+**Serving Size Controls** (shown for barcode scans with nutrition data):
+
+- Correction banner explaining per-100g normalization
+- Chip picker: tsp / tbsp / cup / 100g / Custom
+- Custom gram input (appears when "Custom" selected)
+- Quantity stepper (+ / −) adjusting displayed macros
+
+**Why raw fetch?**
+The shared `apiRequest()` calls `throwIfResNotOk()` which throws on any non-2xx
+response. For the barcode endpoint, a 404 is an expected outcome (product not in
+database), not an error. Using raw `fetch` lets us inspect the response body to
+check for `notInDatabase` and show the search UI.
+
+```typescript
+// Barcode fetch — raw fetch to handle 404 gracefully
+const baseUrl = getApiUrl();
+const token = await tokenStorage.getToken();
+const response = await fetch(`${baseUrl}/api/nutrition/barcode/${barcode}`, {
+  headers: token ? { Authorization: `Bearer ${token}` } : {},
+});
+const data = await response.json();
+
+if (data.notInDatabase) {
+  setShowManualSearch(true); // Show name search UI
+}
+```
+
 ### ProfileScreen
 
 Features:
+
 - User avatar with display name editing
 - Daily calorie progress bar
 - Macros breakdown
@@ -653,6 +742,7 @@ function ScanScreen() {
 ### Path Aliases
 
 Import from `@/` for client code:
+
 ```typescript
 import { useTheme } from "@/hooks/useTheme";
 import { Button } from "@/components/Button";

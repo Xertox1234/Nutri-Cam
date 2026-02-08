@@ -14,20 +14,29 @@ NutriScan is a mobile nutrition tracking application with a monorepo architectur
 │  │   (Expo)     │   via Tunnel     │       (Port 3000)        ││
 │  └──────────────┘                  └──────────────────────────┘│
 │         │                                      │                │
-│         │                                      │                │
-│         ▼                                      ▼                │
-│  ┌──────────────┐                  ┌──────────────────────────┐│
-│  │   Shared     │                  │      PostgreSQL          ││
-│  │   Schema     │◄────────────────►│      Database            ││
-│  └──────────────┘                  └──────────────────────────┘│
-│                                             │                   │
-│                                             ▼                   │
-│                                    ┌──────────────────────────┐│
-│                                    │   OpenAI API (GPT-4o)    ││
-│                                    │   AI Suggestions         ││
-│                                    └──────────────────────────┘│
+│         │                          ┌───────────┼───────────┐    │
+│         ▼                          │           │           │    │
+│  ┌──────────────┐                  ▼           ▼           ▼    │
+│  │   Shared     │         ┌────────────┐ ┌──────────┐ ┌──────┐│
+│  │   Schema     │         │ PostgreSQL │ │ OpenAI   │ │Nutri-││
+│  └──────────────┘         │  Database  │ │ API      │ │tion  ││
+│                           └────────────┘ └──────────┘ │APIs  ││
+│                                                       └──────┘│
+│                                                          │      │
+│                                          ┌───────────────┤      │
+│                                          │       │       │      │
+│                                          ▼       ▼       ▼      │
+│                                       ┌────┐ ┌────┐ ┌──────┐  │
+│                                       │OFF │ │USDA│ │ CNF  │  │
+│                                       └────┘ └────┘ └──────┘  │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
+
+External Nutrition APIs:
+  OFF  = Open Food Facts (barcode → product data)
+  USDA = USDA FoodData Central (text search + branded UPC lookup)
+  CNF  = Canadian Nutrient File (bilingual EN/FR, ~5,690 foods)
+  Also: API Ninjas Nutrition (last-resort fallback)
 ```
 
 ## Directory Structure
@@ -64,33 +73,42 @@ Nutri-Cam/
 
 ### Frontend
 
-| Technology | Version | Purpose |
-|------------|---------|---------|
-| Expo SDK | 54 | React Native toolchain |
-| React Native | 0.81 | Mobile UI framework |
-| React | 19 | UI library |
-| React Navigation | 7.x | Navigation management |
-| TanStack Query | 5.x | Server state management |
-| Reanimated | 4.x | Animations |
-| expo-camera | - | Barcode scanning |
+| Technology       | Version | Purpose                 |
+| ---------------- | ------- | ----------------------- |
+| Expo SDK         | 54      | React Native toolchain  |
+| React Native     | 0.81    | Mobile UI framework     |
+| React            | 19      | UI library              |
+| React Navigation | 7.x     | Navigation management   |
+| TanStack Query   | 5.x     | Server state management |
+| Reanimated       | 4.x     | Animations              |
+| expo-camera      | -       | Barcode scanning        |
 
 ### Backend
 
-| Technology | Version | Purpose |
-|------------|---------|---------|
-| Express.js | 5.0 | HTTP server |
-| Drizzle ORM | - | Database ORM |
-| PostgreSQL | 12+ | Database |
-| bcrypt | - | Password hashing |
-| express-session | - | Session management |
-| OpenAI SDK | - | AI suggestions |
+| Technology      | Version | Purpose            |
+| --------------- | ------- | ------------------ |
+| Express.js      | 5.0     | HTTP server        |
+| Drizzle ORM     | -       | Database ORM       |
+| PostgreSQL      | 12+     | Database           |
+| bcrypt          | -       | Password hashing   |
+| express-session | -       | Session management |
+| OpenAI SDK      | -       | AI suggestions     |
+
+### External Nutrition APIs
+
+| Service                                                                                | Purpose                                         | Auth        |
+| -------------------------------------------------------------------------------------- | ----------------------------------------------- | ----------- |
+| [Open Food Facts](https://world.openfoodfacts.org)                                     | Barcode → product data (name, nutrients, image) | None (free) |
+| [Canadian Nutrient File](https://food-nutrition.canada.ca/api/canadian-nutrient-file/) | Bilingual EN/FR nutrition data, ~5,690 foods    | None (free) |
+| [USDA FoodData Central](https://fdc.nal.usda.gov/)                                     | Text search + branded food UPC lookup           | API key     |
+| [API Ninjas Nutrition](https://api-ninjas.com/api/nutrition)                           | Last-resort fallback                            | API key     |
 
 ### Shared
 
-| Technology | Purpose |
-|------------|---------|
-| TypeScript | Type safety |
-| Zod | Schema validation |
+| Technology  | Purpose           |
+| ----------- | ----------------- |
+| TypeScript  | Type safety       |
+| Zod         | Schema validation |
 | drizzle-zod | Schema generation |
 
 ## Path Aliases
@@ -106,6 +124,7 @@ Nutri-Cam/
 ```
 
 Usage:
+
 ```typescript
 import { useTheme } from "@/hooks/useTheme";
 import { users } from "@shared/schema";
@@ -379,24 +398,126 @@ Mobile App
 │   (routes.ts)    │
 └────────┬─────────┘
          │
-    ┌────┴────┐
-    │         │
-    ▼         ▼
-┌────────┐ ┌────────┐
-│Storage │ │OpenAI  │
-│  API   │ │  API   │
-└───┬────┘ └────────┘
+    ┌────┴────────────┐
+    │         │       │
+    ▼         ▼       ▼
+┌────────┐ ┌──────┐ ┌───────────┐
+│Storage │ │OpenAI│ │ Nutrition │
+│  API   │ │  API │ │  Lookup   │
+└───┬────┘ └──────┘ └─────┬─────┘
+    │                     │
+    ▼                     ▼
+┌────────┐     (see Nutrition Lookup
+│Drizzle │      Pipeline below)
+│  ORM   │
+└───┬────┘
     │
     ▼
+┌────────┐
+│Postgres│
+└────────┘
+```
+
+### Nutrition Lookup Pipeline
+
+The barcode and text-based nutrition endpoints use a multi-source lookup
+chain defined in `server/services/nutrition-lookup.ts`.
+
+#### Barcode Lookup (`GET /api/nutrition/barcode/:code`)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                  Barcode Lookup Pipeline                         │
+└─────────────────────────────────────────────────────────────────┘
+
+Scanned Barcode
+    │
+    ▼
+┌───────────────────────┐
+│ Barcode Padding       │  Generate UPC-A / EAN-13 variants
+│ barcodeVariants()     │  (zero-pad, check-digit computation)
+└──────────┬────────────┘
+           │  Array of candidate codes
+           ▼
+┌───────────────────────┐
+│ Open Food Facts (OFF) │  Try each variant until found
+│ GET /api/v0/product/  │
+└──────────┬────────────┘
+           │
+      ┌────┴─────────────────────┐
+      │ Found                    │ Not Found
+      ▼                          ▼
+┌─────────────────┐    ┌───────────────────────┐
+│ Extract search  │    │ USDA Branded UPC      │
+│ terms from OFF  │    │ lookupUSDAByUPC()     │
+│ (English fields)│    │ Search by gtinUpc     │
+└────────┬────────┘    └──────────┬────────────┘
+         │                        │
+         ▼                   ┌────┴────┐
+┌──────────────────┐    Found│    Not  │Found
+│ Cross-validate   │         ▼    Found▼
+│ with CNF → USDA  │    ┌────────┐  ┌────────────┐
+│ (see text lookup)│    │ Return │  │ Return 404 │
+└────────┬─────────┘    │ USDA   │  │notInDatabase│
+         │              │ data   │  └────────────┘
+         ▼              └────────┘
 ┌──────────────────┐
-│    Drizzle ORM   │
-└────────┬─────────┘
-         │
-         ▼
-┌──────────────────┐
-│   PostgreSQL     │
+│ Merge & validate │  Plausibility checks, serving size
+│ Return best data │  normalization, source attribution
 └──────────────────┘
 ```
+
+#### Text-Based Lookup (`GET /api/nutrition/lookup?name=...`)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                  Text Lookup Priority Chain                      │
+└─────────────────────────────────────────────────────────────────┘
+
+Search Query
+    │
+    ▼
+┌───────────────────────┐
+│ 1. Canadian Nutrient  │  In-memory cached food list
+│    File (CNF)         │  Fuzzy bilingual matching (EN/FR)
+│    lookupCNF()        │  scoreCNFMatch() ranking
+└──────────┬────────────┘
+           │
+      ┌────┴──────┐
+   Found      Not Found
+      │           │
+      ▼           ▼
+  ┌────────┐  ┌───────────────────────┐
+  │ Return │  │ 2. USDA FoodData      │
+  │ CNF    │  │    Central            │
+  │ data   │  │    lookupUSDA()       │
+  └────────┘  └──────────┬────────────┘
+                         │
+                    ┌────┴──────┐
+                 Found      Not Found
+                    │           │
+                    ▼           ▼
+                ┌────────┐  ┌───────────────────┐
+                │ Return │  │ 3. API Ninjas     │
+                │ USDA   │  │    (last resort)  │
+                │ data   │  │    lookupAPINinjas│
+                └────────┘  └─────────┬─────────┘
+                                      │
+                                      ▼
+                                 ┌──────────┐
+                                 │ Return   │
+                                 │ or null  │
+                                 └──────────┘
+```
+
+#### Cross-Validation Logic
+
+When OFF returns data, it is cross-validated against a secondary source
+(CNF preferred, then USDA):
+
+- **Agreement** (within 2× on calories): Use OFF data, fill gaps from secondary
+- **Disagreement** (>2× difference): Prefer secondary source data
+- **Implausible serving size**: Estimate from product name, normalize per-100g
 
 ### Storage Layer
 
@@ -405,24 +526,27 @@ Mobile App
 
 interface IStorage {
   // Users
-  getUser(id: string): Promise<User | undefined>
-  getUserByUsername(username: string): Promise<User | undefined>
-  createUser(data: InsertUser): Promise<User>
-  updateUser(id: string, updates: Partial<User>): Promise<User | undefined>
+  getUser(id: string): Promise<User | undefined>;
+  getUserByUsername(username: string): Promise<User | undefined>;
+  createUser(data: InsertUser): Promise<User>;
+  updateUser(id: string, updates: Partial<User>): Promise<User | undefined>;
 
   // Profiles
-  getUserProfile(userId: string): Promise<UserProfile | undefined>
-  createUserProfile(data: InsertUserProfile): Promise<UserProfile>
-  updateUserProfile(userId: string, updates: Partial<UserProfile>): Promise<UserProfile | undefined>
+  getUserProfile(userId: string): Promise<UserProfile | undefined>;
+  createUserProfile(data: InsertUserProfile): Promise<UserProfile>;
+  updateUserProfile(
+    userId: string,
+    updates: Partial<UserProfile>,
+  ): Promise<UserProfile | undefined>;
 
   // Scanned Items
-  getScannedItems(userId: string): Promise<ScannedItem[]>
-  getScannedItem(id: number): Promise<ScannedItem | undefined>
-  createScannedItem(data: InsertScannedItem): Promise<ScannedItem>
+  getScannedItems(userId: string): Promise<ScannedItem[]>;
+  getScannedItem(id: number): Promise<ScannedItem | undefined>;
+  createScannedItem(data: InsertScannedItem): Promise<ScannedItem>;
 
   // Daily Logs
-  getDailySummary(userId: string, date: Date): Promise<DailySummary>
-  createDailyLog(data: InsertDailyLog): Promise<DailyLog>
+  getDailySummary(userId: string, date: Date): Promise<DailySummary>;
+  createDailyLog(data: InsertDailyLog): Promise<DailyLog>;
 }
 ```
 
@@ -672,21 +796,25 @@ Usage:
 ## Security Considerations
 
 ### Authentication
+
 - Passwords hashed with bcrypt (10 rounds)
 - HTTP-only session cookies
 - Secure cookies in production (HTTPS only)
 - 30-day session expiry
 
 ### CORS
+
 - Development: All origins allowed
 - Production: Should restrict to app domains
 
 ### Data Protection
+
 - User data isolated by userId
 - Cascade deletes for data cleanup
 - No sensitive data in URLs
 
 ### API Security
+
 - Session validation on all protected routes
 - Input validation with Zod schemas
 - Error messages don't leak implementation details
