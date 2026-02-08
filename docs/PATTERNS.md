@@ -1693,6 +1693,109 @@ const handleFeature = () => {
 };
 ```
 
+**Prefer `usePremiumFeature(key)` over raw context access** for checking a single feature flag in a component:
+
+```typescript
+import { usePremiumFeature } from "@/hooks/usePremiumFeatures";
+
+// Good: one-liner, boolean result
+const canShowMacros = usePremiumFeature("macroGoals");
+
+// Avoid: pulling the full context just to check one flag
+const { features } = usePremiumContext();
+const canShowMacros = features.macroGoals;
+```
+
+Use `usePremiumCamera()` only in camera screens where you need the combined bundle (barcode types, scan limits, quality, etc.).
+
+**Section-level gating — replace content with a lock row:**
+
+When an entire section is premium-only, show the content for premium users and replace it with a compact `Pressable` lock row for free users. The lock row should have full accessibility props and be tappable for a future upgrade modal.
+
+```typescript
+// ProfileScreen — NutritionGoalsSection
+const canShowMacros = usePremiumFeature("macroGoals");
+
+{canShowMacros ? (
+  <>
+    <View style={styles.macroGoalRow}>
+      {/* Protein progress bar */}
+    </View>
+    <View style={styles.macroGoalRow}>
+      {/* Carbs progress bar */}
+    </View>
+    <View style={[styles.macroGoalRow, styles.macroGoalRowLast]}>
+      {/* Fat progress bar */}
+    </View>
+  </>
+) : (
+  <Pressable
+    accessible
+    accessibilityRole="button"
+    accessibilityLabel="Detailed macro tracking requires Premium subscription"
+    accessibilityHint="Upgrade to premium to unlock macro goals"
+    onPress={() => {
+      // TODO: Show upgrade modal
+    }}
+    style={[styles.macroGoalRow, styles.macroGoalRowLast, styles.premiumLockRow]}
+  >
+    <Feather name="lock" size={16} color={theme.textSecondary} />
+    <ThemedText type="small" style={{ color: theme.textSecondary, flex: 1 }}>
+      Detailed macro tracking available with Premium
+    </ThemedText>
+  </Pressable>
+)}
+```
+
+**Key rules for section-level gating:**
+
+- Lock row uses `Pressable`, not `View` — keeps it tappable for upgrade prompts
+- Always set `accessible`, `accessibilityRole`, `accessibilityLabel`, and `accessibilityHint`
+- Use `theme.textSecondary` for lock icon and text (muted, not attention-grabbing)
+- Extract lock row layout into a named style (`premiumLockRow`) instead of inline
+
+**Disabled input gating — visible but non-editable:**
+
+When free users should _see_ calculated values but not _edit_ them, render the inputs as disabled with a lock icon overlay. This preserves layout and lets free users understand what premium offers.
+
+```typescript
+// GoalSetupScreen — macro goal inputs
+const canSetMacros = usePremiumFeature("macroGoals");
+
+<View style={[styles.goalItem, !canSetMacros && { opacity: 0.4 }]}>
+  <View>
+    <TextInput
+      style={[styles.goalInput, { backgroundColor: theme.backgroundSecondary, color: theme.proteinAccent }]}
+      value={manualProtein}
+      onChangeText={setManualProtein}
+      keyboardType="numeric"
+      editable={canSetMacros}
+      accessibilityLabel={
+        canSetMacros
+          ? "Daily protein target"
+          : "Daily protein target (Premium required)"
+      }
+    />
+    {!canSetMacros && (
+      <View style={styles.goalLockIcon}>
+        <Feather name="lock" size={12} color={theme.textSecondary} />
+      </View>
+    )}
+  </View>
+  <ThemedText type="small" style={{ color: theme.textSecondary }}>
+    Protein (g)
+  </ThemedText>
+</View>
+```
+
+**Key rules for disabled input gating:**
+
+- Set `editable={false}` on `TextInput` — prevents keyboard from opening
+- Apply `opacity: 0.4` to the wrapper — visually signals "unavailable"
+- Position a lock icon absolutely within the input area (`position: "absolute"`, top-right)
+- Append "(Premium required)" to `accessibilityLabel` so screen readers announce the restriction
+- The calculated server values still save normally — free users get defaults, premium users can override
+
 ### Intentional useEffect Dependencies
 
 When you deliberately use a derived value (like `array.length`) instead of the array itself in a useEffect dependency, document WHY to prevent "fixes" that break the intended behavior:

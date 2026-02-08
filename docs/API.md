@@ -1058,6 +1058,94 @@ Content-Type: application/json
 
 ---
 
+### Subscription
+
+#### Get Subscription Status
+
+Returns the user's current subscription tier and feature flags.
+
+```http
+GET /api/subscription/status
+Authorization: Bearer <token>
+```
+
+**Response** `200 OK`
+
+```json
+{
+  "tier": "free",
+  "expiresAt": null,
+  "features": {
+    "maxDailyScans": 10,
+    "advancedBarcodes": false,
+    "highQualityCapture": false,
+    "videoRecording": false,
+    "photoAnalysis": true,
+    "macroGoals": false,
+    "recipeGeneration": false,
+    "dailyRecipeGenerations": 0
+  },
+  "isActive": true
+}
+```
+
+If the user's premium subscription has expired, the server returns free-tier features regardless of the stored tier.
+
+---
+
+#### Get Daily Scan Count
+
+Returns the number of items scanned today.
+
+```http
+GET /api/subscription/scan-count
+Authorization: Bearer <token>
+```
+
+**Response** `200 OK`
+
+```json
+{
+  "count": 3
+}
+```
+
+---
+
+#### Get Recipe Generation Status
+
+Returns today's recipe generation usage and limits.
+
+```http
+GET /api/recipes/generation-status
+Authorization: Bearer <token>
+```
+
+**Response** `200 OK`
+
+```json
+{
+  "generationsToday": 2,
+  "dailyLimit": 5,
+  "canGenerate": true
+}
+```
+
+Free users receive `dailyLimit: 0` and `canGenerate: false`.
+
+---
+
+#### Premium Error Responses
+
+Endpoints gated behind premium return these error codes:
+
+| Status | Code                  | Description                                                               |
+| ------ | --------------------- | ------------------------------------------------------------------------- |
+| 403    | `PREMIUM_REQUIRED`    | Feature requires a premium subscription                                   |
+| 429    | `DAILY_LIMIT_REACHED` | Daily usage limit exceeded (includes `generationsToday` and `dailyLimit`) |
+
+---
+
 ## Data Types
 
 ### Allergy
@@ -1135,14 +1223,27 @@ All error responses follow this format:
 
 ## Rate Limiting
 
-Currently no rate limiting is implemented. The AI suggestions endpoint has a soft limit through OpenAI's API (max 1024 tokens per response).
+### Internal Rate Limits
 
-External nutrition APIs have their own rate limits:
+| Endpoint                     | Window   | Max Requests | Key          |
+| ---------------------------- | -------- | ------------ | ------------ |
+| `POST /api/recipes/generate` | 1 minute | 3            | userId or IP |
+
+Free-tier users also have daily limits enforced server-side:
+
+- **Scans**: 10 per day (counted via `scanned_items` table)
+- **Recipe generation**: 0 per day (feature disabled for free tier)
+- **Saved items**: 6 maximum (enforced on save)
+
+Premium users have no daily scan limit and can generate up to 5 recipes per day.
+
+### External API Rate Limits
 
 - **Open Food Facts**: No hard limit, but be respectful (User-Agent header sent)
 - **USDA FoodData Central**: 1,000 requests/hour per API key
 - **Canadian Nutrient File**: No documented limit (government API)
 - **API Ninjas**: Depends on plan tier
+- **Spoonacular**: Depends on plan tier
 
 ---
 

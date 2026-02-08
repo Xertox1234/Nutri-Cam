@@ -318,6 +318,43 @@ function HistoryScreen() {
 }
 ```
 
+### Premium Context
+
+Manages subscription tier, feature flags, and usage limits. Defined in `client/context/PremiumContext.tsx`.
+
+```typescript
+interface PremiumContextType {
+  tier: SubscriptionTier; // "free" | "premium"
+  features: PremiumFeatures; // Feature flags for current tier
+  isPremium: boolean; // tier === "premium" && isActive
+  isLoading: boolean;
+  dailyScanCount: number;
+  canScanToday: boolean; // isPremium || count < maxDailyScans
+  recipeGenerationsToday: number;
+  canGenerateRecipe: boolean;
+  refreshSubscription: () => Promise<void>;
+  refreshScanCount: () => Promise<void>;
+  refreshRecipeGenerationStatus: () => Promise<void>;
+}
+```
+
+**TanStack Query keys and cache strategy:**
+
+| Query Key                            | Stale Time | Purpose                 |
+| ------------------------------------ | ---------- | ----------------------- |
+| `["/api/subscription/status"]`       | 5 minutes  | Tier, features, expiry  |
+| `["/api/subscription/scan-count"]`   | 30 seconds | Daily scan usage        |
+| `["/api/recipes/generation-status"]` | 30 seconds | Recipe generation usage |
+
+**Premium hooks** (`client/hooks/usePremiumFeatures.ts`):
+
+- `usePremiumFeature(key)` — returns `boolean` for any `PremiumFeatureKey`
+- `useAvailableBarcodeTypes()` — returns `ExpoBarcodeType[]` filtered by tier
+- `useCanScanToday()` — returns `{ canScan, remainingScans, dailyLimit, currentCount }`
+- `usePremiumCamera()` — combined hook returning barcode types, scan limits, `highQualityCapture`, and `videoRecording` flags
+
+**Camera integration:** `ScanScreen` destructures `usePremiumCamera()` to pass `photoQuality` (0.9 for premium, 0.5 for free) and `availableBarcodeTypes` to `<CameraView>`.
+
 ---
 
 ## API Communication

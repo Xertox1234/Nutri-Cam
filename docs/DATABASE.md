@@ -18,19 +18,23 @@ CREATE TABLE users (
   display_name TEXT,
   daily_calorie_goal INTEGER DEFAULT 2000,
   onboarding_completed BOOLEAN DEFAULT FALSE,
+  subscription_tier TEXT DEFAULT 'free',
+  subscription_expires_at TIMESTAMP,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
 );
 ```
 
-| Column               | Type      | Constraints             | Description            |
-| -------------------- | --------- | ----------------------- | ---------------------- |
-| id                   | VARCHAR   | PK, auto-generated UUID | Unique identifier      |
-| username             | TEXT      | NOT NULL, UNIQUE        | Login username         |
-| password             | TEXT      | NOT NULL                | Bcrypt-hashed password |
-| display_name         | TEXT      | nullable                | User's display name    |
-| daily_calorie_goal   | INTEGER   | DEFAULT 2000            | Target daily calories  |
-| onboarding_completed | BOOLEAN   | DEFAULT FALSE           | Onboarding status      |
-| created_at           | TIMESTAMP | NOT NULL, auto          | Account creation time  |
+| Column                  | Type      | Constraints             | Description                       |
+| ----------------------- | --------- | ----------------------- | --------------------------------- |
+| id                      | VARCHAR   | PK, auto-generated UUID | Unique identifier                 |
+| username                | TEXT      | NOT NULL, UNIQUE        | Login username                    |
+| password                | TEXT      | NOT NULL                | Bcrypt-hashed password            |
+| display_name            | TEXT      | nullable                | User's display name               |
+| daily_calorie_goal      | INTEGER   | DEFAULT 2000            | Target daily calories             |
+| onboarding_completed    | BOOLEAN   | DEFAULT FALSE           | Onboarding status                 |
+| subscription_tier       | TEXT      | DEFAULT 'free'          | `"free"` or `"premium"`           |
+| subscription_expires_at | TIMESTAMP | nullable                | Premium expiry (null = no expiry) |
+| created_at              | TIMESTAMP | NOT NULL, auto          | Account creation time             |
 
 ### User Profiles Table
 
@@ -205,6 +209,30 @@ CREATE TABLE daily_logs (
 | servings        | DECIMAL(5,2) | DEFAULT '1'        | Number of servings   |
 | meal_type       | TEXT         | nullable           | Meal category        |
 | logged_at       | TIMESTAMP    | NOT NULL           | When food was logged |
+
+### Recipe Generation Log Table
+
+Tracks daily AI recipe generation usage per user for premium limit enforcement.
+
+```sql
+CREATE TABLE recipe_generation_log (
+  id SERIAL PRIMARY KEY,
+  user_id VARCHAR REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+  recipe_id INTEGER REFERENCES community_recipes(id) ON DELETE SET NULL,
+  generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX recipe_gen_log_user_date_idx ON recipe_generation_log (user_id, generated_at);
+```
+
+| Column       | Type      | Constraints               | Description                   |
+| ------------ | --------- | ------------------------- | ----------------------------- |
+| id           | SERIAL    | PK                        | Auto-incrementing ID          |
+| user_id      | VARCHAR   | FK → users, NOT NULL      | User who generated the recipe |
+| recipe_id    | INTEGER   | FK → community_recipes    | Generated recipe (nullable)   |
+| generated_at | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | When generation occurred      |
+
+The compound index on `(user_id, generated_at)` supports the daily counting query used by `GET /api/recipes/generation-status`.
 
 ---
 

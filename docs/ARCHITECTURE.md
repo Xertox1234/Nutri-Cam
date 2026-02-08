@@ -985,6 +985,46 @@ Client-Side Auth Check:
 
 ---
 
+## Premium Subscription System
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                  Premium Tier Architecture                     │
+└──────────────────────────────────────────────────────────────┘
+
+                    Two Tiers: free / premium
+                    ─────────────────────────
+
+┌───────────────────────────┐    ┌───────────────────────────┐
+│        Free Tier          │    │      Premium Tier          │
+├───────────────────────────┤    ├───────────────────────────┤
+│ 10 daily scans            │    │ Unlimited scans            │
+│ Standard barcodes (EAN)   │    │ All barcode types          │
+│ Balanced photo quality    │    │ High-quality capture       │
+│ Calorie goal only         │    │ Full macro goals (P/C/F)   │
+│ No recipe generation      │    │ 5 AI recipes/day           │
+│ 6 saved items max         │    │ Unlimited saved items      │
+│ Photo analysis ✓          │    │ Photo analysis ✓           │
+└───────────────────────────┘    └───────────────────────────┘
+```
+
+**Enforcement model:**
+
+- **Server-side** (critical) — scan counting, recipe generation limits, saved item caps. Server returns `403 PREMIUM_REQUIRED` or `429` with limit details
+- **Client-side** (camera/UI) — photo quality (`photoQualityBalance`), barcode type filtering, macro goal visibility. Enforced via `PremiumContext` + `usePremiumCamera()` hook
+- **Dual** — scan limits checked client-side for UX (prevents wasted camera use), but scan records are always created server-side
+
+**Subscription lifecycle:**
+
+1. `GET /api/subscription/status` returns `{ tier, expiresAt, features, isActive }`
+2. Server checks `subscriptionExpiresAt > now()` — if expired, downgrades to free in response
+3. Client caches status for 5 minutes (TanStack Query staleTime)
+4. Scan count cached for 30 seconds, refreshed after each successful scan
+
+> **Note:** Payment integration is not yet implemented. Tier is set manually via the storage layer (`storage.updateSubscription()`).
+
+---
+
 ## Theming System
 
 ```
