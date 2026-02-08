@@ -14,9 +14,9 @@ NutriScan is a mobile nutrition tracking application with a monorepo architectur
 │  │   (Expo)     │   via Tunnel     │       (Port 3000)        ││
 │  └──────────────┘                  └──────────────────────────┘│
 │         │                                      │                │
-│         │                          ┌───────────┼───────────┐    │
-│         ▼                          │           │           │    │
-│  ┌──────────────┐                  ▼           ▼           ▼    │
+│         │                          ┌───────────┼──────────┬────┐│
+│         ▼                          │           │          │    ││
+│  ┌──────────────┐                  ▼           ▼          ▼   ││
 │  │   Shared     │         ┌────────────┐ ┌──────────┐ ┌──────┐│
 │  │   Schema     │         │ PostgreSQL │ │ OpenAI   │ │Nutri-││
 │  └──────────────┘         │  Database  │ │ API      │ │tion  ││
@@ -30,6 +30,14 @@ NutriScan is a mobile nutrition tracking application with a monorepo architectur
 │                                       │OFF │ │USDA│ │ CNF  │  │
 │                                       └────┘ └────┘ └──────┘  │
 │                                                                 │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │                Meal Planning Services                     │    │
+│  │  ┌──────────────┐  ┌──────────────┐                      │    │
+│  │  │ Spoonacular  │  │ Recipe URL   │                      │    │
+│  │  │ Catalog API  │  │ Import       │                      │    │
+│  │  └──────────────┘  └──────────────┘                      │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 
 External Nutrition APIs:
@@ -37,6 +45,10 @@ External Nutrition APIs:
   USDA = USDA FoodData Central (text search + branded UPC lookup)
   CNF  = Canadian Nutrient File (bilingual EN/FR, ~5,690 foods)
   Also: API Ninjas Nutrition (last-resort fallback)
+
+Meal Planning APIs:
+  Spoonacular = Recipe catalog search, detail retrieval, nutrition data
+  Recipe URL Import = schema.org Recipe LD+JSON extraction from any URL
 ```
 
 ## Directory Structure
@@ -46,19 +58,25 @@ Nutri-Cam/
 ├── client/                    # React Native/Expo Frontend
 │   ├── App.tsx                # Entry point with providers
 │   ├── components/            # Reusable UI components
+│   │   └── recipe-builder/    # Bottom-sheet recipe builder (7 components)
 │   ├── constants/             # Theme, colors, spacing
 │   ├── context/               # React Context providers
 │   ├── hooks/                 # Custom React hooks
 │   ├── lib/                   # Utilities (query client)
 │   ├── navigation/            # React Navigation stacks
 │   └── screens/               # Screen components
-│       └── onboarding/        # Onboarding flow screens
+│       ├── onboarding/        # Onboarding flow screens
+│       └── meal-plan/         # Meal planning screens (5)
 │
 ├── server/                    # Express.js Backend
 │   ├── index.ts               # Server entry, CORS setup
 │   ├── routes.ts              # API route definitions
 │   ├── storage.ts             # Database operations
-│   └── db.ts                  # Drizzle ORM configuration
+│   ├── db.ts                  # Drizzle ORM configuration
+│   └── services/              # Business logic
+│       ├── nutrition-lookup.ts # Multi-source nutrition pipeline
+│       ├── recipe-catalog.ts  # Spoonacular catalog integration
+│       └── recipe-import.ts   # URL recipe import (schema.org)
 │
 ├── shared/                    # Shared Code
 │   ├── schema.ts              # Database schema (Drizzle)
@@ -73,28 +91,28 @@ Nutri-Cam/
 
 ### Frontend
 
-| Technology       | Version | Purpose                 |
-| ---------------- | ------- | ----------------------- |
-| Expo SDK         | 54      | React Native toolchain  |
-| React Native     | 0.81    | Mobile UI framework     |
-| React            | 19      | UI library              |
-| React Navigation | 7.x     | Navigation management   |
-| TanStack Query   | 5.x     | Server state management |
-| Reanimated       | 4.x     | Animations              |
-| expo-camera      | -       | Barcode scanning        |
+| Technology       | Version | Purpose                  |
+| ---------------- | ------- | ------------------------ |
+| Expo SDK         | 54      | React Native toolchain   |
+| React Native     | 0.81    | Mobile UI framework      |
+| React            | 19      | UI library               |
+| React Navigation | 7.x     | Navigation management    |
+| TanStack Query   | 5.x     | Server state management  |
+| Reanimated       | 4.x     | Animations               |
+| vision-camera    | 4.x     | Barcode scanning + photo |
 
 ### Backend
 
-| Technology      | Version | Purpose            |
-| --------------- | ------- | ------------------ |
-| Express.js      | 5.0     | HTTP server        |
-| Drizzle ORM     | -       | Database ORM       |
-| PostgreSQL      | 12+     | Database           |
-| bcrypt          | -       | Password hashing   |
-| express-session | -       | Session management |
-| OpenAI SDK      | -       | AI suggestions     |
+| Technology   | Version | Purpose            |
+| ------------ | ------- | ------------------ |
+| Express.js   | 5.0     | HTTP server        |
+| Drizzle ORM  | -       | Database ORM       |
+| PostgreSQL   | 12+     | Database           |
+| bcrypt       | -       | Password hashing   |
+| jsonwebtoken | -       | JWT authentication |
+| OpenAI SDK   | -       | AI suggestions     |
 
-### External Nutrition APIs
+### External APIs
 
 | Service                                                                                | Purpose                                         | Auth        |
 | -------------------------------------------------------------------------------------- | ----------------------------------------------- | ----------- |
@@ -102,6 +120,7 @@ Nutri-Cam/
 | [Canadian Nutrient File](https://food-nutrition.canada.ca/api/canadian-nutrient-file/) | Bilingual EN/FR nutrition data, ~5,690 foods    | None (free) |
 | [USDA FoodData Central](https://fdc.nal.usda.gov/)                                     | Text search + branded food UPC lookup           | API key     |
 | [API Ninjas Nutrition](https://api-ninjas.com/api/nutrition)                           | Last-resort fallback                            | API key     |
+| [Spoonacular](https://spoonacular.com/food-api)                                        | Recipe catalog search, detail, and nutrition    | API key     |
 
 ### Shared
 
@@ -200,12 +219,64 @@ import { users } from "@shared/schema";
 │   daily_logs     │                          │
 ├──────────────────┤                          │
 │ id (PK, serial)  │                          │
-│ userId (FK) ◄────│──────────────────────────┘
-│ scannedItemId(FK)│
-│ servings         │
-│ mealType         │
-│ loggedAt         │
-└──────────────────┘
+│ userId (FK) ◄────│──────────────────────────┤
+│ scannedItemId(FK)│                          │
+│ servings         │                          │
+│ mealType         │                          │
+│ loggedAt         │                          │
+└──────────────────┘                          │
+                                              │
+┌─────────────────────┐                       │
+│ meal_plan_recipes   │◄──────────────────────┘
+├─────────────────────┤
+│ id (PK, serial)     │──────────────────────┐
+│ userId (FK)         │                      │
+│ title               │                      │
+│ description         │                      │
+│ sourceType          │  "user_created" |    │
+│ sourceUrl           │  "catalog" |         │
+│                     │  "url_import"        │
+│ externalId          │                      │
+│ cuisine             │                      │
+│ difficulty          │                      │
+│ servings            │                      │
+│ prepTimeMinutes     │                      │
+│ cookTimeMinutes     │                      │
+│ instructions        │                      │
+│ dietTags (JSONB)    │                      │
+│ caloriesPerServing  │                      │
+│ proteinPerServing   │                      │
+│ carbsPerServing     │                      │
+│ fatPerServing       │                      │
+│ createdAt, updatedAt│                      │
+└─────────────────────┘                      │
+         │                                   │
+         │ 1:N                               │
+         ▼                                   │
+┌─────────────────────┐                      │
+│ recipe_ingredients  │                      │
+├─────────────────────┤                      │
+│ id (PK, serial)     │                      │
+│ recipeId (FK)       │                      │
+│ name                │                      │
+│ quantity            │                      │
+│ unit                │                      │
+│ category            │                      │
+│ displayOrder        │                      │
+└─────────────────────┘                      │
+                                             │
+┌─────────────────────┐                      │
+│ meal_plan_items     │                      │
+├─────────────────────┤                      │
+│ id (PK, serial)     │                      │
+│ userId (FK)         │                      │
+│ recipeId (FK) ◄─────│──────────────────────┘
+│ scannedItemId (FK)  │
+│ plannedDate         │
+│ mealType            │  breakfast | lunch |
+│ servings            │  dinner | snack
+│ createdAt           │
+└─────────────────────┘
 ```
 
 ### Table Relationships
@@ -214,6 +285,11 @@ import { users } from "@shared/schema";
 - **users → scanned_items**: One-to-many (cascade delete)
 - **users → daily_logs**: One-to-many (cascade delete)
 - **scanned_items → daily_logs**: One-to-many (cascade delete)
+- **users → meal_plan_recipes**: One-to-many (cascade delete)
+- **meal_plan_recipes → recipe_ingredients**: One-to-many (cascade delete)
+- **meal_plan_recipes → meal_plan_items**: One-to-many (set null on delete)
+- **scanned_items → meal_plan_items**: One-to-many (set null on delete)
+- **users → meal_plan_items**: One-to-many (cascade delete)
 
 ---
 
@@ -253,16 +329,19 @@ import { users } from "@shared/schema";
        └───────────┘
 
                     MainTabNavigator
-         ┌─────────────────┼─────────────────┐
-         │                 │                 │
-         ▼                 ▼                 ▼
-┌─────────────────┐ ┌─────────────┐ ┌─────────────────┐
-│  HistoryStack   │ │  ScanStack  │ │  ProfileStack   │
-│  Navigator      │ │  Navigator  │ │  Navigator      │
-├─────────────────┤ ├─────────────┤ ├─────────────────┤
-│ HistoryScreen   │ │ ScanScreen  │ │ ProfileScreen   │
-│ ItemDetailScreen│ └─────────────┘ └─────────────────┘
-└─────────────────┘
+         ┌──────────┬──────────┼──────────┐
+         │          │          │          │
+         ▼          ▼          ▼          ▼
+┌────────────┐ ┌──────────────┐ ┌─────────┐ ┌────────────┐
+│HistoryStack│ │MealPlanStack │ │ScanStack│ │ProfileStack│
+│ Navigator  │ │  Navigator   │ │Navigator│ │ Navigator  │
+├────────────┤ ├──────────────┤ ├─────────┤ ├────────────┤
+│HistoryScr  │ │MealPlanHome  │ │ScanScr  │ │ProfileScr  │
+│ItemDetail  │ │RecipeDetail  │ └─────────┘ └────────────┘
+└────────────┘ │RecipeBrowser │
+               │RecipeCreate  │
+               │RecipeImport  │
+               └──────────────┘
          │
          ▼
 ┌─────────────────┐
@@ -389,7 +468,7 @@ Mobile App
 ├──────────────────┤
 │ 1. CORS Middleware
 │ 2. JSON Parser   │
-│ 3. Session Check │
+│ 3. JWT Auth Check│
 └────────┬─────────┘
          │
          ▼
@@ -547,8 +626,131 @@ interface IStorage {
   // Daily Logs
   getDailySummary(userId: string, date: Date): Promise<DailySummary>;
   createDailyLog(data: InsertDailyLog): Promise<DailyLog>;
+
+  // Meal Plan Recipes
+  findMealPlanRecipeByExternalId(
+    userId: string,
+    externalId: string,
+  ): Promise<MealPlanRecipe | undefined>;
+  getMealPlanRecipe(id: number): Promise<MealPlanRecipe | undefined>;
+  getMealPlanRecipeWithIngredients(
+    id: number,
+  ): Promise<
+    (MealPlanRecipe & { ingredients: RecipeIngredient[] }) | undefined
+  >;
+  getUserMealPlanRecipes(
+    userId: string,
+    limit?: number,
+    offset?: number,
+  ): Promise<{ items: MealPlanRecipe[]; total: number }>;
+  createMealPlanRecipe(
+    recipe: InsertMealPlanRecipe,
+    ingredients?: InsertRecipeIngredient[],
+  ): Promise<MealPlanRecipe>;
+  updateMealPlanRecipe(
+    id: number,
+    userId: string,
+    updates: Partial<InsertMealPlanRecipe>,
+  ): Promise<MealPlanRecipe | undefined>;
+  deleteMealPlanRecipe(id: number, userId: string): Promise<boolean>;
+
+  // Meal Plan Items
+  getMealPlanItems(
+    userId: string,
+    startDate: string,
+    endDate: string,
+  ): Promise<MealPlanItemWithRelations[]>;
+  addMealPlanItem(item: InsertMealPlanItem): Promise<MealPlanItem>;
+  removeMealPlanItem(id: number, userId: string): Promise<boolean>;
 }
 ```
+
+### Meal Planning Services
+
+#### Recipe Catalog (`server/services/recipe-catalog.ts`)
+
+Integrates with the Spoonacular API for browsing and importing catalog recipes.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                  Recipe Catalog Pipeline                          │
+└─────────────────────────────────────────────────────────────────┘
+
+RecipeBrowserScreen
+    │
+    ├─ Search ──► GET /api/meal-plan/catalog/search
+    │                  │
+    │                  ▼
+    │             ┌───────────────────┐
+    │             │ Spoonacular API   │  query, cuisine, diet filters
+    │             │ /complexSearch    │
+    │             └────────┬──────────┘
+    │                      │
+    │                      ▼
+    │             { results, totalResults, offset }
+    │
+    ├─ Preview ──► GET /api/meal-plan/catalog/:id
+    │                  │
+    │                  ▼
+    │             ┌───────────────────┐
+    │             │ Spoonacular API   │  Full recipe with nutrition
+    │             │ /:id/information  │  and extended ingredients
+    │             └───────────────────┘
+    │
+    └─ Save ────► POST /api/meal-plan/catalog/:id/save
+                       │
+                       ▼
+                  Convert Spoonacular recipe → mealPlanRecipes row
+                  + recipeIngredients rows
+```
+
+**Key functions**: `searchCatalog()`, `getCatalogRecipeDetail()`, `saveCatalogRecipeToDatabase()`
+
+**Auth**: Requires `SPOONACULAR_API_KEY` environment variable.
+
+#### Recipe URL Import (`server/services/recipe-import.ts`)
+
+Extracts recipe data from any URL containing schema.org Recipe structured data (LD+JSON).
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                  Recipe Import Pipeline                           │
+└─────────────────────────────────────────────────────────────────┘
+
+RecipeImportScreen
+    │
+    │  POST /api/meal-plan/recipes/import-url { url }
+    │
+    ▼
+┌───────────────────────┐
+│ Fetch URL             │  10s timeout, 5 MB max
+│ (cheerio HTML parser) │
+└──────────┬────────────┘
+           │
+           ▼
+┌───────────────────────┐
+│ Find <script> tags    │  type="application/ld+json"
+│ with schema.org data  │
+└──────────┬────────────┘
+           │
+      ┌────┴──────┐
+   Found      Not Found → { error: "NO_RECIPE_DATA" }
+      │
+      ▼
+┌───────────────────────┐
+│ Parse Recipe schema   │  name, description, ingredients,
+│ with Zod validation   │  instructions, prep/cook time,
+│                       │  nutrition, cuisine, diet tags
+└──────────┬────────────┘
+           │
+           ▼
+┌───────────────────────┐
+│ Return ImportResult   │  → Prefills RecipeCreateScreen
+│ { success, data }     │
+└───────────────────────┘
+```
+
+**Key functions**: `importRecipeFromUrl()`, `parseIsoDuration()`, `normalizeInstructions()`
 
 ---
 
@@ -564,7 +766,7 @@ Registration:
 │ Client │ ──────────────────────────▶ Server │ ─────────────────▶│   DB   │
 └────────┘                           └────────┘                   └────────┘
     ▲                                     │
-    │         Set-Cookie: session         │
+    │       { token: "jwt..." }           │
     └─────────────────────────────────────┘
 
 Login:
@@ -572,13 +774,13 @@ Login:
 │ Client │ ──────────────────────────▶ Server │ ─────────────────▶│   DB   │
 └────────┘                           └────────┘                   └────────┘
     ▲                                     │
-    │         Set-Cookie: session         │
+    │       { token: "jwt..." }           │
     └─────────────────────────────────────┘
 
 Subsequent Requests:
-┌────────┐   Cookie: session         ┌────────┐   Validate        ┌────────┐
-│ Client │ ──────────────────────────▶ Server │ ─────────────────▶│Session │
-└────────┘                           └────────┘                   │ Store  │
+┌────────┐  Authorization: Bearer    ┌────────┐   jwt.verify      ┌────────┐
+│ Client │ ──────────────────────────▶ Server │ ─────────────────▶│Validate│
+└────────┘                           └────────┘                   │ Token  │
     │                                     │                       └────────┘
     │                                     │
     │       Response with data            │
@@ -591,20 +793,20 @@ Client-Side Auth Check:
                               │
                               ▼
               ┌───────────────────────────────┐
-              │  Check AsyncStorage for user  │
+              │  Check AsyncStorage for token │
               └───────────────────────────────┘
                               │
               ┌───────────────┴───────────────┐
               │                               │
               ▼                               ▼
     ┌──────────────────┐          ┌──────────────────┐
-    │   User Found     │          │  No User Found   │
+    │   Token Found    │          │  No Token Found  │
     │  GET /auth/me    │          │  Show Login      │
     └────────┬─────────┘          └──────────────────┘
              │
              ▼
     ┌──────────────────┐
-    │  Valid Session?  │
+    │  Valid Token?    │
     └────────┬─────────┘
              │
     ┌────────┴────────┐
@@ -798,9 +1000,9 @@ Usage:
 ### Authentication
 
 - Passwords hashed with bcrypt (10 rounds)
-- HTTP-only session cookies
-- Secure cookies in production (HTTPS only)
-- 30-day session expiry
+- JWT tokens via Authorization: Bearer header
+- Tokens signed with JWT_SECRET env var
+- 30-day token expiry
 
 ### CORS
 
@@ -815,6 +1017,6 @@ Usage:
 
 ### API Security
 
-- Session validation on all protected routes
+- JWT validation on all protected routes
 - Input validation with Zod schemas
 - Error messages don't leak implementation details

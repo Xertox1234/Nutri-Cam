@@ -42,6 +42,11 @@ This document captures established patterns for the NutriScan codebase. Follow t
   - [Bottom-Sheet Lifecycle State Machine](#bottom-sheet-lifecycle-state-machine)
   - [Keyboard-to-Sheet Sequencing](#keyboard-to-sheet-sequencing)
   - [Lazy Modal Mounting](#lazy-modal-mounting)
+  - [Module-Level Key Counters for Dynamic Lists](#module-level-key-counters-for-dynamic-lists)
+  - [Unsaved Changes Navigation Guard](#unsaved-changes-navigation-guard)
+  - [Form State Hook with Summaries and isDirty](#form-state-hook-with-summaries-and-isdirty)
+- [External API Parsing Patterns](#external-api-parsing-patterns)
+  - [ISO 8601 Duration Parsing](#iso-8601-duration-parsing)
 - [Animation Patterns](#animation-patterns)
 - [Performance Patterns](#performance-patterns)
   - [React.memo for FlatList Header/Footer](#reactmemo-for-flatlist-headerfooter-components)
@@ -3284,6 +3289,203 @@ const openSheet = (section: SheetSection) => {
   </BottomSheetModal>
 )}
 ```
+
+### Module-Level Key Counters for Dynamic Lists
+
+Use module-level counters to generate stable, globally unique keys for dynamic form list items (ingredients, steps, etc.). Avoids React's index-as-key anti-pattern, timestamp collisions, and key reuse across component re-mounts.
+
+**When to use:** Any form with a dynamic list where items can be added, removed, or reordered — especially when items contain `TextInput` that would lose focus on re-key.
+
+**When NOT to use:** Static lists or lists with server-assigned IDs.
+
+```typescript
+// client/hooks/useRecipeForm.ts
+
+// Module-level — persists across mounts, ensures globally unique keys
+let ingredientKeyCounter = 0;
+function nextIngredientKey() {
+  return `ing_${++ingredientKeyCounter}`;
+}
+
+// Usage in hook
+const addIngredient = useCallback(() => {
+  setIngredients((prev) => [...prev, { key: nextIngredientKey(), text: "" }]);
+}, []);
+
+// Prefill also uses the counter to avoid collisions
+function buildIngredientsFromPrefill(
+  prefill?: ImportedRecipeData,
+): IngredientRow[] {
+  if (prefill?.ingredients?.length) {
+    return prefill.ingredients.map((ing) => ({
+      key: nextIngredientKey(),
+      text: [ing.quantity, ing.unit, ing.name].filter(Boolean).join(" "),
+    }));
+  }
+  return [{ key: nextIngredientKey(), text: "" }];
+}
+```
+
+### Unsaved Changes Navigation Guard
+
+Use React Navigation's `beforeRemove` listener to block navigation when a form has unsaved changes. Also block navigation while a save mutation is in flight to prevent double-submits or data loss.
+
+**When to use:** Any form screen with a save/submit action where accidental back-navigation would lose user input.
+
+**When NOT to use:** Read-only screens or screens where state is already synced to the server in real time.
+
+```typescript
+// client/screens/meal-plan/RecipeCreateScreen.tsx
+
+useEffect(() => {
+  const unsubscribe = navigation.addListener("beforeRemove", (e) => {
+    // Block navigation during save
+    if (createMutation.isPending) {
+      e.preventDefault();
+      return;
+    }
+
+    // Allow navigation if form is clean
+    if (!form.isDirty) return;
+
+    // Prompt for unsaved changes
+    e.preventDefault();
+    Alert.alert("Discard changes?", "You have unsaved changes.", [
+      { text: "Keep editing", style: "cancel" },
+      {
+        text: "Discard",
+        style: "destructive",
+        onPress: () => navigation.dispatch(e.data.action),
+      },
+    ]);
+  });
+
+  return unsubscribe;
+}, [navigation, form.isDirty, createMutation.isPending]);
+```
+
+**Key details:**
+
+- `isPending` check prevents back-swipe during save, avoiding partial writes
+- `isDirty` comes from the form hook (see below), not manual tracking
+- Both values must be in the dependency array so the listener re-binds when they change
+
+### Form State Hook with Summaries and isDirty
+
+Extract multi-section form state into a custom hook that provides: state + setters, CRUD actions for dynamic lists, `useMemo`-derived summaries for display, a single `isDirty` flag, and a `formToPayload()` serializer. This keeps the screen component focused on layout and navigation.
+
+**When to use:** Forms with 3+ distinct sections, especially with dynamic lists and a summary/preview UI.
+
+**When NOT to use:** Simple single-field forms or forms where TanStack Form or React Hook Form is already in use.
+
+```typescript
+// client/hooks/useRecipeForm.ts
+
+export function useRecipeForm(prefill?: ImportedRecipeData) {
+  const [title, setTitle] = useState(prefill?.title || "");
+  const [ingredients, setIngredients] = useState<IngredientRow[]>(() =>
+    buildIngredientsFromPrefill(prefill),
+  );
+  // ... more sections
+
+  // Computed summary for section row display
+  const ingredientsSummary = useMemo(() => {
+    const filled = ingredients.filter((i) => i.text.trim());
+    return filled.length > 0
+      ? `${filled.length} ingredient${filled.length !== 1 ? "s" : ""}`
+      : undefined;
+  }, [ingredients]);
+
+  // Single dirty flag across all sections
+  const isDirty = useMemo(() => {
+    if (title.trim()) return true;
+    if (ingredients.some((i) => i.text.trim())) return true;
+    // ... check all sections
+    return false;
+  }, [title, ingredients /* ... all sections */]);
+
+  // Serialize to API payload — filters empty rows, parses text to structured data
+  const formToPayload = useCallback(() => {
+    const validIngredients = ingredients
+      .filter((i) => i.text.trim())
+      .map((i) => {
+        const parsed = parseIngredientText(i.text.trim());
+        return {
+          name: parsed.name,
+          quantity: parsed.quantity,
+          unit: parsed.unit,
+        };
+      });
+
+    return {
+      title: title.trim(),
+      ingredients: validIngredients,
+      instructions:
+        serializeSteps(steps.filter((s) => s.text.trim()).map((s) => s.text)) ||
+        null,
+      // ... other fields
+    };
+  }, [title, ingredients, steps /* ... */]);
+
+  return {
+    title,
+    setTitle,
+    ingredients,
+    addIngredient,
+    removeIngredient,
+    updateIngredient,
+    ingredientsSummary,
+    isDirty,
+    formToPayload,
+    // ... rest
+  };
+}
+```
+
+**Key details:**
+
+- Summaries update automatically via `useMemo` — no manual "refresh" needed
+- `isDirty` checks all sections, not just the one being edited
+- `formToPayload()` handles the text → structured data transformation (e.g., "200g chicken" → `{ name: "chicken", quantity: 200, unit: "g" }`)
+- Accepts optional `prefill` for hydrating from imports or edits
+
+---
+
+## External API Parsing Patterns
+
+### ISO 8601 Duration Parsing
+
+Parse ISO 8601 duration strings (from schema.org recipes, calendar events, etc.) into numeric minutes for storage and display. Return `null` for missing or unparseable values instead of throwing.
+
+**When to use:** Importing data from schema.org structured data, iCal/ICS feeds, or any external source using ISO 8601 durations (e.g., `PT1H30M`, `PT15M`).
+
+**When NOT to use:** Internal data that already stores durations as numbers.
+
+```typescript
+// server/services/recipe-import.ts
+
+export function parseIsoDuration(duration: string | undefined): number | null {
+  if (!duration) return null;
+  const match = duration.match(/^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/i);
+  if (!match) return null;
+  const hours = parseInt(match[1] || "0", 10);
+  const minutes = parseInt(match[2] || "0", 10);
+  return hours * 60 + minutes;
+}
+
+// Usage
+parseIsoDuration("PT1H30M"); // → 90
+parseIsoDuration("PT15M"); // → 15
+parseIsoDuration("PT2H"); // → 120
+parseIsoDuration(undefined); // → null
+parseIsoDuration("invalid"); // → null
+```
+
+**Key details:**
+
+- Case-insensitive (`/i` flag) to handle mixed-case from external sources
+- Seconds component is parsed but not added to the result (recipes don't need second-level precision)
+- Returns `null` (not 0 or throws) for graceful handling in optional fields
 
 ---
 

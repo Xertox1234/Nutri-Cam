@@ -62,6 +62,7 @@ client/
 │   ├── MainTabNavigator.tsx
 │   ├── OnboardingNavigator.tsx
 │   ├── HistoryStackNavigator.tsx
+│   ├── MealPlanStackNavigator.tsx
 │   ├── ScanStackNavigator.tsx
 │   └── ProfileStackNavigator.tsx
 └── screens/
@@ -71,13 +72,19 @@ client/
     ├── ProfileScreen.tsx
     ├── ItemDetailScreen.tsx
     ├── NutritionDetailScreen.tsx
-    └── onboarding/
-        ├── WelcomeScreen.tsx
-        ├── AllergiesScreen.tsx
-        ├── HealthConditionsScreen.tsx
-        ├── DietTypeScreen.tsx
-        ├── GoalsScreen.tsx
-        └── PreferencesScreen.tsx
+    ├── onboarding/
+    │   ├── WelcomeScreen.tsx
+    │   ├── AllergiesScreen.tsx
+    │   ├── HealthConditionsScreen.tsx
+    │   ├── DietTypeScreen.tsx
+    │   ├── GoalsScreen.tsx
+    │   └── PreferencesScreen.tsx
+    └── meal-plan/
+        ├── MealPlanHomeScreen.tsx
+        ├── RecipeDetailScreen.tsx
+        ├── RecipeBrowserScreen.tsx
+        ├── RecipeCreateScreen.tsx
+        └── RecipeImportScreen.tsx
 ```
 
 ---
@@ -101,11 +108,21 @@ RootStackNavigator
     │   ├── HistoryTab → HistoryStackNavigator
     │   │   ├── HistoryScreen
     │   │   └── ItemDetailScreen
+    │   ├── MealPlanTab → MealPlanStackNavigator
+    │   │   ├── MealPlanHomeScreen
+    │   │   ├── RecipeDetailScreen
+    │   │   ├── RecipeBrowserScreen
+    │   │   ├── RecipeCreateScreen
+    │   │   └── RecipeImportScreen
     │   ├── ScanTab → ScanStackNavigator
     │   │   └── ScanScreen
     │   └── ProfileTab → ProfileStackNavigator
     │       └── ProfileScreen
-    └── NutritionDetailScreen (modal)
+    ├── NutritionDetailScreen (modal)
+    ├── PhotoIntentScreen (modal)
+    ├── PhotoAnalysisScreen (modal)
+    ├── GoalSetupScreen (modal)
+    └── EditDietaryProfileScreen (modal)
 ```
 
 ### Type-Safe Navigation
@@ -126,8 +143,18 @@ export type RootStackParamList = {
 // client/navigation/MainTabNavigator.tsx
 export type MainTabParamList = {
   HistoryTab: undefined;
+  MealPlanTab: undefined;
   ScanTab: undefined;
   ProfileTab: undefined;
+};
+
+// client/navigation/MealPlanStackNavigator.tsx
+export type MealPlanStackParamList = {
+  MealPlanHome: undefined;
+  RecipeDetail: { recipeId: number };
+  RecipeBrowser: { mealType?: string; plannedDate?: string };
+  RecipeCreate: { prefill?: ImportedRecipeData };
+  RecipeImport: undefined;
 };
 
 // client/navigation/OnboardingNavigator.tsx
@@ -300,11 +327,19 @@ export async function apiRequest(
   const baseUrl = getApiUrl();
   const url = new URL(route, baseUrl);
 
+  const headers: Record<string, string> = {};
+  if (data) {
+    headers["Content-Type"] = "application/json";
+  }
+  const token = await tokenStorage.get();
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
   const res = await fetch(url, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers,
     body: data ? JSON.stringify(data) : undefined,
-    credentials: "include", // Important for sessions
   });
 
   if (!res.ok) {
@@ -627,6 +662,117 @@ Features:
 
 ---
 
+## Meal Planning
+
+The meal planning feature is accessed via the "Plan" tab in the main tab navigator. It uses the `MealPlanStackNavigator` with 5 screens and a set of bottom-sheet recipe builder components.
+
+### MealPlanHomeScreen
+
+The main dashboard for meal planning.
+
+Features:
+
+- 7-day date picker strip with week navigation (swipe or arrow buttons)
+- Four meal type sections: Breakfast, Lunch, Dinner, Snack
+- Real-time daily nutrition totals (calories, protein, carbs, fat)
+- Smart date labels ("Today", "Tomorrow", "Yesterday")
+- Pull-to-refresh for syncing
+- Add/remove items from meal slots
+- Orphaned item detection (shows "Item removed" if linked recipe deleted)
+- Memoized subcomponents for performance (DateStripItem, MealSlotItem, MealSlotSection, DailyTotals)
+
+```typescript
+// Data fetching
+const { data: items } = useMealPlanItems(startDate, endDate);
+```
+
+### RecipeDetailScreen
+
+Displays full recipe details.
+
+Features:
+
+- Recipe title, description, and metadata pills (time, difficulty, servings)
+- Nutrition card with per-serving macros
+- Full ingredients list with quantities and units
+- Formatted instructions text
+- Diet tag badges (Vegetarian, Vegan, etc.)
+
+### RecipeBrowserScreen
+
+Browse and add recipes to the meal plan.
+
+Features:
+
+- Two tabs: "Catalog" (Spoonacular) and "My Recipes"
+- Search with 300ms debounce
+- Catalog filters: Cuisines (Italian, Mexican, Asian, Mediterranean, American, Indian) and Diets (Vegetarian, Vegan, Gluten Free, Keto, Paleo)
+- Header buttons to navigate to RecipeCreate and RecipeImport
+- Route params: `mealType` and `plannedDate` (passed from MealPlanHomeScreen)
+
+### RecipeCreateScreen
+
+Create new recipes with a bottom-sheet builder UI.
+
+Features:
+
+- Title and description text inputs
+- Five expandable sections, each opening a bottom sheet:
+  - **Ingredients** (70% snap) — add/remove ingredient rows
+  - **Instructions** (70% snap) — reorderable step rows
+  - **Time & Servings** (45-70% snap) — stepper controls
+  - **Nutrition** (50% snap) — per-serving calorie/macro inputs
+  - **Tags & Cuisine** (50% snap) — cuisine text input + diet tag toggles
+- Unsaved changes guard (confirmation on back navigation)
+- Supports prefilled data from RecipeImportScreen via `prefill` param
+- Lazy-mounted sheets (only rendered when first opened)
+
+### RecipeImportScreen
+
+Import recipes from URLs using schema.org structured data.
+
+Features:
+
+- URL input with validation
+- Four states: idle, loading, success, error
+- Success state displays imported recipe title and calorie count
+- Error types: NO_RECIPE_DATA, FETCH_FAILED, TIMEOUT, RESPONSE_TOO_LARGE
+- Actions: Import, View Recipe, Done, Try Again, Create Manually
+- Haptic feedback on state changes
+
+### Recipe Builder Components (`client/components/recipe-builder/`)
+
+| Component               | Purpose                                                                                    |
+| ----------------------- | ------------------------------------------------------------------------------------------ |
+| `SectionRow.tsx`        | Interactive row for each recipe section (icon, label, summary, press handler with haptics) |
+| `SheetHeader.tsx`       | Bottom sheet header with drag indicator and Done button                                    |
+| `IngredientsSheet.tsx`  | Add/edit/remove ingredient rows                                                            |
+| `InstructionsSheet.tsx` | Add/edit/remove/reorder instruction steps                                                  |
+| `TimeServingsSheet.tsx` | Stepper controls for servings, text inputs for prep/cook time                              |
+| `NutritionSheet.tsx`    | Four numeric inputs: calories, protein, carbs, fat                                         |
+| `TagsCuisineSheet.tsx`  | Cuisine text input + diet tag toggle buttons                                               |
+| `types.ts`              | Shared types: `SheetSection`, `SheetLifecycleState`, `DIET_TAG_OPTIONS`                    |
+
+### Meal Plan Hooks
+
+**`useMealPlan.ts`** — Query and mutation hooks for meal plan items:
+
+- `useMealPlanItems(start, end)` — Fetches items for a date range
+- `useAddMealPlanItem()` — Adds recipe or scanned item to a meal slot
+- `useRemoveMealPlanItem()` — Removes an item from the plan
+- `invalidateMealPlanItems(queryClient)` — Helper to invalidate meal plan item queries (not recipe/catalog queries)
+
+**`useRecipeForm.ts`** — Form state management for recipe creation:
+
+- Manages title, description, ingredients, steps, time/servings, nutrition, tags
+- Provides add/remove/update/move actions for ingredients and steps
+- Computed summaries for each section (e.g., "3 ingredients", "250 cal · 15g protein")
+- `isDirty` flag for unsaved changes detection
+- `formToPayload()` serializes form state to API request format
+- Accepts optional `ImportedRecipeData` for prefilling from import
+
+---
+
 ## Onboarding Flow
 
 The onboarding consists of 6 screens that collect dietary preferences:
@@ -703,33 +849,29 @@ const handlePressOut = () => {
 
 ## Camera Integration
 
+Uses `react-native-vision-camera` (not expo-camera) for barcode scanning and photo capture.
+
 ```typescript
-import { CameraView, useCameraPermissions } from "expo-camera";
+import { Camera, useCodeScanner, useCameraDevice } from "react-native-vision-camera";
 
 function ScanScreen() {
-  const [permission, requestPermission] = useCameraPermissions();
-  const [flashEnabled, setFlashEnabled] = useState(false);
+  const device = useCameraDevice("back");
 
-  if (!permission?.granted) {
-    return (
-      <View>
-        <Text>Camera permission required</Text>
-        <Button onPress={requestPermission} title="Grant Permission" />
-      </View>
-    );
-  }
+  const codeScanner = useCodeScanner({
+    codeTypes: ["ean-13", "ean-8", "upc-a", "upc-e", "qr"],
+    onCodeScanned: (codes) => {
+      // Handle barcode with debouncing
+    },
+  });
 
   return (
-    <CameraView
+    <Camera
       style={StyleSheet.absoluteFill}
-      facing="back"
-      enableTorch={flashEnabled}
-      barcodeScannerSettings={{
-        barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e", "qr"],
-      }}
-      onBarcodeScanned={(result) => {
-        // Handle barcode
-      }}
+      device={device}
+      isActive={true}
+      codeScanner={codeScanner}
+      photo={true}
+      torch={flashEnabled ? "on" : "off"}
     />
   );
 }

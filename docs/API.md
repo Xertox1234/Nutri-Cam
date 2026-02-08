@@ -2,27 +2,22 @@
 
 ## Overview
 
-The NutriScan API is a RESTful API built with Express.js 5.0. All endpoints use JSON for request/response bodies and session-based authentication.
+The NutriScan API is a RESTful API built with Express.js 5.0. All endpoints use JSON for request/response bodies and JWT-based authentication.
 
-**Base URL**: `https://your-tunnel-url.loca.lt` (development) or your production domain
+**Base URL**: `http://192.168.137.175:3000` (development) or your production domain
 
 ## Authentication
 
-The API uses session-based authentication with HTTP-only cookies. Sessions are valid for 30 days.
+The API uses JWT (JSON Web Token) authentication via the `Authorization` header. Tokens are valid for 30 days.
 
-### Session Configuration
+### Token Configuration
 
 ```typescript
-{
-  cookie: {
-    secure: true,        // HTTPS only in production
-    httpOnly: true,      // Prevents XSS
-    maxAge: 2592000000   // 30 days in milliseconds
-  }
-}
+// server/middleware/auth.ts
+jwt.sign({ sub: userId }, JWT_SECRET, { expiresIn: "30d" });
 ```
 
-**Important**: All requests must include `credentials: "include"` to send/receive session cookies.
+**Important**: All authenticated requests must include `Authorization: Bearer <token>` header. Login/register responses return a `token` field that should be stored client-side (AsyncStorage) and sent with every request.
 
 ---
 
@@ -32,7 +27,7 @@ The API uses session-based authentication with HTTP-only cookies. Sessions are v
 
 #### Register User
 
-Creates a new user account and establishes a session.
+Creates a new user account and returns a JWT token.
 
 ```http
 POST /api/auth/register
@@ -67,7 +62,7 @@ Content-Type: application/json
 
 #### Login
 
-Authenticates a user and creates a session.
+Authenticates a user and returns a JWT token.
 
 ```http
 POST /api/auth/login
@@ -102,7 +97,7 @@ Content-Type: application/json
 
 #### Logout
 
-Destroys the current session.
+Client-side only: discard the stored JWT token.
 
 ```http
 POST /api/auth/logout
@@ -545,6 +540,354 @@ POST /api/items/:id/suggestions
 | 401 | Not authenticated |
 | 404 | Item not found |
 | 500 | Failed to generate suggestions |
+
+---
+
+### Meal Plan Recipes
+
+#### List User Recipes
+
+Returns all meal plan recipes created by the authenticated user.
+
+```http
+GET /api/meal-plan/recipes
+```
+
+**Response** `200 OK`
+
+```json
+{
+  "items": [
+    {
+      "id": 1,
+      "userId": "uuid",
+      "title": "Chicken Stir Fry",
+      "description": "Quick weeknight dinner",
+      "sourceType": "user_created",
+      "sourceUrl": null,
+      "externalId": null,
+      "cuisine": "Asian",
+      "difficulty": "Easy",
+      "servings": 2,
+      "prepTimeMinutes": 10,
+      "cookTimeMinutes": 15,
+      "imageUrl": null,
+      "instructions": "1. Dice chicken...\n2. Heat oil...",
+      "dietTags": [],
+      "caloriesPerServing": "350.00",
+      "proteinPerServing": "30.00",
+      "carbsPerServing": "25.00",
+      "fatPerServing": "12.00",
+      "fiberPerServing": null,
+      "sugarPerServing": null,
+      "sodiumPerServing": null,
+      "createdAt": "2026-01-15T10:30:00.000Z",
+      "updatedAt": "2026-01-15T10:30:00.000Z"
+    }
+  ],
+  "total": 1
+}
+```
+
+---
+
+#### Get Recipe with Ingredients
+
+Returns a single recipe with its full ingredient list.
+
+```http
+GET /api/meal-plan/recipes/:id
+```
+
+**Response** `200 OK`
+
+```json
+{
+  "id": 1,
+  "title": "Chicken Stir Fry",
+  "ingredients": [
+    {
+      "id": 1,
+      "recipeId": 1,
+      "name": "chicken breast",
+      "quantity": "200.00",
+      "unit": "g",
+      "category": "protein",
+      "displayOrder": 0
+    }
+  ]
+}
+```
+
+**Errors**
+| Status | Message |
+|--------|---------|
+| 404 | Recipe not found |
+
+---
+
+#### Create Recipe
+
+Creates a new meal plan recipe with optional ingredients.
+
+```http
+POST /api/meal-plan/recipes
+Content-Type: application/json
+
+{
+  "title": "Chicken Stir Fry",
+  "description": "Quick weeknight dinner",
+  "cuisine": "Asian",
+  "difficulty": "Easy",
+  "servings": 2,
+  "prepTimeMinutes": 10,
+  "cookTimeMinutes": 15,
+  "instructions": "1. Dice chicken...\n2. Heat oil...",
+  "dietTags": ["gluten_free"],
+  "caloriesPerServing": 350,
+  "proteinPerServing": 30,
+  "carbsPerServing": 25,
+  "fatPerServing": 12,
+  "ingredients": [
+    { "name": "chicken breast", "quantity": 200, "unit": "g", "category": "protein" }
+  ]
+}
+```
+
+**Response** `201 Created` — Returns the created recipe object.
+
+---
+
+#### Update Recipe
+
+Updates an existing meal plan recipe.
+
+```http
+PUT /api/meal-plan/recipes/:id
+Content-Type: application/json
+```
+
+Body: same fields as create (all optional). Returns the updated recipe.
+
+**Errors**
+| Status | Message |
+|--------|---------|
+| 404 | Recipe not found |
+
+---
+
+#### Delete Recipe
+
+Deletes a meal plan recipe and its ingredients (cascade).
+
+```http
+DELETE /api/meal-plan/recipes/:id
+```
+
+**Response** `204 No Content`
+
+---
+
+### Meal Plan Items
+
+#### Get Meal Plan Items
+
+Returns meal plan items for a date range, with related recipe and scanned item data.
+
+```http
+GET /api/meal-plan?start=2026-01-15&end=2026-01-21
+```
+
+**Query Parameters**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| start | ISO date string | Yes | Start of date range (YYYY-MM-DD) |
+| end | ISO date string | Yes | End of date range (YYYY-MM-DD) |
+
+**Response** `200 OK`
+
+```json
+[
+  {
+    "id": 1,
+    "userId": "uuid",
+    "recipeId": 5,
+    "scannedItemId": null,
+    "plannedDate": "2026-01-15",
+    "mealType": "dinner",
+    "servings": "1.00",
+    "createdAt": "2026-01-14T20:00:00.000Z",
+    "recipe": {
+      "id": 5,
+      "title": "Chicken Stir Fry",
+      "caloriesPerServing": "350.00"
+    },
+    "scannedItem": null
+  }
+]
+```
+
+---
+
+#### Add Item to Meal Plan
+
+Adds a recipe or scanned item to a meal plan slot.
+
+```http
+POST /api/meal-plan/items
+Content-Type: application/json
+
+{
+  "recipeId": 5,
+  "plannedDate": "2026-01-15",
+  "mealType": "dinner",
+  "servings": 1
+}
+```
+
+**Body Fields**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| recipeId | number | No* | Meal plan recipe ID |
+| scannedItemId | number | No* | Scanned item ID |
+| plannedDate | string | Yes | Date (YYYY-MM-DD) |
+| mealType | string | Yes | `breakfast`, `lunch`, `dinner`, or `snack` |
+| servings | number | No | Defaults to 1 |
+
+\* At least one of `recipeId` or `scannedItemId` must be provided.
+
+**Response** `201 Created` — Returns the created meal plan item.
+
+---
+
+#### Remove Item from Meal Plan
+
+Removes an item from the meal plan.
+
+```http
+DELETE /api/meal-plan/items/:id
+```
+
+**Response** `204 No Content`
+
+---
+
+### Recipe Catalog (Spoonacular)
+
+#### Search Catalog
+
+Searches the Spoonacular recipe catalog with optional filters.
+
+```http
+GET /api/meal-plan/catalog/search?query=pasta&cuisine=Italian&diet=vegetarian&number=10
+```
+
+**Query Parameters**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| query | string | — | Search query |
+| cuisine | string | — | Cuisine filter (e.g., Italian, Mexican, Asian) |
+| diet | string | — | Diet filter (e.g., vegetarian, vegan, keto) |
+| type | string | — | Meal type filter |
+| maxReadyTime | number | — | Max prep+cook time in minutes (1-1440) |
+| number | number | 10 | Max results to return |
+| offset | number | 0 | Pagination offset |
+
+**Response** `200 OK`
+
+```json
+{
+  "results": [
+    {
+      "id": 12345,
+      "title": "Pasta Primavera",
+      "image": "https://...",
+      "readyInMinutes": 30
+    }
+  ],
+  "offset": 0,
+  "number": 10,
+  "totalResults": 42
+}
+```
+
+**Errors**
+| Status | Message |
+|--------|---------|
+| 402 | Spoonacular API quota exceeded (CATALOG_QUOTA_EXCEEDED) |
+
+---
+
+#### Get Catalog Recipe Preview
+
+Fetches detailed information about a Spoonacular recipe.
+
+```http
+GET /api/meal-plan/catalog/:id
+```
+
+**Response** `200 OK` — Full recipe details including nutrition and ingredients.
+
+**Errors**
+| Status | Message |
+|--------|---------|
+| 402 | Spoonacular API quota exceeded (CATALOG_QUOTA_EXCEEDED) |
+
+---
+
+#### Save Catalog Recipe
+
+Saves a Spoonacular recipe to the user's meal plan recipe collection. If the recipe was already saved (dedup by `externalId`), returns the existing record.
+
+```http
+POST /api/meal-plan/catalog/:id/save
+```
+
+**Response** `201 Created` — Returns the newly saved `MealPlanRecipe` object.
+
+**Response** `200 OK` — Recipe was already saved; returns the existing `MealPlanRecipe`.
+
+**Errors**
+| Status | Message |
+|--------|---------|
+| 402 | Spoonacular API quota exceeded (CATALOG_QUOTA_EXCEEDED) |
+
+---
+
+### Recipe Import
+
+#### Import Recipe from URL
+
+Imports a recipe from a URL by parsing schema.org Recipe structured data (LD+JSON), saves it to the database as a `MealPlanRecipe` with `sourceType: "url_import"`.
+
+```http
+POST /api/meal-plan/recipes/import-url
+Content-Type: application/json
+
+{
+  "url": "https://example.com/recipe/chicken-stir-fry"
+}
+```
+
+**Response** `201 Created` — Returns the saved `MealPlanRecipe` object (with `id`, `userId`, `createdAt`, etc.).
+
+**Error Response** `422 Unprocessable Entity`
+
+```json
+{
+  "error": "NO_RECIPE_DATA",
+  "message": "No recipe structured data found on page"
+}
+```
+
+**Error Types**
+| Error Code | Description |
+|------------|-------------|
+| NO_RECIPE_DATA | Page has no schema.org Recipe markup |
+| FETCH_FAILED | Could not fetch the URL |
+| PARSE_ERROR | Recipe data could not be parsed |
+| TIMEOUT | Request exceeded 10 second timeout |
+| RESPONSE_TOO_LARGE | Page exceeds 5 MB limit |
 
 ---
 

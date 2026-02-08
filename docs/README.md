@@ -21,6 +21,7 @@ NutriScan is a mobile nutrition tracking application that helps users:
 
 - **Scan food barcodes** to instantly view nutritional information
 - **Track daily intake** with automatic calorie and macro calculations
+- **Plan meals** with a weekly meal planner, recipe creation, and catalog browsing
 - **Receive AI-powered suggestions** for recipes and food pairings
 - **Manage dietary preferences** including allergies and health conditions
 
@@ -110,7 +111,9 @@ Nutri-Cam/
 │   ├── storage.ts          # Database operations
 │   ├── db.ts               # Database connection
 │   └── services/           # Business logic
-│       └── nutrition-lookup.ts  # Multi-source nutrition pipeline
+│       ├── nutrition-lookup.ts  # Multi-source nutrition pipeline
+│       ├── recipe-catalog.ts    # Spoonacular catalog integration
+│       └── recipe-import.ts     # URL recipe import (schema.org)
 ├── shared/                 # Shared code
 │   └── schema.ts           # Database schema
 ├── docs/                   # Documentation
@@ -124,11 +127,12 @@ Nutri-Cam/
 | Variable                          | Required | Description                    |
 | --------------------------------- | -------- | ------------------------------ |
 | `DATABASE_URL`                    | Yes      | PostgreSQL connection string   |
-| `SESSION_SECRET`                  | Yes      | Express session encryption key |
+| `JWT_SECRET`                      | Yes      | JWT token signing secret       |
 | `AI_INTEGRATIONS_OPENAI_API_KEY`  | Yes      | OpenAI API key                 |
 | `AI_INTEGRATIONS_OPENAI_BASE_URL` | No       | Custom OpenAI endpoint         |
 | `USDA_API_KEY`                    | Yes      | USDA FoodData Central API key  |
 | `API_NINJAS_KEY`                  | Yes      | API Ninjas nutrition API key   |
+| `SPOONACULAR_API_KEY`             | No       | Spoonacular recipe catalog API |
 | `EXPO_PUBLIC_DOMAIN`              | No       | Public API domain for mobile   |
 
 ---
@@ -187,6 +191,21 @@ npm run format            # Format with Prettier
 
 - `POST /api/items/:id/suggestions` - Get AI suggestions
 
+### Meal Planning
+
+- `GET /api/meal-plan` - Get meal plan items for date range
+- `POST /api/meal-plan/items` - Add item to meal plan
+- `DELETE /api/meal-plan/items/:id` - Remove item from meal plan
+- `GET /api/meal-plan/recipes` - List user recipes
+- `GET /api/meal-plan/recipes/:id` - Get recipe with ingredients
+- `POST /api/meal-plan/recipes` - Create recipe
+- `PUT /api/meal-plan/recipes/:id` - Update recipe
+- `DELETE /api/meal-plan/recipes/:id` - Delete recipe
+- `GET /api/meal-plan/catalog/search` - Search Spoonacular catalog
+- `GET /api/meal-plan/catalog/:id` - Preview catalog recipe
+- `POST /api/meal-plan/catalog/:id/save` - Save catalog recipe
+- `POST /api/meal-plan/recipes/import-url` - Import recipe from URL
+
 See [API.md](./API.md) for complete documentation.
 
 ---
@@ -215,6 +234,14 @@ See [API.md](./API.md) for complete documentation.
 - Personalized based on dietary profile
 - Considers allergies and restrictions
 - Recipe difficulty and time estimates
+
+### Meal Planning
+
+- Weekly meal planner with 4 meal types (breakfast, lunch, dinner, snack)
+- Create custom recipes with ingredients, instructions, and nutrition data
+- Browse Spoonacular recipe catalog with cuisine/diet filters
+- Import recipes from any URL with schema.org structured data
+- Daily nutrition totals across planned meals
 
 ### Onboarding
 
