@@ -174,7 +174,12 @@ Respond with JSON: { "suggestions": [...] }`;
     throw new Error("No response from AI");
   }
 
-  const parsed = JSON.parse(content);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    throw new Error("AI returned invalid JSON response");
+  }
   const validated = aiResponseSchema.parse(parsed);
   return validated.suggestions;
 }

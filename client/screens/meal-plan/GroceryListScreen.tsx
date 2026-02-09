@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useRoute, type RouteProp } from "@react-navigation/native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 
@@ -121,6 +122,7 @@ export default function GroceryListScreen() {
   const route = useRoute<GroceryListScreenRoute>();
   const { listId } = route.params;
   const headerHeight = useHeaderHeight();
+  const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const haptics = useHaptics();
 
@@ -253,7 +255,7 @@ export default function GroceryListScreen() {
         contentContainerStyle={{
           paddingTop: headerHeight + Spacing.md,
           paddingHorizontal: Spacing.lg,
-          paddingBottom: Spacing.xl,
+          paddingBottom: insets.bottom + Spacing.xl,
         }}
         refreshControl={
           <RefreshControl

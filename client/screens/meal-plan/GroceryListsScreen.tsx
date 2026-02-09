@@ -8,6 +8,7 @@ import {
   TextInput,
 } from "react-native";
 import { useHeaderHeight } from "@react-navigation/elements";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useNavigation } from "@react-navigation/native";
 import { Feather } from "@expo/vector-icons";
 
@@ -39,6 +40,7 @@ function formatDateRange(start: string, end: string): string {
 export default function GroceryListsScreen() {
   const navigation = useNavigation<GroceryListsScreenNavigationProp>();
   const headerHeight = useHeaderHeight();
+  const tabBarHeight = useBottomTabBarHeight();
   const { theme } = useTheme();
   const haptics = useHaptics();
   const { data: lists, isLoading } = useGroceryLists();
@@ -158,7 +160,7 @@ export default function GroceryListsScreen() {
         contentContainerStyle={{
           paddingTop: headerHeight + Spacing.md,
           paddingHorizontal: Spacing.lg,
-          paddingBottom: Spacing.xl,
+          paddingBottom: tabBarHeight + Spacing.xl + 56,
         }}
         ListEmptyComponent={
           <View style={styles.emptyState}>
@@ -199,7 +201,10 @@ export default function GroceryListsScreen() {
                   onChangeText={setStartDate}
                   placeholder="YYYY-MM-DD"
                   placeholderTextColor={theme.textSecondary}
+                  keyboardType="number-pad"
+                  maxLength={10}
                   accessibilityLabel="Start date"
+                  accessibilityHint="Enter date in YYYY-MM-DD format"
                 />
                 <ThemedText style={{ color: theme.textSecondary }}>
                   to
@@ -216,7 +221,10 @@ export default function GroceryListsScreen() {
                   onChangeText={setEndDate}
                   placeholder="YYYY-MM-DD"
                   placeholderTextColor={theme.textSecondary}
+                  keyboardType="number-pad"
+                  maxLength={10}
                   accessibilityLabel="End date"
+                  accessibilityHint="Enter date in YYYY-MM-DD format"
                 />
               </View>
               <View style={styles.datePickerActions}>
@@ -260,7 +268,10 @@ export default function GroceryListsScreen() {
             haptics.impact();
             setShowDatePicker(true);
           }}
-          style={[styles.fab, { backgroundColor: theme.link }]}
+          style={[
+            styles.fab,
+            { backgroundColor: theme.link, bottom: tabBarHeight + Spacing.md },
+          ]}
           accessibilityRole="button"
           accessibilityLabel="Generate new grocery list"
         >
@@ -356,7 +367,6 @@ const styles = StyleSheet.create({
   },
   fab: {
     position: "absolute",
-    bottom: Spacing.xl,
     right: Spacing.lg,
     width: 56,
     height: 56,
