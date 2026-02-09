@@ -2607,6 +2607,37 @@ Format as plain text with clear sections.`;
           return;
         }
 
+        // Enforce date range limit based on subscription tier
+        const user = await storage.getUser(req.userId!);
+        const tier = user?.subscriptionTier || "free";
+        const maxDays = TIER_FEATURES[tier as keyof typeof TIER_FEATURES]
+          .extendedPlanRange
+          ? 90
+          : 7;
+        const start = new Date(parsed.data.startDate);
+        const end = new Date(parsed.data.endDate);
+        const daysDiff = Math.ceil(
+          (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24),
+        );
+        if (daysDiff > maxDays) {
+          res.status(403).json({
+            error: `Date range limited to ${maxDays} days on ${tier} plan`,
+            code: "DATE_RANGE_LIMIT",
+          });
+          return;
+        }
+
+        // Enforce per-user grocery list limit (max 50)
+        const existingLists = await storage.getGroceryLists(req.userId!);
+        if (existingLists.length >= 50) {
+          res.status(400).json({
+            error:
+              "Maximum of 50 grocery lists reached. Delete old lists first.",
+            code: "LIST_LIMIT_REACHED",
+          });
+          return;
+        }
+
         // Fetch ingredients from planned meals
         const ingredients = await storage.getMealPlanIngredientsForDateRange(
           req.userId!,

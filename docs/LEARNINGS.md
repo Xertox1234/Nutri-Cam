@@ -11,6 +11,7 @@ This document captures key learnings, gotchas, and architectural decisions disco
 - [Performance Learnings](#performance-learnings)
 - [Caching Learnings](#caching-learnings)
 - [Subscription & Payment Learnings](#subscription--payment-learnings)
+- [Data Processing Gotchas](#data-processing-gotchas)
 - [Testing & Tooling Learnings](#testing--tooling-learnings)
 
 ---
@@ -700,7 +701,105 @@ export function sendError(
 
 ---
 
+## Data Processing Gotchas
+
+### Longest-Keyword-Match Prevents False Category Assignment
+
+**Problem:** Ingredient auto-categorization used first-match substring search. "Ground cumin" matched the keyword "ground" in the meat category before reaching "cumin" in spices, causing cumin to appear in the meat aisle of grocery lists.
+
+**Root Cause:** The original loop broke on the first keyword match. Generic keywords like "ground" (meat), "cream" (dairy), and "white" (other) are substrings of many compound ingredient names ("ground cumin", "cream of tartar", "white wine vinegar").
+
+**Solution:**
+
+```typescript
+// Before (first-match — bug)
+for (const [category, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
+  for (const kw of keywords) {
+    if (lower.includes(kw)) return category; // "ground" matches first!
+  }
+}
+
+// After (longest-match — correct)
+let bestMatch: { category: string; length: number } | null = null;
+for (const [category, keywords] of Object.entries(CATEGORY_KEYWORDS)) {
+  for (const kw of keywords) {
+    if (lower.includes(kw) && (!bestMatch || kw.length > bestMatch.length)) {
+      bestMatch = { category, length: kw.length };
+    }
+  }
+}
+return bestMatch?.category ?? "other";
+```
+
+Additionally, removed ambiguous single-word keywords ("ground", "cream") from category lists and replaced them with specific compound terms ("ground beef", "ground pork", "cream cheese", "sour cream").
+
+**Lesson:** When categorizing text with keyword lists, always use longest-match to resolve ambiguity. Short generic keywords are especially dangerous — prefer specific compound terms over single words that appear in many contexts.
+
+**File:** `server/services/grocery-generation.ts`
+
+---
+
+### Truthy Default Values Bypass Fallback Logic
+
+**Problem:** Ingredients from the database had `category: "other"` (the default column value). The grocery list aggregator intended to re-categorize uncategorized ingredients, but the `||` fallback never ran because `"other"` is truthy:
+
+```typescript
+// Bug: "other" is truthy, so categorizeIngredient() never runs
+category: ing.category || categorizeIngredient(normalized);
+```
+
+**Fix:** Explicitly check for the sentinel value:
+
+```typescript
+// Correct: treat "other" as uncategorized
+category: ing.category && ing.category !== "other"
+  ? ing.category
+  : categorizeIngredient(normalized);
+```
+
+**Lesson:** When a database column has a default string value that represents "unset" (e.g., `"other"`, `"none"`, `"default"`), JavaScript's `||` operator will treat it as a valid value. Always check for the sentinel explicitly: `value && value !== "sentinel"`. This is a common trap when database defaults are truthy strings rather than `null`.
+
+**File:** `server/services/grocery-generation.ts`
+
+---
+
 ## Testing & Tooling Learnings
+
+### Module-Level Service Client Initialization Breaks Test Imports
+
+**Problem:** `meal-suggestions.ts` instantiated the OpenAI client at the top of the module:
+
+```typescript
+// Before: top-level — breaks any test that imports this module
+const openai = new OpenAI({
+  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY, // undefined in test env
+});
+```
+
+Any test file that imported the module (even to test a pure helper function exported from the same file) crashed because `AI_INTEGRATIONS_OPENAI_API_KEY` was not set in the test environment.
+
+**Solution:** Lazy singleton initialization:
+
+```typescript
+let _openai: OpenAI | null = null;
+function getOpenAI(): OpenAI {
+  if (!_openai) {
+    _openai = new OpenAI({
+      apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+      baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+    });
+  }
+  return _openai;
+}
+```
+
+The client is only instantiated when a function that actually calls the API is invoked, not when the module is imported.
+
+**Lesson:** Never instantiate external service clients (OpenAI, Stripe, AWS SDK, etc.) at module scope if the module exports any functions that tests might import. Use a lazy getter function instead. This applies to all server services — note that `photo-analysis.ts`, `recipe-generation.ts`, and `routes.ts` still use module-level initialization and would break if their exports were tested directly.
+
+**File:** `server/services/meal-suggestions.ts`
+
+---
 
 ### Vitest Cannot Import React Native Modules
 
@@ -837,6 +936,8 @@ export function usePurchase() {
 7. **Stubs & Mocks:** Services that grant access must fail-safe in production; derive stub mode from credential presence, not manual flags
 8. **Paired Endpoints:** Apply identical safeguards (validation, rate limiting, logging) to both sides of a paired operation (purchase/restore, create/delete)
 9. **Testing:** Extract pure functions from RN hooks/components into `*-utils.ts` files for Vitest testability; Vitest cannot parse React Native imports
+10. **Data Processing:** Use longest-match for keyword categorization; treat truthy sentinel defaults (`"other"`, `"none"`) as unset with explicit checks
+11. **Service Initialization:** Lazy-init external clients (OpenAI, Stripe) to keep modules importable by tests without credentials
 
 ---
 

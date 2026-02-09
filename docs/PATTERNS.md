@@ -12,6 +12,7 @@ This document captures established patterns for the NutriScan codebase. Follow t
   - [Shared Client API Types](#shared-client-api-types-exception-pattern)
 - [API Patterns](#api-patterns)
   - [Stub Service with Production Safety Gate](#stub-service-with-production-safety-gate)
+  - [Tier-Gated Route Guards](#tier-gated-route-guards)
 - [External API Patterns](#external-api-patterns)
   - [External Resource Dedup on Save](#external-resource-dedup-on-save)
   - [Multi-Source Nutrition Lookup Chain](#multi-source-nutrition-lookup-chain)
@@ -26,6 +27,7 @@ This document captures established patterns for the NutriScan codebase. Follow t
   - [Parent-Child Cache with Cascade Delete](#parent-child-cache-with-cascade-delete)
 - [Client State Patterns](#client-state-patterns)
   - [Business Logic Errors in Mutations](#business-logic-errors-in-mutations)
+  - [Typed ApiError Class for Client-Side Error Differentiation](#typed-apierror-class-for-client-side-error-differentiation)
 - [React Native Patterns](#react-native-patterns)
   - [Multi-Select Checkbox Pattern](#multi-select-checkbox-pattern)
   - [Premium Feature Gating UI](#premium-feature-gating-ui)
@@ -822,6 +824,10 @@ Example error codes:
 - `NOT_FOUND` - Resource not found
 - `CONFLICT` - Resource already exists (e.g., duplicate username)
 - `LIMIT_REACHED` - User has reached a resource limit (e.g., max saved items)
+- `PREMIUM_REQUIRED` - Feature requires a premium subscription
+- `DAILY_LIMIT_REACHED` - User has exhausted a daily usage quota
+- `DATE_RANGE_LIMIT` - Requested date range exceeds tier allowance
+- `LIST_LIMIT_REACHED` - Per-user resource count ceiling hit (e.g., max grocery lists)
 
 ### Auth Response Structure
 
@@ -959,6 +965,73 @@ export async function validateReceipt(...) {
 - Any third-party service requiring production-only credentials
 
 **Reference:** `server/services/receipt-validation.ts`
+
+### Tier-Gated Route Guards
+
+When a route's behavior varies by subscription tier (premium-only access, different limits for free vs premium), check `TIER_FEATURES[tier]` early in the handler and return a typed error code:
+
+```typescript
+// Premium-only feature gate
+const subscription = await storage.getSubscriptionStatus(req.userId!);
+const tier = subscription?.tier || "free";
+const features = TIER_FEATURES[tier];
+
+if (!features.aiMealSuggestions) {
+  res.status(403).json({
+    error: "AI meal suggestions require a premium subscription",
+    code: "PREMIUM_REQUIRED",
+  });
+  return;
+}
+
+// Tier-dependent limit gate
+const dailyCount = await storage.getDailyMealSuggestionCount(
+  req.userId!,
+  new Date(),
+);
+if (dailyCount >= features.dailyAiSuggestions) {
+  res.status(429).json({
+    error: "Daily AI suggestion limit reached",
+    code: "DAILY_LIMIT_REACHED",
+    remainingToday: 0,
+  });
+  return;
+}
+
+// Tier-dependent parameter constraint
+const maxDays = features.extendedPlanRange ? 90 : 7;
+if (daysDiff > maxDays) {
+  res.status(403).json({
+    error: `Date range limited to ${maxDays} days on ${tier} plan`,
+    code: "DATE_RANGE_LIMIT",
+  });
+  return;
+}
+```
+
+**Key elements:**
+
+1. **Fail-fast order**: validation -> auth -> tier gate -> business logic. Tier checks go after auth but before expensive operations
+2. **Return typed `code`** strings that the client `ApiError` class can match on (see Client State Patterns > Typed ApiError Class)
+3. **Use 403 for feature locks**, 429 for usage limits, 400 for hard resource ceilings
+4. **Default to `"free"`** when subscription data is missing — never grant premium by default
+
+**When to use:**
+
+- Premium-only features (AI suggestions, extended date ranges)
+- Tiered usage limits (daily quotas, resource counts)
+- Any route where free and premium users have different capabilities
+
+**When NOT to use:**
+
+- Auth-only gates (use `requireAuth` middleware)
+- Rate limiting for abuse prevention (use `express-rate-limit` middleware)
+
+**References:**
+
+- `server/routes.ts` — meal suggestion, grocery list creation routes
+- `shared/types/subscription.ts` — `TIER_FEATURES` config object
+- Client-side: see "Typed ApiError Class" and "Premium Feature Gating UI" patterns
 
 ### Pagination with useInfiniteQuery
 
@@ -1839,6 +1912,76 @@ export function useCreateSavedItem() {
 - Validation errors on form fields - use form validation library
 
 **Why discriminated union:** TypeScript can narrow `result` based on `limitReached`, ensuring you handle both cases. The `as const` assertion makes the literal type precise.
+
+### Typed ApiError Class for Client-Side Error Differentiation
+
+When mutation hooks call `apiRequest` and need to **throw** on errors (rather than returning a discriminated union), use the `ApiError` class to carry a machine-readable `code` through TanStack Query's error flow:
+
+```typescript
+// client/lib/api-error.ts
+export class ApiError extends Error {
+  code?: string;
+
+  constructor(message: string, code?: string) {
+    super(message);
+    this.name = "ApiError";
+    this.code = code;
+  }
+}
+
+// In the mutation hook — throw ApiError with the server's error code
+import { ApiError } from "@/lib/api-error";
+
+export function useMealSuggestions() {
+  return useMutation({
+    mutationFn: async (params) => {
+      const res = await apiRequest("POST", "/api/meal-plan/suggest", params);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: "Unknown error" }));
+        throw new ApiError(body.error || `${res.status}`, body.code);
+      }
+      return res.json();
+    },
+  });
+}
+
+// In the component — check error type without string parsing
+const mutation = useMealSuggestions();
+
+const isLimitReached =
+  mutation.error instanceof ApiError &&
+  mutation.error.code === "DAILY_LIMIT_REACHED";
+
+if (isLimitReached) {
+  // Show specific limit-reached UI
+}
+```
+
+**When to use:**
+
+- The error should trigger TanStack Query's `isError` state (loading spinners stop, retry is available)
+- Multiple distinct error codes from the same endpoint need different UI treatment
+- The component reads `mutation.error` to decide what to render
+
+**When NOT to use:**
+
+- The "error" is a recoverable business condition that should not show error UI — use "Business Logic Errors in Mutations" (discriminated union) instead
+- Only one kind of error matters and a simple `isError` check suffices
+
+**Choosing between ApiError throw vs discriminated union return:**
+
+| Criterion                           | ApiError (throw)           | Discriminated Union (return)   |
+| ----------------------------------- | -------------------------- | ------------------------------ |
+| Should TanStack show error state?   | Yes                        | No                             |
+| Need to distinguish error subtypes? | Yes, via `error.code`      | Yes, via `result.limitReached` |
+| Typical use case                    | Rate limits, premium gates | Soft limits, save conflicts    |
+
+**References:**
+
+- `client/lib/api-error.ts` — ApiError class
+- `client/hooks/useMealSuggestions.ts` — throws ApiError
+- `client/components/MealSuggestionsModal.tsx` — checks `error.code`
+- Server-side: see "Tier-Gated Route Guards" and "Error Response Structure" patterns
 
 ---
 

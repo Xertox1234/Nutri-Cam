@@ -259,7 +259,8 @@ export function generateGroceryItems(
     const key = `${normalized}|${unit || ""}`;
 
     const existing = grouped.get(key);
-    const qty = ing.quantity ? parseFloat(ing.quantity) : null;
+    const raw = ing.quantity ? parseFloat(ing.quantity) : null;
+    const qty = raw !== null && !isNaN(raw) ? raw : null;
 
     if (existing) {
       if (existing.quantity !== null && qty !== null) {

@@ -42,6 +42,7 @@ import {
   mealSuggestionCache,
 } from "@shared/schema";
 import { type CreateSavedItemInput } from "@shared/schemas/saved-items";
+import type { MealSuggestion } from "@shared/types/meal-suggestions";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, lt, gt, sql, or, ilike } from "drizzle-orm";
 import {
@@ -234,7 +235,7 @@ export interface IStorage {
   createMealSuggestionCache(
     cacheKey: string,
     userId: string,
-    suggestions: unknown,
+    suggestions: MealSuggestion[],
     expiresAt: Date,
   ): Promise<MealSuggestionCacheEntry>;
   incrementMealSuggestionCacheHit(id: number): Promise<void>;
@@ -1101,7 +1102,7 @@ export class DatabaseStorage implements IStorage {
   async createMealSuggestionCache(
     cacheKey: string,
     userId: string,
-    suggestions: unknown,
+    suggestions: MealSuggestion[],
     expiresAt: Date,
   ): Promise<MealSuggestionCacheEntry> {
     const [created] = await db

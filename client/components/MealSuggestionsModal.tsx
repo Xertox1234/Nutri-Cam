@@ -22,6 +22,7 @@ import {
   withOpacity,
 } from "@/constants/theme";
 import { useMealSuggestions } from "@/hooks/useMealSuggestions";
+import { ApiError } from "@/lib/api-error";
 import type { MealSuggestion } from "@shared/types/meal-suggestions";
 
 interface MealSuggestionsModalProps {
@@ -142,7 +143,8 @@ export function MealSuggestionsModal({
     if (visible && !mutation.isPending && !mutation.data) {
       mutation.mutate({ date, mealType });
     }
-  }, [visible, date, mealType]); // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mutation excluded to prevent infinite re-renders (changes identity on mutate)
+  }, [visible, date, mealType]);
 
   const handleSuggestMore = useCallback(() => {
     haptics.impact(Haptics.ImpactFeedbackStyle.Light);
@@ -155,9 +157,8 @@ export function MealSuggestionsModal({
   }, [mutation, onClose]);
 
   const isLimitReached =
-    mutation.error &&
-    (mutation.error as Error & { code?: string }).code ===
-      "DAILY_LIMIT_REACHED";
+    mutation.error instanceof ApiError &&
+    mutation.error.code === "DAILY_LIMIT_REACHED";
 
   const mealLabel = mealType.charAt(0).toUpperCase() + mealType.slice(1);
 
