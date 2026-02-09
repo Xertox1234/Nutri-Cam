@@ -160,10 +160,29 @@ describe("Schema Validation", () => {
       expect(result.success).toBe(false);
     });
 
-    it("rejects missing scannedItemId", () => {
+    it("accepts missing scannedItemId (nullable for meal plan confirmations)", () => {
       const log = { userId: "user-123" };
       const result = insertDailyLogSchema.safeParse(log);
-      expect(result.success).toBe(false);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.scannedItemId).toBeUndefined();
+      }
+    });
+
+    it("accepts explicit null scannedItemId with source and recipeId", () => {
+      const log = {
+        userId: "user-123",
+        scannedItemId: null,
+        recipeId: 42,
+        source: "meal_plan_confirm",
+      };
+      const result = insertDailyLogSchema.safeParse(log);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.scannedItemId).toBeNull();
+        expect(result.data.recipeId).toBe(42);
+        expect(result.data.source).toBe("meal_plan_confirm");
+      }
     });
   });
 

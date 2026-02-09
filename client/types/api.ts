@@ -44,4 +44,10 @@ export type DailySummaryResponse = {
   totalCarbs: number;
   totalFat: number;
   itemCount: number;
+  plannedCalories?: number;
+  plannedProtein?: number;
+  plannedCarbs?: number;
+  plannedFat?: number;
+  plannedItemCount?: number;
+  confirmedMealPlanItemIds?: number[];
 };

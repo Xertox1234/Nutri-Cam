@@ -17,6 +17,8 @@ export interface PremiumFeatures {
   aiMealSuggestions: boolean;
   extendedPlanRange: boolean;
   dailyAiSuggestions: number;
+  pantryTracking: boolean;
+  mealConfirmation: boolean;
 }
 
 /** Represents effectively unlimited scans (JSON-safe alternative to Infinity). */
@@ -35,6 +37,8 @@ export const TIER_FEATURES: Record<SubscriptionTier, PremiumFeatures> = {
     aiMealSuggestions: false,
     extendedPlanRange: false,
     dailyAiSuggestions: 0,
+    pantryTracking: false,
+    mealConfirmation: false,
   },
   premium: {
     maxDailyScans: UNLIMITED_SCANS,
@@ -48,6 +52,8 @@ export const TIER_FEATURES: Record<SubscriptionTier, PremiumFeatures> = {
     aiMealSuggestions: true,
     extendedPlanRange: true,
     dailyAiSuggestions: 10,
+    pantryTracking: true,
+    mealConfirmation: true,
   },
 };
 

@@ -16,6 +16,7 @@ You are a specialized code review agent for the NutriScan mobile nutrition app. 
 ### 1. TypeScript & Type Safety
 
 - [ ] No `any` types used (unless in migration scenarios with clear todos)
+- [ ] No `as TypeName` casts on external data (DB values, API responses, user input) — use type guards instead
 - [ ] Shared types placed in `shared/types/` when used by both client and server
 - [ ] Type guards implemented for external data (API responses, JWT, AsyncStorage)
 - [ ] Express types extended properly when adding Request properties
@@ -44,6 +45,8 @@ export function isAccessTokenPayload(
 - [ ] Authorization header used (NOT cookies) for API requests
 - [ ] 401 responses trigger global auth state clearing
 - [ ] Environment variables validated at module load time (fail-fast)
+- [ ] Premium feature gates use `checkPremiumFeature()` helper — not inline duplication
+- [ ] Multi-mutation client actions use a single atomic server endpoint
 
 **Pattern Reference:**
 
@@ -60,7 +63,8 @@ if (!JWT_SECRET) {
 - [ ] In-memory caching implemented for frequently-read, rarely-changed values
 - [ ] AsyncStorage reads avoided in hot paths (API request flows)
 - [ ] Batch storage operations using multiSet/multiRemove
-- [ ] TanStack Query used for server state
+- [ ] TanStack Query used for server state — no useState+useEffect for data fetching
+- [ ] Premium-gated queries use `enabled` parameter to avoid unnecessary 403 calls
 - [ ] React Context used for auth and onboarding state only
 - [ ] Authorization header includes token from tokenStorage
 
@@ -173,7 +177,7 @@ const insets = useSafeAreaInsets();
 - [ ] Image picker cancellation handled
 - [ ] API error responses parsed and displayed appropriately
 
-### 9. Database Caching Patterns
+### 9. Database & Query Patterns
 
 - [ ] Cache-first pattern used for expensive operations (AI APIs, external services)
 - [ ] Fire-and-forget used for non-critical operations (hit counts, invalidation) with `.catch(console.error)`
@@ -183,6 +187,8 @@ const insets = useSafeAreaInsets();
 - [ ] Profile hash used for user-preference-dependent cache content
 - [ ] Cascade delete configured for parent-child cache relationships
 - [ ] cacheId passed from parent response to enable child cache lookups
+- [ ] Nullable FK columns use LEFT JOIN (not INNER JOIN) in aggregation queries
+- [ ] Pre-fetched data passed to dependent functions via optional parameter to avoid redundant queries
 
 **Cache IDOR Pattern Reference:**
 

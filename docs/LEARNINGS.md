@@ -13,6 +13,8 @@ This document captures key learnings, gotchas, and architectural decisions disco
 - [Subscription & Payment Learnings](#subscription--payment-learnings)
 - [Data Processing Gotchas](#data-processing-gotchas)
 - [Testing & Tooling Learnings](#testing--tooling-learnings)
+- [Database Migration Gotchas](#database-migration-gotchas)
+- [TypeScript Safety Learnings](#typescript-safety-learnings)
 
 ---
 
@@ -141,6 +143,27 @@ type PaginatedResponse = {
 ---
 
 ## React Native / Expo Go Gotchas
+
+### React 19 useRef Requires Explicit Initial Value
+
+**Problem:** In React 19, `useRef<T>()` without an initial value argument causes a TypeScript error. This broke during the Phase 4 snackbar timer implementation:
+
+```typescript
+// React 18: Works fine
+const timerRef = useRef<ReturnType<typeof setTimeout>>();
+
+// React 19: TypeScript error — Argument of type 'undefined' is not assignable
+// Fix: Pass undefined explicitly
+const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+```
+
+**Root Cause:** React 19 changed the `useRef` type signatures. In React 18, `useRef<T>()` with no argument was typed as `MutableRefObject<T | undefined>`. React 19 made the no-argument overload stricter, requiring `useRef()` to be called as `useRef<T>(undefined)` or `useRef<T>(null)` depending on intent.
+
+**Lesson:** When upgrading to React 19 (or starting a project on React 19), always pass an explicit initial value to `useRef`. For timer refs, `undefined` is the correct initial value (not `null`) since `clearTimeout(undefined)` is a safe no-op.
+
+**Pattern Reference:** See "Auto-Dismiss Snackbar with useRef Timer" in PATTERNS.md
+
+---
 
 ### Authorization Headers Must Be Included Everywhere
 
@@ -925,6 +948,84 @@ export function usePurchase() {
 
 ---
 
+## Database Migration Gotchas
+
+### getDailySummary LEFT JOIN Rewrite: When Nullable FKs Break INNER JOINs
+
+**Problem:** The `getDailySummary()` storage method used INNER JOIN on `scannedItems` to aggregate daily nutrition. When Phase 4 added meal plan confirmation (creating `dailyLogs` with `scannedItemId: null` and `recipeId` pointing to a meal plan recipe), all confirmed meal plan items became invisible in the daily summary.
+
+**Root Cause:** INNER JOIN drops rows where the join key is NULL. Before Phase 4, every daily log had a non-null `scannedItemId`, so INNER JOIN worked. Making `scannedItemId` nullable (to support meal confirmation logs that reference recipes instead of scanned items) silently broke the aggregation.
+
+```typescript
+// Before (Phase 3): INNER JOIN — worked because scannedItemId was always non-null
+const result = await db
+  .select({ totalCalories: sql`SUM(${scannedItems.calories} * ...)` })
+  .from(dailyLogs)
+  .innerJoin(scannedItems, eq(dailyLogs.scannedItemId, scannedItems.id));
+// Meal plan confirmation logs with scannedItemId=null are silently dropped!
+
+// After (Phase 4): LEFT JOINs with COALESCE fallback chain
+const result = await db
+  .select({
+    totalCalories: sql`COALESCE(SUM(
+      COALESCE(CAST(${scannedItems.calories} AS DECIMAL),
+               CAST(${mealPlanRecipes.caloriesPerServing} AS DECIMAL), 0)
+      * CAST(${dailyLogs.servings} AS DECIMAL)
+    ), 0)`,
+  })
+  .from(dailyLogs)
+  .leftJoin(scannedItems, eq(dailyLogs.scannedItemId, scannedItems.id))
+  .leftJoin(mealPlanRecipes, eq(dailyLogs.recipeId, mealPlanRecipes.id));
+```
+
+**Key details:**
+
+1. The nested `COALESCE` tries `scannedItems.calories` first, falls back to `mealPlanRecipes.caloriesPerServing`, then to `0`
+2. The outer `COALESCE(..., 0)` handles the case where SUM returns NULL (no rows for the day)
+3. All string-stored numbers need `CAST(... AS DECIMAL)` for arithmetic
+
+**Lesson:** When making a previously non-null foreign key nullable, audit all queries that JOIN on that column. INNER JOINs silently drop rows with NULL keys. This is especially dangerous in aggregation queries because the result looks correct (it's a valid number) — you just don't notice the missing rows.
+
+**File:** `/Users/williamtower/projects/Nutri-Cam/server/storage.ts` — `getDailySummary()`
+
+**Pattern Reference:** See "LEFT JOIN with COALESCE for Nullable Foreign Keys" in PATTERNS.md
+
+---
+
+## TypeScript Safety Learnings
+
+### Unsafe `as` Casts Hide Runtime Bugs in Tier Lookups
+
+**Problem:** The grocery list deductPantry route used `as SubscriptionTier` to cast the subscription tier string before indexing into `TIER_FEATURES`:
+
+```typescript
+// Bug: tier could be any string from the database
+const tier = subscription?.tier || "free";
+const features = TIER_FEATURES[tier as SubscriptionTier];
+// If tier is not in TIER_FEATURES (e.g., "premium_legacy"), features is undefined
+// Subsequent features.pantryTracking throws: Cannot read property 'pantryTracking' of undefined
+```
+
+**Root Cause:** Drizzle's `text()` columns return `string`, not the union type. The `as SubscriptionTier` cast tells TypeScript the value is valid without performing any runtime check. If the database ever contains a value not in the `subscriptionTiers` tuple (from a migration, manual edit, or future tier rename), the code silently produces `undefined` instead of a valid features object.
+
+**Fix:** Replace the cast with a type guard:
+
+```typescript
+function isValidSubscriptionTier(tier: string): tier is SubscriptionTier {
+  return (subscriptionTiers as readonly string[]).includes(tier);
+}
+
+const tier = subscription?.tier || "free";
+const features = TIER_FEATURES[isValidSubscriptionTier(tier) ? tier : "free"];
+// Invalid tiers safely fall back to "free"
+```
+
+**Lesson:** `as TypeName` is a compile-time-only assertion. It should never be used on data from external sources (database, API, user input) because it provides zero runtime safety. Always use a type guard that performs an actual `includes()` or `in` check, with a safe fallback for invalid values. The one-time cost of writing the guard prevents an entire class of "undefined is not an object" runtime errors.
+
+**Pattern Reference:** See "Type Guard Over `as` Cast for Runtime Safety" in PATTERNS.md
+
+---
+
 ## Key Takeaways
 
 1. **Security:** Authentication + Authorization + Input Validation on every endpoint
@@ -938,6 +1039,8 @@ export function usePurchase() {
 9. **Testing:** Extract pure functions from RN hooks/components into `*-utils.ts` files for Vitest testability; Vitest cannot parse React Native imports
 10. **Data Processing:** Use longest-match for keyword categorization; treat truthy sentinel defaults (`"other"`, `"none"`) as unset with explicit checks
 11. **Service Initialization:** Lazy-init external clients (OpenAI, Stripe) to keep modules importable by tests without credentials
+12. **Type Safety:** Never use `as` casts on external data — use type guards with safe fallbacks. `as` hides runtime bugs that only surface in production.
+13. **Schema Migrations:** When making a FK nullable, audit all JOINs on that column — INNER JOINs silently drop NULL rows, breaking aggregations
 
 ---
 

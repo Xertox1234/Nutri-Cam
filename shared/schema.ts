@@ -121,11 +121,18 @@ export const dailyLogs = pgTable(
         onDelete: "cascade",
       })
       .notNull(),
-    scannedItemId: integer("scanned_item_id")
-      .references(() => scannedItems.id, {
-        onDelete: "cascade",
-      })
-      .notNull(),
+    scannedItemId: integer("scanned_item_id").references(
+      () => scannedItems.id,
+      { onDelete: "cascade" },
+    ),
+    recipeId: integer("recipe_id").references(() => mealPlanRecipes.id, {
+      onDelete: "set null",
+    }),
+    mealPlanItemId: integer("meal_plan_item_id").references(
+      () => mealPlanItems.id,
+      { onDelete: "set null" },
+    ),
+    source: text("source").default("scan"),
     servings: decimal("servings", { precision: 5, scale: 2 }).default("1"),
     mealType: text("meal_type"),
     loggedAt: timestamp("logged_at")
@@ -269,6 +276,7 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   mealPlanItems: many(mealPlanItems),
   transactions: many(transactions),
   groceryLists: many(groceryLists),
+  pantryItems: many(pantryItems),
   profile: one(userProfiles, {
     fields: [users.id],
     references: [userProfiles.userId],
@@ -302,6 +310,14 @@ export const dailyLogsRelations = relations(dailyLogs, ({ one }) => ({
   scannedItem: one(scannedItems, {
     fields: [dailyLogs.scannedItemId],
     references: [scannedItems.id],
+  }),
+  recipe: one(mealPlanRecipes, {
+    fields: [dailyLogs.recipeId],
+    references: [mealPlanRecipes.id],
+  }),
+  mealPlanItem: one(mealPlanItems, {
+    fields: [dailyLogs.mealPlanItemId],
+    references: [mealPlanItems.id],
   }),
 }));
 
@@ -670,6 +686,7 @@ export const groceryListItems = pgTable(
     category: text("category").default("other"),
     isChecked: boolean("is_checked").default(false),
     isManual: boolean("is_manual").default(false),
+    addedToPantry: boolean("added_to_pantry").default(false),
     checkedAt: timestamp("checked_at"),
   },
   (table) => ({
@@ -699,6 +716,45 @@ export const groceryListItemsRelations = relations(
     }),
   }),
 );
+
+// ============================================================================
+// PANTRY ITEMS
+// ============================================================================
+
+export const pantryItems = pgTable(
+  "pantry_items",
+  {
+    id: serial("id").primaryKey(),
+    userId: varchar("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    name: text("name").notNull(),
+    quantity: decimal("quantity", { precision: 10, scale: 2 }),
+    unit: text("unit"),
+    category: text("category").default("other"),
+    expiresAt: timestamp("expires_at"),
+    addedAt: timestamp("added_at")
+      .default(sql`CURRENT_TIMESTAMP`)
+      .notNull(),
+    updatedAt: timestamp("updated_at")
+      .default(sql`CURRENT_TIMESTAMP`)
+      .notNull(),
+  },
+  (table) => ({
+    userIdIdx: index("pantry_items_user_id_idx").on(table.userId),
+    userExpiresIdx: index("pantry_items_user_expires_idx").on(
+      table.userId,
+      table.expiresAt,
+    ),
+  }),
+);
+
+export const pantryItemsRelations = relations(pantryItems, ({ one }) => ({
+  user: one(users, {
+    fields: [pantryItems.userId],
+    references: [users.id],
+  }),
+}));
 
 // ============================================================================
 // MEAL SUGGESTION CACHE
@@ -780,3 +836,12 @@ export type InsertRecipeIngredient = z.infer<
 >;
 export type MealPlanItem = typeof mealPlanItems.$inferSelect;
 export type InsertMealPlanItem = z.infer<typeof insertMealPlanItemSchema>;
+
+export const insertPantryItemSchema = createInsertSchema(pantryItems).omit({
+  id: true,
+  addedAt: true,
+  updatedAt: true,
+});
+
+export type PantryItem = typeof pantryItems.$inferSelect;
+export type InsertPantryItem = z.infer<typeof insertPantryItemSchema>;

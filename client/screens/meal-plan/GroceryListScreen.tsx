@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   StyleSheet,
   View,
@@ -18,6 +18,7 @@ import { ThemedText } from "@/components/ThemedText";
 import { SkeletonBox } from "@/components/SkeletonLoader";
 import { useTheme } from "@/hooks/useTheme";
 import { useHaptics } from "@/hooks/useHaptics";
+import { usePremiumContext } from "@/context/PremiumContext";
 import {
   Spacing,
   BorderRadius,
@@ -28,6 +29,7 @@ import {
   useGroceryListDetail,
   useToggleGroceryItem,
   useAddManualGroceryItem,
+  useAddGroceryItemToPantry,
 } from "@/hooks/useGroceryList";
 import type { MealPlanStackParamList } from "@/navigation/MealPlanStackNavigator";
 import type { GroceryListItem } from "@shared/schema";
@@ -37,9 +39,11 @@ type GroceryListScreenRoute = RouteProp<MealPlanStackParamList, "GroceryList">;
 function GroceryItemRow({
   item,
   listId,
+  onChecked,
 }: {
   item: GroceryListItem;
   listId: number;
+  onChecked?: (item: GroceryListItem) => void;
 }) {
   const { theme } = useTheme();
   const haptics = useHaptics();
@@ -47,12 +51,22 @@ function GroceryItemRow({
 
   const handleToggle = useCallback(() => {
     haptics.selection();
-    toggleMutation.mutate({
-      listId,
-      itemId: item.id,
-      isChecked: !item.isChecked,
-    });
-  }, [haptics, toggleMutation, listId, item.id, item.isChecked]);
+    const willBeChecked = !item.isChecked;
+    toggleMutation.mutate(
+      {
+        listId,
+        itemId: item.id,
+        isChecked: willBeChecked,
+      },
+      {
+        onSuccess: () => {
+          if (willBeChecked && onChecked) {
+            onChecked(item);
+          }
+        },
+      },
+    );
+  }, [haptics, toggleMutation, listId, item, onChecked]);
 
   const quantityStr = item.quantity
     ? `${parseFloat(item.quantity)}${item.unit ? ` ${item.unit}` : ""}`
@@ -64,7 +78,7 @@ function GroceryItemRow({
       style={styles.itemRow}
       accessibilityRole="checkbox"
       accessibilityState={{ checked: item.isChecked ?? false }}
-      accessibilityLabel={`${item.name}${quantityStr ? `, ${quantityStr}` : ""}`}
+      accessibilityLabel={`${item.name}${quantityStr ? `, ${quantityStr}` : ""}${item.addedToPantry ? ", added to pantry" : ""}`}
     >
       <View
         style={[
@@ -102,6 +116,9 @@ function GroceryItemRow({
           </ThemedText>
         ) : null}
       </View>
+      {item.addedToPantry && (
+        <Feather name="home" size={14} color={theme.success} />
+      )}
       {item.isManual && (
         <View
           style={[
@@ -125,6 +142,7 @@ export default function GroceryListScreen() {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const haptics = useHaptics();
+  const { features } = usePremiumContext();
 
   const {
     data: list,
@@ -133,8 +151,11 @@ export default function GroceryListScreen() {
     refetch,
   } = useGroceryListDetail(listId);
   const addItemMutation = useAddManualGroceryItem();
+  const addToPantryMutation = useAddGroceryItemToPantry();
 
   const [newItemName, setNewItemName] = useState("");
+  const [pantryPromptItem, setPantryPromptItem] =
+    useState<GroceryListItem | null>(null);
 
   const handleAddItem = useCallback(() => {
     const name = newItemName.trim();
@@ -145,6 +166,39 @@ export default function GroceryListScreen() {
       { onSuccess: () => setNewItemName("") },
     );
   }, [haptics, addItemMutation, listId, newItemName]);
+
+  const handleItemChecked = useCallback(
+    (item: GroceryListItem) => {
+      if (!features.pantryTracking || item.addedToPantry) return;
+      setPantryPromptItem(item);
+    },
+    [features.pantryTracking],
+  );
+
+  const handleAddToPantry = useCallback(() => {
+    if (!pantryPromptItem) return;
+    haptics.impact(Haptics.ImpactFeedbackStyle.Light);
+    addToPantryMutation.mutate({
+      listId,
+      itemId: pantryPromptItem.id,
+    });
+    setPantryPromptItem(null);
+  }, [haptics, addToPantryMutation, listId, pantryPromptItem]);
+
+  const handleDismissPantryPrompt = useCallback(() => {
+    setPantryPromptItem(null);
+  }, []);
+
+  // Auto-dismiss pantry snackbar after 5 seconds
+  const dismissTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => {
+    if (pantryPromptItem) {
+      dismissTimerRef.current = setTimeout(() => {
+        setPantryPromptItem(null);
+      }, 5000);
+    }
+    return () => clearTimeout(dismissTimerRef.current);
+  }, [pantryPromptItem]);
 
   const handleShare = useCallback(async () => {
     if (!list) return;
@@ -240,7 +294,11 @@ export default function GroceryListScreen() {
         sections={sections}
         keyExtractor={(item) => String(item.id)}
         renderItem={({ item }) => (
-          <GroceryItemRow item={item} listId={listId} />
+          <GroceryItemRow
+            item={item}
+            listId={listId}
+            onChecked={handleItemChecked}
+          />
         )}
         renderSectionHeader={({ section }) => (
           <View
@@ -326,6 +384,44 @@ export default function GroceryListScreen() {
         }
         stickySectionHeadersEnabled
       />
+      {pantryPromptItem && (
+        <View
+          style={[
+            styles.pantrySnackbar,
+            {
+              backgroundColor: theme.backgroundSecondary,
+              bottom: insets.bottom + Spacing.md,
+            },
+          ]}
+        >
+          <ThemedText style={styles.pantrySnackbarText} numberOfLines={1}>
+            Add {pantryPromptItem.name} to pantry?
+          </ThemedText>
+          <Pressable
+            onPress={handleAddToPantry}
+            style={[styles.pantrySnackbarBtn, { backgroundColor: theme.link }]}
+            accessibilityRole="button"
+            accessibilityLabel={`Add ${pantryPromptItem.name} to pantry`}
+          >
+            <ThemedText
+              style={[
+                styles.pantrySnackbarBtnText,
+                { color: theme.buttonText },
+              ]}
+            >
+              Yes
+            </ThemedText>
+          </Pressable>
+          <Pressable
+            onPress={handleDismissPantryPrompt}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Dismiss"
+          >
+            <Feather name="x" size={18} color={theme.textSecondary} />
+          </Pressable>
+        </View>
+      )}
     </View>
   );
 }
@@ -422,5 +518,35 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
+  },
+  pantrySnackbar: {
+    position: "absolute",
+    left: Spacing.lg,
+    right: Spacing.lg,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.md,
+    shadowColor: "#000", // hardcoded
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  pantrySnackbarText: {
+    flex: 1,
+    fontSize: 14,
+    fontFamily: FontFamily.medium,
+  },
+  pantrySnackbarBtn: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
+    borderRadius: BorderRadius.xs,
+  },
+  pantrySnackbarBtnText: {
+    fontSize: 13,
+    fontFamily: FontFamily.semiBold,
   },
 });

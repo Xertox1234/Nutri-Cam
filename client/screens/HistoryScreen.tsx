@@ -275,6 +275,7 @@ type DashboardHeaderProps = {
   calorieGoal: number;
   calorieProgress: number;
   itemCount: number;
+  plannedCalories: number;
   reducedMotion: boolean;
   onScanPress: () => void;
 };
@@ -285,6 +286,7 @@ const DashboardHeader = React.memo(function DashboardHeader({
   calorieGoal,
   calorieProgress,
   itemCount,
+  plannedCalories,
   reducedMotion,
   onScanPress,
 }: DashboardHeaderProps) {
@@ -321,7 +323,7 @@ const DashboardHeader = React.memo(function DashboardHeader({
           <View
             accessible={true}
             accessibilityRole="text"
-            accessibilityLabel={`Today's calories: ${currentCalories} of ${calorieGoal} consumed. ${Math.round(calorieProgress)} percent of daily goal.`}
+            accessibilityLabel={`Today's calories: ${currentCalories} of ${calorieGoal} consumed. ${Math.round(calorieProgress)} percent of daily goal.${plannedCalories > 0 ? ` ${plannedCalories} planned.` : ""}`}
           >
             <ThemedText
               type="caption"
@@ -347,6 +349,17 @@ const DashboardHeader = React.memo(function DashboardHeader({
                 / {calorieGoal.toLocaleString()}
               </ThemedText>
             </View>
+            {plannedCalories > 0 && (
+              <ThemedText
+                type="caption"
+                style={{
+                  color: withOpacity(theme.buttonText, 0.6),
+                  marginTop: Spacing.xs,
+                }}
+              >
+                {plannedCalories.toLocaleString()} planned
+              </ThemedText>
+            )}
           </View>
         </Card>
 
@@ -660,6 +673,7 @@ export default function HistoryScreen() {
   const calorieProgress = Math.min((currentCalories / calorieGoal) * 100, 100);
   const userName = user?.displayName || user?.username || "there";
   const itemCount = todaySummary?.itemCount || 0;
+  const plannedCalories = Math.round(todaySummary?.plannedCalories || 0);
 
   // Announce calorie summary for screen readers once on dashboard load
   const hasAnnouncedRef = useRef(false);
@@ -721,6 +735,7 @@ export default function HistoryScreen() {
             calorieGoal={calorieGoal}
             calorieProgress={calorieProgress}
             itemCount={itemCount}
+            plannedCalories={plannedCalories}
             reducedMotion={reducedMotion}
             onScanPress={handleScanPress}
           />

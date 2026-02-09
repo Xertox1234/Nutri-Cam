@@ -73,3 +73,25 @@ export function useRemoveMealPlanItem() {
     },
   });
 }
+
+export function useConfirmMealPlanItem() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: number) => {
+      const res = await apiRequest(
+        "POST",
+        `/api/meal-plan/items/${id}/confirm`,
+      );
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`${res.status}: ${text}`);
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      invalidateMealPlanItems(queryClient);
+      queryClient.invalidateQueries({ queryKey: ["/api/daily-summary"] });
+    },
+  });
+}
