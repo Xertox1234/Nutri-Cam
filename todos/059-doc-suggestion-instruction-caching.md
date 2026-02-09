@@ -1,6 +1,6 @@
 ---
 title: "Document suggestion/instruction caching system in project docs"
-status: backlog
+status: done
 priority: low
 created: 2026-02-08
 updated: 2026-02-08
@@ -20,11 +20,11 @@ Three cache tables exist (nutritionCache, suggestionCache, instructionCache) wit
 
 ## Acceptance Criteria
 
-- [ ] Document nutritionCache table (queryKey, TTL, hit counting) in DATABASE.md
-- [ ] Document suggestionCache table (per-item per-user, profileHash) in DATABASE.md
-- [ ] Document instructionCache table (per-suggestion drill-down) in DATABASE.md
-- [ ] Document caching strategy and cache-first patterns in ARCHITECTURE.md
-- [ ] Document profile-hash based cache invalidation
+- [x] Document nutritionCache table (queryKey, TTL, hit counting) in DATABASE.md
+- [x] Document suggestionCache table (per-item per-user, profileHash) in DATABASE.md
+- [x] Document instructionCache table (per-suggestion drill-down) in DATABASE.md
+- [x] Document caching strategy and cache-first patterns in ARCHITECTURE.md
+- [x] Document profile-hash based cache invalidation
 
 ## Implementation Notes
 
