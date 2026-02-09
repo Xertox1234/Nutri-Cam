@@ -34,3 +34,9 @@ Key files to explore:
 - `client/hooks/usePremiumFeatures.ts`
 - `server/routes.ts` — search for /api/subscription endpoints
 - `shared/schema.ts` — recipeGenerationLog table, subscriptionTier on users
+
+## Updates
+
+### 2026-02-09
+
+- IAP purchase flow implemented in commit 62d05ae: expo-iap integration with mock/real switching, usePurchase hook, UpgradeModal wired to purchase flow, server subscription endpoint tests, pattern and learning documentation added
