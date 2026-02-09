@@ -46,7 +46,6 @@ describe("usePremiumFeatures", () => {
         features: TIER_FEATURES.free,
       });
 
-      expect(usePremiumFeature("advancedBarcodes")).toBe(false);
       expect(usePremiumFeature("highQualityCapture")).toBe(false);
       expect(usePremiumFeature("videoRecording")).toBe(false);
     });
@@ -131,23 +130,23 @@ describe("usePremiumFeatures", () => {
       mockUsePremiumContext.mockReturnValue({
         features: TIER_FEATURES.free,
         isPremium: false,
-        dailyScanCount: 5,
+        dailyScanCount: 1,
         canScanToday: true,
       });
 
       const result = useCanScanToday();
 
       expect(result.canScan).toBe(true);
-      expect(result.remainingScans).toBe(5); // 10 - 5
-      expect(result.dailyLimit).toBe(10);
-      expect(result.currentCount).toBe(5);
+      expect(result.remainingScans).toBe(2); // 3 - 1
+      expect(result.dailyLimit).toBe(3);
+      expect(result.currentCount).toBe(1);
     });
 
     it("should return canScan false when at limit", () => {
       mockUsePremiumContext.mockReturnValue({
         features: TIER_FEATURES.free,
         isPremium: false,
-        dailyScanCount: 10,
+        dailyScanCount: 3,
         canScanToday: false,
       });
 
@@ -155,14 +154,14 @@ describe("usePremiumFeatures", () => {
 
       expect(result.canScan).toBe(false);
       expect(result.remainingScans).toBe(0);
-      expect(result.currentCount).toBe(10);
+      expect(result.currentCount).toBe(3);
     });
 
     it("should return canScan false when over limit", () => {
       mockUsePremiumContext.mockReturnValue({
         features: TIER_FEATURES.free,
         isPremium: false,
-        dailyScanCount: 15,
+        dailyScanCount: 5,
         canScanToday: false,
       });
 
@@ -193,7 +192,7 @@ describe("usePremiumFeatures", () => {
       mockUsePremiumContext.mockReturnValue({
         features: TIER_FEATURES.free,
         isPremium: false,
-        dailyScanCount: 3,
+        dailyScanCount: 1,
         canScanToday: true,
         tier: "free" as SubscriptionTier,
       });
@@ -202,7 +201,7 @@ describe("usePremiumFeatures", () => {
 
       expect(result.availableBarcodeTypes).toEqual(FREE_BARCODE_TYPES);
       expect(result.canScan).toBe(true);
-      expect(result.remainingScans).toBe(7); // 10 - 3
+      expect(result.remainingScans).toBe(2); // 3 - 1
       expect(result.isPremium).toBe(false);
       expect(result.highQualityCapture).toBe(false);
       expect(result.videoRecording).toBe(false);
@@ -271,8 +270,8 @@ describe("Camera type utilities", () => {
 
 describe("TIER_FEATURES configuration", () => {
   it("should have correct free tier limits", () => {
-    expect(TIER_FEATURES.free.maxDailyScans).toBe(10);
-    expect(TIER_FEATURES.free.advancedBarcodes).toBe(false);
+    expect(TIER_FEATURES.free.maxDailyScans).toBe(3);
+    expect(TIER_FEATURES.free.advancedBarcodes).toBe(true);
     expect(TIER_FEATURES.free.highQualityCapture).toBe(false);
     expect(TIER_FEATURES.free.videoRecording).toBe(false);
   });

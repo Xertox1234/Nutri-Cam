@@ -21,8 +21,8 @@ export const UNLIMITED_SCANS = 999999;
 
 export const TIER_FEATURES: Record<SubscriptionTier, PremiumFeatures> = {
   free: {
-    maxDailyScans: 10,
-    advancedBarcodes: false,
+    maxDailyScans: 3,
+    advancedBarcodes: true,
     highQualityCapture: false,
     videoRecording: false,
     photoAnalysis: true,

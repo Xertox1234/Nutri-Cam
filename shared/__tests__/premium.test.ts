@@ -30,8 +30,8 @@ describe("Premium Types", () => {
   describe("TIER_FEATURES", () => {
     it("should have features for free tier", () => {
       const freeFeatures = TIER_FEATURES.free;
-      expect(freeFeatures.maxDailyScans).toBe(10);
-      expect(freeFeatures.advancedBarcodes).toBe(false);
+      expect(freeFeatures.maxDailyScans).toBe(3);
+      expect(freeFeatures.advancedBarcodes).toBe(true);
       expect(freeFeatures.highQualityCapture).toBe(false);
       expect(freeFeatures.videoRecording).toBe(false);
     });
