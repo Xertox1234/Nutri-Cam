@@ -13,6 +13,8 @@ This document captures established patterns for the NutriScan codebase. Follow t
 - [API Patterns](#api-patterns)
   - [Stub Service with Production Safety Gate](#stub-service-with-production-safety-gate)
   - [Tier-Gated Route Guards](#tier-gated-route-guards)
+  - [checkPremiumFeature Helper for Tier Gates](#checkpremiumfeature-helper-for-tier-gates)
+  - [Atomic Server Endpoints Over Multi-Request Flows](#atomic-server-endpoints-over-multi-request-flows)
 - [External API Patterns](#external-api-patterns)
   - [External Resource Dedup on Save](#external-resource-dedup-on-save)
   - [Multi-Source Nutrition Lookup Chain](#multi-source-nutrition-lookup-chain)
@@ -25,9 +27,13 @@ This document captures established patterns for the NutriScan codebase. Follow t
   - [Fire-and-Forget for Non-Critical Background Operations](#fire-and-forget-for-non-critical-background-operations)
   - [Content Hash Invalidation Pattern](#content-hash-invalidation-pattern)
   - [Parent-Child Cache with Cascade Delete](#parent-child-cache-with-cascade-delete)
+  - [LEFT JOIN with COALESCE for Nullable Foreign Keys](#left-join-with-coalesce-for-nullable-foreign-keys)
+  - [Pre-Fetched IDs to Avoid Redundant Queries](#pre-fetched-ids-to-avoid-redundant-queries)
 - [Client State Patterns](#client-state-patterns)
   - [Business Logic Errors in Mutations](#business-logic-errors-in-mutations)
   - [Typed ApiError Class for Client-Side Error Differentiation](#typed-apierror-class-for-client-side-error-differentiation)
+  - [useQuery Over useState+useEffect for Server Data](#usequery-over-usestateuseeffect-for-server-data)
+  - [`enabled` Parameter for Premium-Gated Queries](#enabled-parameter-for-premium-gated-queries)
 - [React Native Patterns](#react-native-patterns)
   - [Multi-Select Checkbox Pattern](#multi-select-checkbox-pattern)
   - [Premium Feature Gating UI](#premium-feature-gating-ui)
@@ -51,6 +57,7 @@ This document captures established patterns for the NutriScan codebase. Follow t
   - [Module-Level Key Counters for Dynamic Lists](#module-level-key-counters-for-dynamic-lists)
   - [Unsaved Changes Navigation Guard](#unsaved-changes-navigation-guard)
   - [Form State Hook with Summaries and isDirty](#form-state-hook-with-summaries-and-isdirty)
+  - [Auto-Dismiss Snackbar with useRef Timer](#auto-dismiss-snackbar-with-useref-timer)
 - [External API Parsing Patterns](#external-api-parsing-patterns)
   - [ISO 8601 Duration Parsing](#iso-8601-duration-parsing)
   - [Intent-Driven Config Object](#intent-driven-config-object)
@@ -67,6 +74,8 @@ This document captures established patterns for the NutriScan codebase. Follow t
 - [Documentation Patterns](#documentation-patterns)
 - [Testing Patterns](#testing-patterns)
   - [Pure Function Extraction for Vitest Testability](#pure-function-extraction-for-vitest-testability)
+  - [Pure Function Extraction for Server Services](#pure-function-extraction-for-server-services)
+  - [Type Guard Over `as` Cast for Runtime Safety](#type-guard-over-as-cast-for-runtime-safety)
 
 ---
 
@@ -1033,6 +1042,120 @@ if (daysDiff > maxDays) {
 - `shared/types/subscription.ts` — `TIER_FEATURES` config object
 - Client-side: see "Typed ApiError Class" and "Premium Feature Gating UI" patterns
 
+### checkPremiumFeature Helper for Tier Gates
+
+When multiple routes need the same premium-gating logic (fetch subscription, resolve tier, check feature flag, send 403), extract a shared `checkPremiumFeature()` helper instead of duplicating the block in every handler. The helper returns the full `PremiumFeatures` object on success (so the caller can check additional tier-dependent limits) or sends a 403 and returns `null` on failure.
+
+```typescript
+/**
+ * Check if the user has a premium feature. Returns the features object if granted,
+ * or sends a 403 response and returns null if not.
+ */
+async function checkPremiumFeature(
+  req: Request,
+  res: Response,
+  featureKey: keyof PremiumFeatures,
+  featureLabel: string,
+): Promise<PremiumFeatures | null> {
+  const subscription = await storage.getSubscriptionStatus(req.userId!);
+  const tier = subscription?.tier || "free";
+  const features = TIER_FEATURES[isValidSubscriptionTier(tier) ? tier : "free"];
+  if (!features[featureKey]) {
+    res.status(403).json({
+      error: `${featureLabel} requires a premium subscription`,
+      code: "PREMIUM_REQUIRED",
+    });
+    return null;
+  }
+  return features;
+}
+
+// Usage in route handler — early return on null
+app.get("/api/pantry", requireAuth, async (req, res) => {
+  const features = await checkPremiumFeature(
+    req,
+    res,
+    "pantryTracking",
+    "Pantry tracking",
+  );
+  if (!features) return; // 403 already sent
+
+  // features is PremiumFeatures — can check additional limits
+  const items = await storage.getPantryItems(req.userId!);
+  res.json(items);
+});
+```
+
+**When to use:** Any route with a simple boolean premium feature gate. If 3+ routes check the same pattern (fetch subscription -> resolve tier -> check flag -> send 403), use this helper.
+
+**When NOT to use:**
+
+- Routes that need tier-dependent **limits** (daily quotas, range limits) — those need custom logic after the feature check. You can still use `checkPremiumFeature` for the initial boolean gate and then use the returned `features` object for limit checks.
+- Single-use gates where the overhead of a helper isn't justified.
+
+**Key design choices:**
+
+1. Returns `PremiumFeatures | null` rather than `boolean` so callers can use tier-dependent limits from the same object
+2. Uses `isValidSubscriptionTier()` type guard internally — never `as SubscriptionTier`
+3. Sends the 403 response itself — caller just checks for `null` and returns
+
+**References:**
+
+- `server/routes.ts` — pantry, grocery, meal confirmation routes all use this
+- See also: "Tier-Gated Route Guards" (above) for the inline pattern this replaces
+- See also: "Type Guard Over `as` Cast" in Testing Patterns
+
+### Atomic Server Endpoints Over Multi-Request Flows
+
+When a client action requires multiple related mutations (e.g., create a record + update a flag on another record), create a single server endpoint that performs both operations atomically rather than having the client make multiple sequential requests.
+
+```typescript
+// Bad: Client makes 2 requests that can leave data inconsistent if one fails
+const addToPantry = async (item: GroceryItem) => {
+  await apiRequest("POST", "/api/pantry", { name: item.name, ... });        // Step 1
+  await apiRequest("PUT", `/api/grocery-items/${item.id}`, { addedToPantry: true }); // Step 2 - what if this fails?
+};
+
+// Good: Single atomic endpoint handles both operations
+const addToPantry = async (listId: number, itemId: number) => {
+  await apiRequest("POST", `/api/meal-plan/grocery-lists/${listId}/items/${itemId}/add-to-pantry`);
+};
+
+// Server handler — both operations succeed or fail together
+app.post("/api/meal-plan/grocery-lists/:id/items/:itemId/add-to-pantry",
+  requireAuth,
+  async (req, res) => {
+    // Verify ownership, create pantry item, flag grocery item — all in one handler
+    const pantryItem = await storage.createPantryItem({ ... });
+    await storage.updateGroceryItemFlag(listId, itemId, { addedToPantry: true });
+    res.status(201).json(pantryItem);
+  },
+);
+```
+
+**When to use:**
+
+- Two or more writes that are logically one user action (check off + add to pantry, confirm meal + create daily log)
+- When partial failure would leave the UI in an inconsistent state
+- When the client would need to coordinate rollback logic
+
+**When NOT to use:**
+
+- Independent operations that the user performs separately
+- Read-then-write patterns where the read result determines the write (use optimistic updates instead)
+
+**Key benefits:**
+
+1. **Atomicity** — both operations succeed or fail together (use `db.transaction()` if strict DB atomicity is needed)
+2. **Fewer round trips** — one HTTP request instead of two
+3. **Simpler client code** — single mutation hook with single invalidation
+4. **No partial state** — UI never shows "added to pantry" without the grocery flag being set
+
+**References:**
+
+- `server/routes.ts` — `POST /api/meal-plan/grocery-lists/:id/items/:itemId/add-to-pantry`
+- `client/hooks/useGroceryList.ts` — `useAddGroceryItemToPantry` mutation
+
 ### Pagination with useInfiniteQuery
 
 Use TanStack Query's `useInfiniteQuery` for paginated lists:
@@ -1737,6 +1860,110 @@ const profile = await withTransaction(async (tx) => {
 
 **Why:** Inline transactions are clearer, easier to debug, and avoid unnecessary abstraction layers.
 
+### LEFT JOIN with COALESCE for Nullable Foreign Keys
+
+When a table has nullable foreign keys that can reference different source tables (e.g., `dailyLogs` can have nutrition from `scannedItems` OR `mealPlanRecipes`), use LEFT JOINs with nested COALESCE to pull values from whichever source is present.
+
+```typescript
+const result = await db
+  .select({
+    totalCalories: sql<number>`COALESCE(SUM(
+      COALESCE(
+        CAST(${scannedItems.calories} AS DECIMAL),
+        CAST(${mealPlanRecipes.caloriesPerServing} AS DECIMAL),
+        0
+      ) * CAST(${dailyLogs.servings} AS DECIMAL)
+    ), 0)`,
+    // ... repeat for protein, carbs, fat
+    itemCount: sql<number>`COUNT(${dailyLogs.id})`,
+  })
+  .from(dailyLogs)
+  .leftJoin(scannedItems, eq(dailyLogs.scannedItemId, scannedItems.id))
+  .leftJoin(mealPlanRecipes, eq(dailyLogs.recipeId, mealPlanRecipes.id))
+  .where(
+    and(
+      eq(dailyLogs.userId, userId),
+      gte(dailyLogs.loggedAt, startOfDay),
+      lt(dailyLogs.loggedAt, endOfDay),
+    ),
+  );
+```
+
+**When to use:**
+
+- Aggregation queries where the main table has multiple nullable FKs pointing to different source tables
+- Summary queries that must include rows regardless of which source provided the data
+
+**When NOT to use:**
+
+- Simple queries where the FK is always non-null (use INNER JOIN)
+- Queries that should exclude rows with no match (use INNER JOIN intentionally)
+
+**Key pitfalls:**
+
+1. **INNER JOIN breaks on NULL FK** — if `scannedItemId` is null, INNER JOIN drops the row entirely, making confirmed meal plan items invisible in summaries
+2. **Double COALESCE** — outer COALESCE handles the SUM being null (no rows), inner COALESCE handles per-row fallback between multiple source columns
+3. **CAST is required** — Drizzle's `text()` columns storing numbers need explicit CAST to DECIMAL for arithmetic
+
+**References:**
+
+- `server/storage.ts` — `getDailySummary()` method
+- Related learning: "getDailySummary LEFT JOIN Rewrite" in LEARNINGS.md
+
+### Pre-Fetched IDs to Avoid Redundant Queries
+
+When a route handler needs data that is also needed by a called function, fetch it once and pass it in rather than letting the function query it again.
+
+```typescript
+// Bad: daily-summary route fetches confirmedIds, then getPlannedNutritionSummary
+// fetches them again internally
+app.get("/api/daily-summary", requireAuth, async (req, res) => {
+  const summary = await storage.getDailySummary(req.userId!, date);
+  const confirmedIds = await storage.getConfirmedMealPlanItemIds(req.userId!, date);
+  const planned = await storage.getPlannedNutritionSummary(req.userId!, date);
+  //                                          ^ internally calls getConfirmedMealPlanItemIds AGAIN
+  res.json({ ...summary, ...planned, confirmedMealPlanItemIds: confirmedIds });
+});
+
+// Good: Fetch once, pass to dependent function via optional parameter
+app.get("/api/daily-summary", requireAuth, async (req, res) => {
+  const [summary, confirmedIds] = await Promise.all([
+    storage.getDailySummary(req.userId!, date),
+    storage.getConfirmedMealPlanItemIds(req.userId!, date),
+  ]);
+  const planned = await storage.getPlannedNutritionSummary(
+    req.userId!, date, confirmedIds, // Pass pre-fetched IDs
+  );
+  res.json({ ...summary, ...planned, confirmedMealPlanItemIds: confirmedIds });
+});
+
+// Storage method accepts optional pre-fetched data
+async getPlannedNutritionSummary(
+  userId: string,
+  date: Date,
+  confirmedIds?: number[], // Optional — falls back to internal query
+): Promise<PlannedSummary> {
+  const excludeIds = confirmedIds ?? (await this.getConfirmedMealPlanItemIds(userId, date));
+  // ... use excludeIds
+}
+```
+
+**When to use:**
+
+- A route handler and a called function both need the same data
+- The data involves a database query that would otherwise run twice
+- The function is also called from other contexts where pre-fetching is not available (hence optional parameter)
+
+**When NOT to use:**
+
+- The shared data is trivial to compute (no DB call)
+- Only one caller exists — just inline the query
+
+**References:**
+
+- `server/routes.ts` — daily-summary endpoint
+- `server/storage.ts` — `getPlannedNutritionSummary(userId, date, confirmedIds?)`
+
 ---
 
 ## Client State Patterns
@@ -1982,6 +2209,98 @@ if (isLimitReached) {
 - `client/hooks/useMealSuggestions.ts` — throws ApiError
 - `client/components/MealSuggestionsModal.tsx` — checks `error.code`
 - Server-side: see "Tier-Gated Route Guards" and "Error Response Structure" patterns
+
+### useQuery Over useState+useEffect for Server Data
+
+Always use TanStack Query's `useQuery` (or `useMutation`) for fetching server data. Never use the `useState` + `useEffect` pattern to fetch and store server data manually.
+
+```typescript
+// Bad: Manual fetch with useState+useEffect
+const [confirmedIds, setConfirmedIds] = useState<number[]>([]);
+const [loading, setLoading] = useState(true);
+
+useEffect(() => {
+  async function fetch() {
+    setLoading(true);
+    const res = await apiRequest("GET", "/api/daily-summary");
+    const data = await res.json();
+    setConfirmedIds(data.confirmedMealPlanItemIds ?? []);
+    setLoading(false);
+  }
+  fetch();
+}, [date]);
+// Problems: no caching, no refetch on focus, no error handling, no deduplication
+
+// Good: useQuery + useMemo for derived state
+const { data: dailySummary, isLoading } = useQuery({
+  queryKey: ["/api/daily-summary", date],
+  queryFn: async () => {
+    const res = await apiRequest("GET", `/api/daily-summary?date=${date}`);
+    if (!res.ok) throw new Error(`${res.status}`);
+    return res.json();
+  },
+});
+
+const confirmedIds = useMemo(
+  () => new Set(dailySummary?.confirmedMealPlanItemIds ?? []),
+  [dailySummary?.confirmedMealPlanItemIds],
+);
+```
+
+**When to use:** Always, for any data fetched from the server.
+
+**When NOT to use:** Client-only state (form inputs, UI toggles, animation values) should use `useState` or `useRef`.
+
+**Key benefits:**
+
+1. **Automatic caching and deduplication** — multiple components requesting the same data get a single request
+2. **Refetch on focus** — data refreshes when user returns to the screen
+3. **Loading/error states** — built-in `isLoading`, `error`, `isRefetching`
+4. **Derived data via `useMemo`** — transform query results without re-fetching
+
+**References:**
+
+- `client/screens/meal-plan/MealPlanHomeScreen.tsx` — derives `confirmedIds` Set from daily summary query
+- `client/hooks/useMealPlan.ts` — all meal plan data fetching via useQuery
+
+### `enabled` Parameter for Premium-Gated Queries
+
+When a query fetches data for a premium-only feature, pass an `enabled` parameter to prevent free-tier users from making unnecessary API calls that would return 403.
+
+```typescript
+// Hook accepts enabled parameter with sensible default
+export function useExpiringPantryItems(enabled = true) {
+  return useQuery<PantryItem[]>({
+    queryKey: ["/api/pantry/expiring"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/pantry/expiring");
+      if (!res.ok) throw new Error(`${res.status}`);
+      return res.json();
+    },
+    enabled, // Only fires when enabled is true
+  });
+}
+
+// Caller passes premium feature flag
+const features = usePremiumFeatures();
+const { data: expiringItems } = useExpiringPantryItems(features.pantryTracking);
+```
+
+**When to use:**
+
+- Any query hook that fetches premium-only data
+- Queries gated behind a feature flag or user capability
+- Conditional data fetching where the condition is known upfront
+
+**When NOT to use:**
+
+- Queries that all users can access
+- Queries where you want a 403 error to display a paywall (use error handling instead)
+
+**References:**
+
+- `client/hooks/usePantry.ts` — `useExpiringPantryItems(enabled)`
+- `client/screens/meal-plan/MealPlanHomeScreen.tsx` — passes `features.pantryTracking`
 
 ---
 
@@ -3943,6 +4262,60 @@ export function useRecipeForm(prefill?: ImportedRecipeData) {
 - `formToPayload()` handles the text → structured data transformation (e.g., "200g chicken" → `{ name: "chicken", quantity: 200, unit: "g" }`)
 - Accepts optional `prefill` for hydrating from imports or edits
 
+### Auto-Dismiss Snackbar with useRef Timer
+
+For ephemeral UI prompts (snackbar notifications, toast messages) that should auto-dismiss after a timeout, use `useRef` for the timer ID and `useEffect` cleanup to prevent memory leaks on unmount.
+
+```typescript
+const [snackbarItem, setSnackbarItem] = useState<Item | null>(null);
+
+// Use useRef for timer — pass `undefined` as initial value (React 19 requires it)
+const dismissTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+useEffect(() => {
+  if (snackbarItem) {
+    dismissTimerRef.current = setTimeout(() => {
+      setSnackbarItem(null);
+    }, 5000);
+  }
+  // Cleanup: clear timer on unmount or when snackbarItem changes
+  return () => clearTimeout(dismissTimerRef.current);
+}, [snackbarItem]);
+
+// Trigger snackbar from an action callback
+const handleItemChecked = useCallback((item: Item) => {
+  // Show snackbar prompt
+  setSnackbarItem(item);
+}, []);
+
+// Manual dismiss
+const handleDismiss = useCallback(() => {
+  setSnackbarItem(null);
+}, []);
+```
+
+**When to use:**
+
+- Snackbar/toast prompts that appear after a user action and auto-dismiss
+- Any ephemeral UI that needs a timeout with proper cleanup
+
+**When NOT to use:**
+
+- Persistent notifications that require explicit user dismissal
+- Alert dialogs that block interaction
+
+**Key details:**
+
+1. **`useRef` for timer ID** — avoids stale closure issues and survives re-renders
+2. **`useEffect` cleanup** — clears the timer if the component unmounts or the trigger item changes before the timeout fires
+3. **React 19 requires explicit initial value** — `useRef<T>()` without an argument causes a TypeScript error; pass `undefined`
+4. **null state = hidden** — render the snackbar conditionally: `{snackbarItem && <Snackbar ... />}`
+
+**References:**
+
+- `client/screens/meal-plan/GroceryListScreen.tsx` — pantry prompt snackbar with auto-dismiss
+- Related learning: "React 19 useRef Requires Initial Value" in LEARNINGS.md
+
 ---
 
 ## External API Parsing Patterns
@@ -4231,6 +4604,106 @@ describe("mapIAPError", () => {
 - `client/lib/iap/purchase-utils.ts` — `mapIAPError`, `buildReceiptPayload`, `buildRestorePayload`, `isSupportedPlatform`
 - `client/components/upgrade-modal-utils.ts` — `BENEFITS`, `getCtaLabel`, `isCtaDisabled`
 - `client/lib/serving-size-utils.ts` — serving size calculation logic
+
+### Pure Function Extraction for Server Services
+
+When server-side business logic is complex enough to warrant thorough unit testing, extract it into a pure function in its own service file. The function takes plain data in and returns plain data out, with no database access, no `req`/`res` objects, and no side effects.
+
+```
+# File structure
+server/services/
+  pantry-deduction.ts           # Pure function — no DB, no Express, fully testable
+  __tests__/
+    pantry-deduction.test.ts    # 9 test cases covering edge cases
+```
+
+```typescript
+// server/services/pantry-deduction.ts — Pure function, no DB access
+import type { PantryItem } from "@shared/schema";
+import type { AggregatedGroceryItem } from "./grocery-generation";
+
+function normalizeName(name: string): string {
+  return name.toLowerCase().trim().replace(/\s+/g, " ");
+}
+
+export function deductPantryFromGrocery(
+  groceryItems: AggregatedGroceryItem[],
+  pantryItems: PantryItem[],
+): AggregatedGroceryItem[] {
+  // Build lookup map, subtract quantities, filter out fully covered items
+  // No DB calls — caller fetches data and passes it in
+}
+```
+
+```typescript
+// Route handler — fetches data, calls pure function, returns result
+app.post("/api/meal-plan/grocery-lists", requireAuth, async (req, res) => {
+  const groceryItems = await generateGroceryItems(recipes);
+  const pantryItems = features.pantryTracking
+    ? await storage.getPantryItems(req.userId!)
+    : [];
+  const deducted = deductPantryFromGrocery(groceryItems, pantryItems);
+  // ... save and return
+});
+```
+
+**When to use:**
+
+- Complex transformation logic with multiple edge cases (unit conversions, matching, deduction)
+- Logic that benefits from 5+ unit tests covering boundary conditions
+- Server-side logic that does not need database access
+
+**When NOT to use:**
+
+- Simple CRUD operations where the logic is trivial
+- Logic tightly coupled to database queries (keep in storage methods)
+
+**Key difference from the client-side pattern:** The client-side "Pure Function Extraction for Vitest Testability" pattern exists because Vitest cannot import React Native modules. The server-side pattern exists for **design clarity** and **test coverage** — the functions _could_ be tested in-place, but extracting them makes the test file focused and the function's contract explicit.
+
+**Existing examples:**
+
+- `server/services/pantry-deduction.ts` — `deductPantryFromGrocery()` with 9 unit tests
+- `client/lib/iap/purchase-utils.ts` — client-side equivalent
+
+### Type Guard Over `as` Cast for Runtime Safety
+
+Never use `as TypeName` to assert a value's type when the value comes from external input (database, API, user input). Always use a type guard function that performs a runtime check.
+
+```typescript
+// Bad: Unsafe cast — silently accepts invalid values
+const tier = subscription?.tier || "free";
+const features = TIER_FEATURES[tier as SubscriptionTier];
+// If tier is "invalid_value", this indexes into TIER_FEATURES with a bad key
+// and returns undefined — causing runtime errors downstream
+
+// Good: Type guard with fallback
+function isValidSubscriptionTier(tier: string): tier is SubscriptionTier {
+  return (subscriptionTiers as readonly string[]).includes(tier);
+}
+
+const tier = subscription?.tier || "free";
+const features = TIER_FEATURES[isValidSubscriptionTier(tier) ? tier : "free"];
+// Invalid tiers safely fall back to "free" — no runtime surprises
+```
+
+**When to use:**
+
+- Any value from the database, API response, or user input that needs to be narrowed to a union type
+- Enum-like `text()` columns in Drizzle (which return `string`, not the union type)
+- Route parameters, query strings, or `req.body` fields
+
+**When NOT to use:**
+
+- Values already validated by Zod schemas (Zod narrows the type correctly)
+- Compile-time-only type narrowing where the value is known at build time
+
+**Key insight:** `as SubscriptionTier` tells TypeScript "trust me, this is valid" but performs zero runtime checking. If the database contains a value not in the union (e.g., from a migration), the cast silently produces a value that TypeScript considers valid but JavaScript cannot use correctly.
+
+**References:**
+
+- `server/routes.ts` — `isValidSubscriptionTier()` type guard
+- `shared/types/premium.ts` — `subscriptionTiers` tuple and `SubscriptionTier` type
+- Related learning: "Unsafe `as` Casts Hide Runtime Bugs" in LEARNINGS.md
 
 ---
 

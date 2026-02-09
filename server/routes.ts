@@ -26,6 +26,7 @@ import {
   subscriptionTiers,
   type SubscriptionTier,
   type SubscriptionStatus,
+  type PremiumFeatures,
 } from "@shared/types/premium";
 import {
   photoIntentSchema,
@@ -71,6 +72,7 @@ import {
   buildSuggestionCacheKey,
 } from "./services/meal-suggestions";
 import { generateGroceryItems } from "./services/grocery-generation";
+import { deductPantryFromGrocery } from "./services/pantry-deduction";
 import type { MealSuggestion } from "@shared/types/meal-suggestions";
 
 import { isValidCalendarDate } from "./utils/date-validation";
@@ -83,6 +85,29 @@ function isValidSubscriptionTier(tier: string): tier is SubscriptionTier {
   return (subscriptionTiers as readonly string[]).includes(tier);
 }
 export { isValidCalendarDate };
+
+/**
+ * Check if the user has a premium feature. Returns the features object if granted,
+ * or sends a 403 response and returns null if not.
+ */
+async function checkPremiumFeature(
+  req: Request,
+  res: Response,
+  featureKey: keyof PremiumFeatures,
+  featureLabel: string,
+): Promise<PremiumFeatures | null> {
+  const subscription = await storage.getSubscriptionStatus(req.userId!);
+  const tier = subscription?.tier || "free";
+  const features = TIER_FEATURES[isValidSubscriptionTier(tier) ? tier : "free"];
+  if (!features[featureKey]) {
+    res.status(403).json({
+      error: `${featureLabel} requires a premium subscription`,
+      code: "PREMIUM_REQUIRED",
+    });
+    return null;
+  }
+  return features;
+}
 
 /** Extract IP address for rate limiting fallback when user is not authenticated */
 function ipKeyGenerator(req: Request): string {
@@ -136,6 +161,24 @@ const subscriptionRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 10, // 10 attempts per window
   message: { error: "Too many subscription requests. Please wait." },
+  keyGenerator: (req) => req.userId || ipKeyGenerator(req),
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const pantryRateLimit = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 30, // 30 requests per minute per user
+  message: { error: "Too many pantry requests. Please wait." },
+  keyGenerator: (req) => req.userId || ipKeyGenerator(req),
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const mealConfirmRateLimit = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 20, // 20 confirmations per minute per user
+  message: { error: "Too many confirmation requests. Please wait." },
   keyGenerator: (req) => req.userId || ipKeyGenerator(req),
   standardHeaders: true,
   legacyHeaders: false,
@@ -670,8 +713,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const dateParam = req.query.date as string;
         const date = dateParam ? new Date(dateParam) : new Date();
 
-        const summary = await storage.getDailySummary(req.userId!, date);
-        res.json(summary);
+        const [summary, confirmedIds] = await Promise.all([
+          storage.getDailySummary(req.userId!, date),
+          storage.getConfirmedMealPlanItemIds(req.userId!, date),
+        ]);
+        const planned = await storage.getPlannedNutritionSummary(
+          req.userId!,
+          date,
+          confirmedIds,
+        );
+        res.json({
+          ...summary,
+          ...planned,
+          confirmedMealPlanItemIds: confirmedIds,
+        });
       } catch (error) {
         console.error("Error fetching daily summary:", error);
         res.status(500).json({ error: "Failed to fetch summary" });
@@ -2409,6 +2464,7 @@ Format as plain text with clear sections.`;
     startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
     title: z.string().min(1).max(200).optional(),
+    deductPantry: z.boolean().optional(),
   });
 
   const addManualGroceryItemSchema = z.object({
@@ -2517,16 +2573,23 @@ Format as plain text with clear sections.`;
           fat: user?.dailyFatGoal || 65,
         };
 
-        let consumedCalories = 0;
-        let consumedProtein = 0;
-        let consumedCarbs = 0;
-        let consumedFat = 0;
-        for (const meal of existingMeals) {
-          consumedCalories += meal.calories;
-        }
+        // Use actual confirmed intake from daily summary (includes scans + confirmed meals)
+        const actualIntake = await storage.getDailySummary(
+          req.userId!,
+          new Date(parsed.data.date),
+        );
+
+        let consumedCalories = Number(actualIntake.totalCalories) || 0;
+        let consumedProtein = Number(actualIntake.totalProtein) || 0;
+        let consumedCarbs = Number(actualIntake.totalCarbs) || 0;
+        let consumedFat = Number(actualIntake.totalFat) || 0;
+
+        // Also account for planned-but-not-yet-confirmed meals
         for (const item of existingItems) {
           const servings = parseFloat(item.servings || "1");
           if (item.recipe) {
+            consumedCalories +=
+              parseFloat(item.recipe.caloriesPerServing || "0") * servings;
             consumedProtein +=
               parseFloat(item.recipe.proteinPerServing || "0") * servings;
             consumedCarbs +=
@@ -2534,6 +2597,8 @@ Format as plain text with clear sections.`;
             consumedFat +=
               parseFloat(item.recipe.fatPerServing || "0") * servings;
           } else if (item.scannedItem) {
+            consumedCalories +=
+              parseFloat(item.scannedItem.calories || "0") * servings;
             consumedProtein +=
               parseFloat(item.scannedItem.protein || "0") * servings;
             consumedCarbs +=
@@ -2646,7 +2711,19 @@ Format as plain text with clear sections.`;
         );
 
         // Aggregate
-        const aggregated = generateGroceryItems(ingredients);
+        let aggregated = generateGroceryItems(ingredients);
+
+        // Optionally deduct pantry items (premium feature)
+        if (parsed.data.deductPantry) {
+          const subscription = await storage.getSubscriptionStatus(req.userId!);
+          const tier = subscription?.tier || "free";
+          const features =
+            TIER_FEATURES[isValidSubscriptionTier(tier) ? tier : "free"];
+          if (features.pantryTracking) {
+            const userPantry = await storage.getPantryItems(req.userId!);
+            aggregated = deductPantryFromGrocery(aggregated, userPantry);
+          }
+        }
 
         // Default title
         const title =
@@ -2747,22 +2824,108 @@ Format as plain text with clear sections.`;
           return;
         }
 
-        const isChecked =
-          typeof req.body.isChecked === "boolean" ? req.body.isChecked : true;
-        const updated = await storage.updateGroceryListItemChecked(
-          itemId,
-          listId,
-          isChecked,
-        );
-        if (!updated) {
-          res.status(404).json({ error: "Item not found" });
+        // Handle isChecked toggle
+        if (typeof req.body.isChecked === "boolean") {
+          const updated = await storage.updateGroceryListItemChecked(
+            itemId,
+            listId,
+            req.body.isChecked,
+          );
+          if (!updated) {
+            res.status(404).json({ error: "Item not found" });
+            return;
+          }
+          // Also handle addedToPantry if provided in same request
+          if (typeof req.body.addedToPantry === "boolean") {
+            const flagged = await storage.updateGroceryListItemPantryFlag(
+              itemId,
+              listId,
+              req.body.addedToPantry,
+            );
+            if (flagged) {
+              res.json(flagged);
+              return;
+            }
+          }
+          res.json(updated);
           return;
         }
 
-        res.json(updated);
+        // Handle addedToPantry flag only
+        if (typeof req.body.addedToPantry === "boolean") {
+          const updated = await storage.updateGroceryListItemPantryFlag(
+            itemId,
+            listId,
+            req.body.addedToPantry,
+          );
+          if (!updated) {
+            res.status(404).json({ error: "Item not found" });
+            return;
+          }
+          res.json(updated);
+          return;
+        }
+
+        res.status(400).json({ error: "No update fields provided" });
       } catch (error) {
         console.error("Toggle grocery item error:", error);
         res.status(500).json({ error: "Failed to update item" });
+      }
+    },
+  );
+
+  // POST /api/meal-plan/grocery-lists/:id/items/:itemId/add-to-pantry — Atomic grocery→pantry
+  app.post(
+    "/api/meal-plan/grocery-lists/:id/items/:itemId/add-to-pantry",
+    requireAuth,
+    pantryRateLimit,
+    async (req: Request, res: Response): Promise<void> => {
+      try {
+        const features = await checkPremiumFeature(
+          req,
+          res,
+          "pantryTracking",
+          "Pantry tracking",
+        );
+        if (!features) return;
+
+        const listId = parseInt(req.params.id as string, 10);
+        const itemId = parseInt(req.params.itemId as string, 10);
+        if (isNaN(listId) || listId <= 0 || isNaN(itemId) || itemId <= 0) {
+          res.status(400).json({ error: "Invalid ID" });
+          return;
+        }
+
+        // IDOR: verify list belongs to user
+        const list = await storage.getGroceryListWithItems(listId, req.userId!);
+        if (!list) {
+          res.status(404).json({ error: "Grocery list not found" });
+          return;
+        }
+
+        const groceryItem = list.items.find((i) => i.id === itemId);
+        if (!groceryItem) {
+          res.status(404).json({ error: "Grocery item not found" });
+          return;
+        }
+
+        // Create pantry item from grocery item data
+        const pantryItem = await storage.createPantryItem({
+          userId: req.userId!,
+          name: groceryItem.name,
+          quantity: groceryItem.quantity,
+          unit: groceryItem.unit || null,
+          category: groceryItem.category || "other",
+          expiresAt: null,
+        });
+
+        // Flag grocery item as added to pantry
+        await storage.updateGroceryListItemPantryFlag(itemId, listId, true);
+
+        res.status(201).json(pantryItem);
+      } catch (error) {
+        console.error("Add grocery item to pantry error:", error);
+        res.status(500).json({ error: "Failed to add item to pantry" });
       }
     },
   );
@@ -2835,6 +2998,259 @@ Format as plain text with clear sections.`;
       } catch (error) {
         console.error("Delete grocery list error:", error);
         res.status(500).json({ error: "Failed to delete grocery list" });
+      }
+    },
+  );
+
+  // ============================================================================
+  // PANTRY ROUTES
+  // ============================================================================
+
+  const pantryItemSchema = z.object({
+    name: z.string().min(1).max(200),
+    quantity: z
+      .union([z.string(), z.number()])
+      .optional()
+      .nullable()
+      .transform((v) => v?.toString() ?? null),
+    unit: z.string().max(50).optional().nullable(),
+    category: z.string().max(50).optional().default("other"),
+    expiresAt: z
+      .string()
+      .datetime()
+      .optional()
+      .nullable()
+      .transform((v) => (v ? new Date(v) : null)),
+  });
+
+  const pantryItemUpdateSchema = pantryItemSchema
+    .partial()
+    .refine((data) => Object.keys(data).length > 0, {
+      message: "At least one field must be provided for update",
+    });
+
+  // GET /api/pantry — List pantry items
+  app.get(
+    "/api/pantry",
+    requireAuth,
+    pantryRateLimit,
+    async (req: Request, res: Response): Promise<void> => {
+      try {
+        const features = await checkPremiumFeature(
+          req,
+          res,
+          "pantryTracking",
+          "Pantry tracking",
+        );
+        if (!features) return;
+        const items = await storage.getPantryItems(req.userId!);
+        res.json(items);
+      } catch (error) {
+        console.error("Get pantry items error:", error);
+        res.status(500).json({ error: "Failed to fetch pantry items" });
+      }
+    },
+  );
+
+  // POST /api/pantry — Create pantry item
+  app.post(
+    "/api/pantry",
+    requireAuth,
+    pantryRateLimit,
+    async (req: Request, res: Response): Promise<void> => {
+      try {
+        const features = await checkPremiumFeature(
+          req,
+          res,
+          "pantryTracking",
+          "Pantry tracking",
+        );
+        if (!features) return;
+
+        const parsed = pantryItemSchema.safeParse(req.body);
+        if (!parsed.success) {
+          res.status(400).json({ error: formatZodError(parsed.error) });
+          return;
+        }
+
+        const item = await storage.createPantryItem({
+          userId: req.userId!,
+          name: parsed.data.name,
+          quantity: parsed.data.quantity,
+          unit: parsed.data.unit || null,
+          category: parsed.data.category || "other",
+          expiresAt: parsed.data.expiresAt || null,
+        });
+        res.status(201).json(item);
+      } catch (error) {
+        console.error("Create pantry item error:", error);
+        res.status(500).json({ error: "Failed to create pantry item" });
+      }
+    },
+  );
+
+  // PUT /api/pantry/:id — Update pantry item
+  app.put(
+    "/api/pantry/:id",
+    requireAuth,
+    pantryRateLimit,
+    async (req: Request, res: Response): Promise<void> => {
+      try {
+        const features = await checkPremiumFeature(
+          req,
+          res,
+          "pantryTracking",
+          "Pantry tracking",
+        );
+        if (!features) return;
+
+        const id = parseInt(req.params.id as string, 10);
+        if (isNaN(id) || id <= 0) {
+          res.status(400).json({ error: "Invalid pantry item ID" });
+          return;
+        }
+
+        const parsed = pantryItemUpdateSchema.safeParse(req.body);
+        if (!parsed.success) {
+          res.status(400).json({ error: formatZodError(parsed.error) });
+          return;
+        }
+
+        const updated = await storage.updatePantryItem(
+          id,
+          req.userId!,
+          parsed.data,
+        );
+        if (!updated) {
+          res.status(404).json({ error: "Pantry item not found" });
+          return;
+        }
+        res.json(updated);
+      } catch (error) {
+        console.error("Update pantry item error:", error);
+        res.status(500).json({ error: "Failed to update pantry item" });
+      }
+    },
+  );
+
+  // DELETE /api/pantry/:id — Delete pantry item
+  app.delete(
+    "/api/pantry/:id",
+    requireAuth,
+    pantryRateLimit,
+    async (req: Request, res: Response): Promise<void> => {
+      try {
+        const features = await checkPremiumFeature(
+          req,
+          res,
+          "pantryTracking",
+          "Pantry tracking",
+        );
+        if (!features) return;
+
+        const id = parseInt(req.params.id as string, 10);
+        if (isNaN(id) || id <= 0) {
+          res.status(400).json({ error: "Invalid pantry item ID" });
+          return;
+        }
+
+        const deleted = await storage.deletePantryItem(id, req.userId!);
+        if (!deleted) {
+          res.status(404).json({ error: "Pantry item not found" });
+          return;
+        }
+        res.status(204).send();
+      } catch (error) {
+        console.error("Delete pantry item error:", error);
+        res.status(500).json({ error: "Failed to delete pantry item" });
+      }
+    },
+  );
+
+  // GET /api/pantry/expiring — Get expiring items (within 3 days)
+  app.get(
+    "/api/pantry/expiring",
+    requireAuth,
+    pantryRateLimit,
+    async (req: Request, res: Response): Promise<void> => {
+      try {
+        const features = await checkPremiumFeature(
+          req,
+          res,
+          "pantryTracking",
+          "Pantry tracking",
+        );
+        if (!features) return;
+
+        const items = await storage.getExpiringPantryItems(req.userId!, 3);
+        res.json(items);
+      } catch (error) {
+        console.error("Get expiring pantry items error:", error);
+        res.status(500).json({ error: "Failed to fetch expiring items" });
+      }
+    },
+  );
+
+  // ============================================================================
+  // MEAL CONFIRMATION
+  // ============================================================================
+
+  // POST /api/meal-plan/items/:id/confirm — Confirm a meal plan item as eaten
+  app.post(
+    "/api/meal-plan/items/:id/confirm",
+    requireAuth,
+    mealConfirmRateLimit,
+    async (req: Request, res: Response): Promise<void> => {
+      try {
+        const features = await checkPremiumFeature(
+          req,
+          res,
+          "mealConfirmation",
+          "Meal confirmation",
+        );
+        if (!features) return;
+
+        const id = parseInt(req.params.id as string, 10);
+        if (isNaN(id) || id <= 0) {
+          res.status(400).json({ error: "Invalid meal plan item ID" });
+          return;
+        }
+
+        // Fetch meal plan item and verify ownership (IDOR)
+        const mealPlanItem = await storage.getMealPlanItemById(id, req.userId!);
+        if (!mealPlanItem) {
+          res.status(404).json({ error: "Meal plan item not found" });
+          return;
+        }
+
+        // Check for duplicate confirmation
+        const confirmedIds = await storage.getConfirmedMealPlanItemIds(
+          req.userId!,
+          new Date(mealPlanItem.plannedDate),
+        );
+        if (confirmedIds.includes(id)) {
+          res.status(409).json({
+            error: "Meal plan item already confirmed",
+            code: "ALREADY_CONFIRMED",
+          });
+          return;
+        }
+
+        // Create daily log entry
+        const dailyLog = await storage.createDailyLog({
+          userId: req.userId!,
+          scannedItemId: mealPlanItem.scannedItemId || null,
+          recipeId: mealPlanItem.recipeId || null,
+          mealPlanItemId: mealPlanItem.id,
+          source: "meal_plan_confirm",
+          servings: mealPlanItem.servings || "1",
+          mealType: mealPlanItem.mealType,
+        });
+
+        res.status(201).json(dailyLog);
+      } catch (error) {
+        console.error("Meal confirmation error:", error);
+        res.status(500).json({ error: "Failed to confirm meal" });
       }
     },
   );

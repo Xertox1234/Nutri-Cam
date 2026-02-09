@@ -9,7 +9,7 @@ import {
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 
@@ -31,9 +31,13 @@ import {
   useRemoveMealPlanItem,
   invalidateMealPlanItems,
   useAddMealPlanItem,
+  useConfirmMealPlanItem,
 } from "@/hooks/useMealPlan";
+import { apiRequest } from "@/lib/query-client";
 import { useCreateMealPlanRecipe } from "@/hooks/useMealPlanRecipes";
+import { useExpiringPantryItems } from "@/hooks/usePantry";
 import type { MealPlanHomeScreenNavigationProp } from "@/types/navigation";
+import type { DailySummaryResponse } from "@/types/api";
 import type { MealPlanItemWithRelations } from "@shared/types/meal-plan";
 import type { MealSuggestion } from "@shared/types/meal-suggestions";
 
@@ -141,12 +145,18 @@ const DateStripItem = React.memo(function DateStripItem({
 
 const MealSlotItem = React.memo(function MealSlotItem({
   item,
+  isConfirmed,
   onPress,
   onRemove,
+  onConfirm,
+  canConfirm,
 }: {
   item: MealPlanItemWithRelations;
+  isConfirmed: boolean;
   onPress: (item: MealPlanItemWithRelations) => void;
   onRemove: (id: number) => void;
+  onConfirm: (id: number) => void;
+  canConfirm: boolean;
 }) {
   const { theme } = useTheme();
   const isOrphaned =
@@ -170,12 +180,32 @@ const MealSlotItem = React.memo(function MealSlotItem({
         {
           backgroundColor: isOrphaned
             ? withOpacity(theme.text, 0.02)
-            : withOpacity(theme.text, 0.04),
+            : isConfirmed
+              ? withOpacity(theme.success, 0.08)
+              : withOpacity(theme.text, 0.04),
         },
       ]}
       accessibilityRole="button"
-      accessibilityLabel={`${name}${totalCal ? `, ${totalCal} calories` : ""}`}
+      accessibilityLabel={`${name}${totalCal ? `, ${totalCal} calories` : ""}${isConfirmed ? ", confirmed" : ""}`}
     >
+      {canConfirm && (
+        <Pressable
+          onPress={() => !isConfirmed && onConfirm(item.id)}
+          hitSlop={8}
+          style={{ marginRight: Spacing.sm }}
+          accessibilityRole="button"
+          accessibilityLabel={
+            isConfirmed ? `${name} confirmed` : `Confirm ${name} as eaten`
+          }
+          disabled={isConfirmed}
+        >
+          <Feather
+            name={isConfirmed ? "check-circle" : "circle"}
+            size={20}
+            color={isConfirmed ? theme.success : theme.textSecondary}
+          />
+        </Pressable>
+      )}
       <View style={styles.mealSlotContent}>
         <ThemedText
           style={[
@@ -211,19 +241,25 @@ const MealSlotItem = React.memo(function MealSlotItem({
 const MealSlotSection = React.memo(function MealSlotSection({
   mealType,
   items,
+  confirmedIds,
   onItemPress,
   onRemoveItem,
   onAddItem,
   onSuggest,
+  onConfirmItem,
   canSuggest,
+  canConfirm,
 }: {
   mealType: MealType;
   items: MealPlanItemWithRelations[];
+  confirmedIds: Set<number>;
   onItemPress: (item: MealPlanItemWithRelations) => void;
   onRemoveItem: (id: number) => void;
   onAddItem: (mealType: MealType) => void;
   onSuggest: (mealType: MealType) => void;
+  onConfirmItem: (id: number) => void;
   canSuggest: boolean;
+  canConfirm: boolean;
 }) {
   const { theme } = useTheme();
   const iconName = MEAL_ICONS[mealType] || "circle";
@@ -279,8 +315,11 @@ const MealSlotSection = React.memo(function MealSlotSection({
         <MealSlotItem
           key={item.id}
           item={item}
+          isConfirmed={confirmedIds.has(item.id)}
           onPress={onItemPress}
           onRemove={onRemoveItem}
+          onConfirm={onConfirmItem}
+          canConfirm={canConfirm}
         />
       ))}
       <Pressable
@@ -463,8 +502,34 @@ export default function MealPlanHomeScreen() {
   const [suggestModalVisible, setSuggestModalVisible] = useState(false);
   const [suggestMealType, setSuggestMealType] = useState<MealType>("breakfast");
 
+  const selectedDateStr = formatDate(selectedDate);
+
   const createRecipeMutation = useCreateMealPlanRecipe();
   const addItemMutation = useAddMealPlanItem();
+  const confirmMutation = useConfirmMealPlanItem();
+  const { data: expiringItems } = useExpiringPantryItems(
+    features.pantryTracking,
+  );
+
+  // Fetch daily summary for confirmed meal plan item IDs
+  const { data: dailySummaryData } = useQuery<DailySummaryResponse>({
+    queryKey: ["/api/daily-summary", selectedDateStr],
+    queryFn: async () => {
+      const res = await apiRequest(
+        "GET",
+        `/api/daily-summary?date=${selectedDateStr}`,
+      );
+      if (!res.ok) {
+        throw new Error(`${res.status}: ${res.statusText}`);
+      }
+      return res.json();
+    },
+  });
+
+  const confirmedIds = useMemo(
+    () => new Set(dailySummaryData?.confirmedMealPlanItemIds ?? []),
+    [dailySummaryData?.confirmedMealPlanItemIds],
+  );
 
   const maxDaysForward = isPremium
     ? PREMIUM_MAX_DAYS_FORWARD
@@ -501,7 +566,6 @@ export default function MealPlanHomeScreen() {
     return grouped;
   }, [mealPlanItems]);
 
-  const selectedDateStr = formatDate(selectedDate);
   const selectedDayItems = useMemo(
     () => dayItems[selectedDateStr] || [],
     [dayItems, selectedDateStr],
@@ -632,9 +696,22 @@ export default function MealPlanHomeScreen() {
     ],
   );
 
+  const handleConfirmItem = useCallback(
+    (id: number) => {
+      haptics.impact(Haptics.ImpactFeedbackStyle.Medium);
+      confirmMutation.mutate(id);
+    },
+    [confirmMutation, haptics],
+  );
+
   const handleGroceryLists = useCallback(() => {
     haptics.selection();
     navigation.navigate("GroceryLists");
+  }, [haptics, navigation]);
+
+  const handlePantry = useCallback(() => {
+    haptics.selection();
+    navigation.navigate("Pantry");
   }, [haptics, navigation]);
 
   const handleRefresh = useCallback(() => {
@@ -692,8 +769,42 @@ export default function MealPlanHomeScreen() {
         }
         showsVerticalScrollIndicator={false}
       >
-        {/* Grocery List Entry Point */}
+        {/* Top Action Buttons */}
         <View style={styles.topActions}>
+          <Pressable
+            onPress={handlePantry}
+            hitSlop={8}
+            style={[
+              styles.groceryButton,
+              { backgroundColor: withOpacity(theme.link, 0.1) },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={`Pantry${expiringItems?.length ? `, ${expiringItems.length} expiring` : ""}`}
+          >
+            <Feather name="package" size={16} color={theme.link} />
+            <ThemedText
+              style={[styles.groceryButtonText, { color: theme.link }]}
+            >
+              Pantry
+            </ThemedText>
+            {(expiringItems?.length ?? 0) > 0 && (
+              <View
+                style={[
+                  styles.expiringBadge,
+                  { backgroundColor: theme.calorieAccent },
+                ]}
+              >
+                <ThemedText
+                  style={[
+                    styles.expiringBadgeText,
+                    { color: theme.buttonText },
+                  ]}
+                >
+                  {expiringItems!.length}
+                </ThemedText>
+              </View>
+            )}
+          </Pressable>
           <Pressable
             onPress={handleGroceryLists}
             hitSlop={8}
@@ -763,11 +874,14 @@ export default function MealPlanHomeScreen() {
             key={mealType}
             mealType={mealType}
             items={itemsByMealType[mealType] || []}
+            confirmedIds={confirmedIds}
             onItemPress={handleItemPress}
             onRemoveItem={handleRemoveItem}
             onAddItem={handleAddItem}
             onSuggest={handleSuggest}
+            onConfirmItem={handleConfirmItem}
             canSuggest={features.aiMealSuggestions}
+            canConfirm={features.mealConfirmation}
           />
         ))}
 
@@ -938,6 +1052,20 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
     paddingHorizontal: Spacing.lg,
     marginBottom: Spacing.sm,
+    gap: Spacing.sm,
+  },
+  expiringBadge: {
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+  },
+  expiringBadgeText: {
+    fontSize: 10,
+    fontFamily: FontFamily.bold,
+    // color set dynamically with theme.buttonText (white on colored badges)
   },
   groceryButton: {
     flexDirection: "row",

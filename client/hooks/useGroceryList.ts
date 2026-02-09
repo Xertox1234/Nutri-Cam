@@ -179,3 +179,34 @@ export function useDeleteGroceryList() {
     },
   });
 }
+
+export function useAddGroceryItemToPantry() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      listId,
+      itemId,
+    }: {
+      listId: number;
+      itemId: number;
+    }) => {
+      const res = await apiRequest(
+        "POST",
+        `/api/meal-plan/grocery-lists/${listId}/items/${itemId}/add-to-pantry`,
+      );
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`${res.status}: ${text}`);
+      }
+      return res.json();
+    },
+    onSuccess: (_data, { listId }) => {
+      queryClient.invalidateQueries({
+        queryKey: ["/api/meal-plan/grocery-lists", listId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/pantry"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/pantry/expiring"] });
+    },
+  });
+}

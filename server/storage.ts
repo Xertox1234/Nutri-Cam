@@ -24,6 +24,8 @@ import {
   type GroceryListItem,
   type InsertGroceryListItem,
   type MealSuggestionCacheEntry,
+  type PantryItem,
+  type InsertPantryItem,
   users,
   scannedItems,
   dailyLogs,
@@ -39,6 +41,7 @@ import {
   transactions,
   groceryLists,
   groceryListItems,
+  pantryItems,
   mealSuggestionCache,
 } from "@shared/schema";
 import { type CreateSavedItemInput } from "@shared/schemas/saved-items";
@@ -209,6 +212,16 @@ export interface IStorage {
       scannedItem: ScannedItem | null;
     })[]
   >;
+  getMealPlanItemById(
+    id: number,
+    userId: string,
+  ): Promise<
+    | (MealPlanItem & {
+        recipe: MealPlanRecipe | null;
+        scannedItem: ScannedItem | null;
+      })
+    | undefined
+  >;
   addMealPlanItem(item: InsertMealPlanItem): Promise<MealPlanItem>;
   removeMealPlanItem(id: number, userId: string): Promise<boolean>;
 
@@ -240,6 +253,42 @@ export interface IStorage {
   ): Promise<MealSuggestionCacheEntry>;
   incrementMealSuggestionCacheHit(id: number): Promise<void>;
   getDailyMealSuggestionCount(userId: string, date: Date): Promise<number>;
+
+  // Pantry items
+  getPantryItems(userId: string): Promise<PantryItem[]>;
+  getPantryItem(id: number, userId: string): Promise<PantryItem | undefined>;
+  createPantryItem(item: InsertPantryItem): Promise<PantryItem>;
+  updatePantryItem(
+    id: number,
+    userId: string,
+    updates: Partial<InsertPantryItem>,
+  ): Promise<PantryItem | undefined>;
+  deletePantryItem(id: number, userId: string): Promise<boolean>;
+  getExpiringPantryItems(
+    userId: string,
+    withinDays: number,
+  ): Promise<PantryItem[]>;
+
+  // Grocery item pantry flag
+  updateGroceryListItemPantryFlag(
+    id: number,
+    groceryListId: number,
+    addedToPantry: boolean,
+  ): Promise<GroceryListItem | undefined>;
+
+  // Meal confirmation helpers
+  getConfirmedMealPlanItemIds(userId: string, date: Date): Promise<number[]>;
+  getPlannedNutritionSummary(
+    userId: string,
+    date: Date,
+    confirmedIds?: number[],
+  ): Promise<{
+    plannedCalories: number;
+    plannedProtein: number;
+    plannedCarbs: number;
+    plannedFat: number;
+    plannedItemCount: number;
+  }>;
 
   // Aggregation
   getMealPlanIngredientsForDateRange(
@@ -386,14 +435,27 @@ export class DatabaseStorage implements IStorage {
 
     const result = await db
       .select({
-        totalCalories: sql<number>`COALESCE(SUM(CAST(${scannedItems.calories} AS DECIMAL) * CAST(${dailyLogs.servings} AS DECIMAL)), 0)`,
-        totalProtein: sql<number>`COALESCE(SUM(CAST(${scannedItems.protein} AS DECIMAL) * CAST(${dailyLogs.servings} AS DECIMAL)), 0)`,
-        totalCarbs: sql<number>`COALESCE(SUM(CAST(${scannedItems.carbs} AS DECIMAL) * CAST(${dailyLogs.servings} AS DECIMAL)), 0)`,
-        totalFat: sql<number>`COALESCE(SUM(CAST(${scannedItems.fat} AS DECIMAL) * CAST(${dailyLogs.servings} AS DECIMAL)), 0)`,
+        totalCalories: sql<number>`COALESCE(SUM(
+          COALESCE(CAST(${scannedItems.calories} AS DECIMAL), CAST(${mealPlanRecipes.caloriesPerServing} AS DECIMAL), 0)
+          * CAST(${dailyLogs.servings} AS DECIMAL)
+        ), 0)`,
+        totalProtein: sql<number>`COALESCE(SUM(
+          COALESCE(CAST(${scannedItems.protein} AS DECIMAL), CAST(${mealPlanRecipes.proteinPerServing} AS DECIMAL), 0)
+          * CAST(${dailyLogs.servings} AS DECIMAL)
+        ), 0)`,
+        totalCarbs: sql<number>`COALESCE(SUM(
+          COALESCE(CAST(${scannedItems.carbs} AS DECIMAL), CAST(${mealPlanRecipes.carbsPerServing} AS DECIMAL), 0)
+          * CAST(${dailyLogs.servings} AS DECIMAL)
+        ), 0)`,
+        totalFat: sql<number>`COALESCE(SUM(
+          COALESCE(CAST(${scannedItems.fat} AS DECIMAL), CAST(${mealPlanRecipes.fatPerServing} AS DECIMAL), 0)
+          * CAST(${dailyLogs.servings} AS DECIMAL)
+        ), 0)`,
         itemCount: sql<number>`COUNT(${dailyLogs.id})`,
       })
       .from(dailyLogs)
-      .innerJoin(scannedItems, eq(dailyLogs.scannedItemId, scannedItems.id))
+      .leftJoin(scannedItems, eq(dailyLogs.scannedItemId, scannedItems.id))
+      .leftJoin(mealPlanRecipes, eq(dailyLogs.recipeId, mealPlanRecipes.id))
       .where(
         and(
           eq(dailyLogs.userId, userId),
@@ -976,6 +1038,43 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
+  async getMealPlanItemById(
+    id: number,
+    userId: string,
+  ): Promise<
+    | (MealPlanItem & {
+        recipe: MealPlanRecipe | null;
+        scannedItem: ScannedItem | null;
+      })
+    | undefined
+  > {
+    const [item] = await db
+      .select()
+      .from(mealPlanItems)
+      .where(and(eq(mealPlanItems.id, id), eq(mealPlanItems.userId, userId)));
+    if (!item) return undefined;
+
+    let recipe: MealPlanRecipe | null = null;
+    let scannedItem: ScannedItem | null = null;
+
+    if (item.recipeId) {
+      const [r] = await db
+        .select()
+        .from(mealPlanRecipes)
+        .where(eq(mealPlanRecipes.id, item.recipeId));
+      recipe = r || null;
+    }
+    if (item.scannedItemId) {
+      const [s] = await db
+        .select()
+        .from(scannedItems)
+        .where(eq(scannedItems.id, item.scannedItemId));
+      scannedItem = s || null;
+    }
+
+    return { ...item, recipe, scannedItem };
+  }
+
   async addMealPlanItem(item: InsertMealPlanItem): Promise<MealPlanItem> {
     const [created] = await db.insert(mealPlanItems).values(item).returning();
     return created;
@@ -1140,6 +1239,185 @@ export class DatabaseStorage implements IStorage {
       );
 
     return Number(result[0]?.count ?? 0);
+  }
+
+  // ============================================================================
+  // PANTRY ITEMS
+  // ============================================================================
+
+  async getPantryItems(userId: string): Promise<PantryItem[]> {
+    return db
+      .select()
+      .from(pantryItems)
+      .where(eq(pantryItems.userId, userId))
+      .orderBy(pantryItems.category, pantryItems.name);
+  }
+
+  async getPantryItem(
+    id: number,
+    userId: string,
+  ): Promise<PantryItem | undefined> {
+    const [item] = await db
+      .select()
+      .from(pantryItems)
+      .where(and(eq(pantryItems.id, id), eq(pantryItems.userId, userId)));
+    return item || undefined;
+  }
+
+  async createPantryItem(item: InsertPantryItem): Promise<PantryItem> {
+    const [created] = await db.insert(pantryItems).values(item).returning();
+    return created;
+  }
+
+  async updatePantryItem(
+    id: number,
+    userId: string,
+    updates: Partial<InsertPantryItem>,
+  ): Promise<PantryItem | undefined> {
+    const [updated] = await db
+      .update(pantryItems)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(and(eq(pantryItems.id, id), eq(pantryItems.userId, userId)))
+      .returning();
+    return updated || undefined;
+  }
+
+  async deletePantryItem(id: number, userId: string): Promise<boolean> {
+    const result = await db
+      .delete(pantryItems)
+      .where(and(eq(pantryItems.id, id), eq(pantryItems.userId, userId)))
+      .returning({ id: pantryItems.id });
+    return result.length > 0;
+  }
+
+  async getExpiringPantryItems(
+    userId: string,
+    withinDays: number,
+  ): Promise<PantryItem[]> {
+    const now = new Date();
+    const deadline = new Date(now.getTime() + withinDays * 24 * 60 * 60 * 1000);
+
+    return db
+      .select()
+      .from(pantryItems)
+      .where(
+        and(
+          eq(pantryItems.userId, userId),
+          sql`${pantryItems.expiresAt} IS NOT NULL`,
+          lte(pantryItems.expiresAt, deadline),
+          gte(pantryItems.expiresAt, now),
+        ),
+      )
+      .orderBy(pantryItems.expiresAt);
+  }
+
+  async updateGroceryListItemPantryFlag(
+    id: number,
+    groceryListId: number,
+    addedToPantry: boolean,
+  ): Promise<GroceryListItem | undefined> {
+    const [updated] = await db
+      .update(groceryListItems)
+      .set({ addedToPantry })
+      .where(
+        and(
+          eq(groceryListItems.id, id),
+          eq(groceryListItems.groceryListId, groceryListId),
+        ),
+      )
+      .returning();
+    return updated || undefined;
+  }
+
+  async getConfirmedMealPlanItemIds(
+    userId: string,
+    date: Date,
+  ): Promise<number[]> {
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    const rows = await db
+      .select({ mealPlanItemId: dailyLogs.mealPlanItemId })
+      .from(dailyLogs)
+      .where(
+        and(
+          eq(dailyLogs.userId, userId),
+          eq(dailyLogs.source, "meal_plan_confirm"),
+          gte(dailyLogs.loggedAt, startOfDay),
+          lt(dailyLogs.loggedAt, endOfDay),
+          sql`${dailyLogs.mealPlanItemId} IS NOT NULL`,
+        ),
+      );
+
+    return rows.map((r) => r.mealPlanItemId!);
+  }
+
+  async getPlannedNutritionSummary(
+    userId: string,
+    date: Date,
+    confirmedIds?: number[],
+  ): Promise<{
+    plannedCalories: number;
+    plannedProtein: number;
+    plannedCarbs: number;
+    plannedFat: number;
+    plannedItemCount: number;
+  }> {
+    const dateStr = date.toISOString().split("T")[0];
+
+    // Exclude items already confirmed (logged) for this date
+    // Use provided confirmedIds if available to avoid redundant DB query
+    const excludeIds =
+      confirmedIds ?? (await this.getConfirmedMealPlanItemIds(userId, date));
+
+    const conditions = [
+      eq(mealPlanItems.userId, userId),
+      eq(mealPlanItems.plannedDate, dateStr),
+    ];
+    if (excludeIds.length > 0) {
+      conditions.push(
+        sql`${mealPlanItems.id} NOT IN (${sql.join(
+          excludeIds.map((id) => sql`${id}`),
+          sql`, `,
+        )})`,
+      );
+    }
+
+    const result = await db
+      .select({
+        plannedCalories: sql<number>`COALESCE(SUM(
+          COALESCE(CAST(${mealPlanRecipes.caloriesPerServing} AS DECIMAL), 0)
+          * CAST(${mealPlanItems.servings} AS DECIMAL)
+        ), 0)`,
+        plannedProtein: sql<number>`COALESCE(SUM(
+          COALESCE(CAST(${mealPlanRecipes.proteinPerServing} AS DECIMAL), 0)
+          * CAST(${mealPlanItems.servings} AS DECIMAL)
+        ), 0)`,
+        plannedCarbs: sql<number>`COALESCE(SUM(
+          COALESCE(CAST(${mealPlanRecipes.carbsPerServing} AS DECIMAL), 0)
+          * CAST(${mealPlanItems.servings} AS DECIMAL)
+        ), 0)`,
+        plannedFat: sql<number>`COALESCE(SUM(
+          COALESCE(CAST(${mealPlanRecipes.fatPerServing} AS DECIMAL), 0)
+          * CAST(${mealPlanItems.servings} AS DECIMAL)
+        ), 0)`,
+        plannedItemCount: sql<number>`COUNT(${mealPlanItems.id})`,
+      })
+      .from(mealPlanItems)
+      .leftJoin(mealPlanRecipes, eq(mealPlanItems.recipeId, mealPlanRecipes.id))
+      .where(and(...conditions));
+
+    return (
+      result[0] || {
+        plannedCalories: 0,
+        plannedProtein: 0,
+        plannedCarbs: 0,
+        plannedFat: 0,
+        plannedItemCount: 0,
+      }
+    );
   }
 
   // ============================================================================
