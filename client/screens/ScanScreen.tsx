@@ -26,6 +26,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { useHaptics } from "@/hooks/useHaptics";
 import { useAccessibility } from "@/hooks/useAccessibility";
 import { Spacing, BorderRadius } from "@/constants/theme";
+import { UpgradeModal } from "@/components/UpgradeModal";
 import type { ScanScreenNavigationProp } from "@/types/navigation";
 
 // Camera abstraction imports
@@ -74,6 +75,7 @@ export default function ScanScreen() {
     requestPermission,
   } = useCameraPermissions();
   const [torch, setTorch] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const haptics = useHaptics();
 
   // Timeout refs for cleanup
@@ -164,7 +166,7 @@ export default function ScanScreen() {
     // Check if user can scan today (daily limit)
     if (!canScan) {
       haptics.notification(Haptics.NotificationFeedbackType.Warning);
-      // TODO: Show upgrade modal
+      setShowUpgradeModal(true);
       return;
     }
 
@@ -185,7 +187,7 @@ export default function ScanScreen() {
     // Check if user can scan today (daily limit)
     if (!canScan) {
       haptics.notification(Haptics.NotificationFeedbackType.Warning);
-      // TODO: Show upgrade modal
+      setShowUpgradeModal(true);
       return;
     }
 
@@ -217,7 +219,7 @@ export default function ScanScreen() {
     // Check if user can scan today (daily limit)
     if (!canScan) {
       haptics.notification(Haptics.NotificationFeedbackType.Warning);
-      // TODO: Show upgrade modal
+      setShowUpgradeModal(true);
       return;
     }
 
@@ -438,6 +440,11 @@ export default function ScanScreen() {
           <View style={styles.spacer} />
         </View>
       </View>
+
+      <UpgradeModal
+        visible={showUpgradeModal}
+        onClose={() => setShowUpgradeModal(false)}
+      />
     </View>
   );
 }

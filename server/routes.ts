@@ -60,6 +60,12 @@ import {
   CatalogQuotaError,
 } from "./services/recipe-catalog";
 import { importRecipeFromUrl } from "./services/recipe-import";
+import { validateReceipt } from "./services/receipt-validation";
+import {
+  UpgradeRequestSchema,
+  RestoreRequestSchema,
+} from "@shared/schemas/subscription";
+import { sendError } from "./lib/api-errors";
 
 import { isValidCalendarDate } from "./utils/date-validation";
 
@@ -115,6 +121,15 @@ const nutritionLookupRateLimit = rateLimit({
   windowMs: 60 * 1000, // 1 minute
   max: 15, // 15 requests per minute per user
   message: { error: "Too many nutrition lookups. Please wait." },
+  keyGenerator: (req) => req.userId || ipKeyGenerator(req),
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const subscriptionRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // 10 attempts per window
+  message: { error: "Too many subscription requests. Please wait." },
   keyGenerator: (req) => req.userId || ipKeyGenerator(req),
   standardHeaders: true,
   legacyHeaders: false,
@@ -709,6 +724,120 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } catch (error) {
         console.error("Error fetching scan count:", error);
         res.status(500).json({ error: "Failed to fetch scan count" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/subscription/upgrade",
+    requireAuth,
+    subscriptionRateLimit,
+    async (req: Request, res: Response) => {
+      try {
+        const parsed = UpgradeRequestSchema.safeParse(req.body);
+        if (!parsed.success) {
+          return sendError(res, 400, "Invalid request body", {
+            details: parsed.error.flatten(),
+          });
+        }
+
+        const { receipt, platform, productId, transactionId } = parsed.data;
+
+        // Check for duplicate transaction
+        const existing = await storage.getTransaction(transactionId);
+        if (existing) {
+          return sendError(res, 409, "Transaction already processed", {
+            code: "ALREADY_OWNED",
+          });
+        }
+
+        // Validate receipt with platform store
+        const validation = await validateReceipt(receipt, platform);
+        if (!validation.valid) {
+          await storage.createTransaction({
+            userId: req.userId!,
+            transactionId,
+            receipt,
+            platform,
+            productId,
+            status: "failed",
+          });
+          return res.json({
+            success: false,
+            error: "Receipt validation failed",
+            code: validation.errorCode || "UNKNOWN",
+          });
+        }
+
+        // Store transaction and upgrade user
+        await storage.createTransaction({
+          userId: req.userId!,
+          transactionId,
+          receipt,
+          platform,
+          productId,
+          status: "completed",
+        });
+
+        const expiresAt = validation.expiresAt || null;
+        await storage.updateSubscription(req.userId!, "premium", expiresAt);
+
+        res.json({
+          success: true,
+          tier: "premium",
+          expiresAt: expiresAt?.toISOString() || null,
+        });
+      } catch (error) {
+        console.error("Error processing upgrade:", error);
+        sendError(res, 500, "Failed to process upgrade");
+      }
+    },
+  );
+
+  app.post(
+    "/api/subscription/restore",
+    requireAuth,
+    subscriptionRateLimit,
+    async (req: Request, res: Response) => {
+      try {
+        const parsed = RestoreRequestSchema.safeParse(req.body);
+        if (!parsed.success) {
+          return sendError(res, 400, "Invalid request body", {
+            details: parsed.error.flatten(),
+          });
+        }
+
+        const { receipt, platform } = parsed.data;
+        const validation = await validateReceipt(receipt, platform);
+        if (!validation.valid) {
+          return res.json({
+            success: false,
+            error: "No valid subscription found",
+            code: validation.errorCode || "UNKNOWN",
+          });
+        }
+
+        const restoreId = `restore-${Date.now()}-${req.userId}`;
+        await storage.createTransaction({
+          userId: req.userId!,
+          transactionId: restoreId,
+          receipt,
+          platform,
+          productId: "restore",
+          status: "completed",
+        });
+
+        const expiresAt = validation.expiresAt || null;
+        await storage.updateSubscription(req.userId!, "premium", expiresAt);
+
+        res.json({
+          success: true,
+          tier: "premium",
+          expiresAt: expiresAt?.toISOString() || null,
+        });
+      } catch (error) {
+        console.error("Error restoring purchases:", error);
+        sendError(res, 500, "Failed to restore purchases");
       }
     },
   );

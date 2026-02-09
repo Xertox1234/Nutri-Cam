@@ -7,6 +7,8 @@ import {
   ActivityIndicator,
   Image,
   AccessibilityInfo,
+  Linking,
+  Platform,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -29,6 +31,8 @@ import { useAccessibility } from "@/hooks/useAccessibility";
 import { useAuthContext } from "@/context/AuthContext";
 import { useSavedItemCount } from "@/hooks/useSavedItems";
 import { usePremiumFeature } from "@/hooks/usePremiumFeatures";
+import { usePremiumContext } from "@/context/PremiumContext";
+import { UpgradeModal } from "@/components/UpgradeModal";
 import { Spacing, BorderRadius, withOpacity } from "@/constants/theme";
 import { compressImage, cleanupImage } from "@/lib/image-compression";
 import { getApiUrl } from "@/lib/query-client";
@@ -434,11 +438,13 @@ const NutritionGoalsSection = React.memo(function NutritionGoalsSection({
   todaySummary,
   defaultCalorieGoal,
   onSetup,
+  onUpgrade,
 }: {
   userGoals: UserGoals | undefined;
   todaySummary: DailySummary | undefined;
   defaultCalorieGoal: number;
   onSetup: () => void;
+  onUpgrade: () => void;
 }) {
   const { theme } = useTheme();
   const canShowMacros = usePremiumFeature("macroGoals");
@@ -543,7 +549,7 @@ const NutritionGoalsSection = React.memo(function NutritionGoalsSection({
                 accessibilityLabel="Detailed macro tracking requires Premium subscription"
                 accessibilityHint="Upgrade to premium to unlock macro goals"
                 onPress={() => {
-                  // TODO: Show upgrade modal
+                  onUpgrade();
                 }}
                 style={[
                   styles.macroGoalRow,
@@ -925,6 +931,109 @@ const DietaryPreferencesSection = React.memo(
   },
 );
 
+const SubscriptionSection = React.memo(function SubscriptionSection({
+  onUpgrade,
+}: {
+  onUpgrade: () => void;
+}) {
+  const { theme } = useTheme();
+  const { isPremium } = usePremiumContext();
+  const haptics = useHaptics();
+
+  return (
+    <>
+      <ThemedText type="h4" style={styles.sectionTitle}>
+        Subscription
+      </ThemedText>
+      <Card elevation={1} style={styles.subscriptionCard}>
+        <View style={styles.subscriptionHeader}>
+          <View
+            style={[
+              styles.tierBadge,
+              {
+                backgroundColor: isPremium
+                  ? withOpacity(theme.success, 0.12)
+                  : theme.backgroundSecondary,
+              },
+            ]}
+          >
+            <Feather
+              name={isPremium ? "star" : "user"}
+              size={16}
+              color={isPremium ? theme.success : theme.textSecondary}
+            />
+            <ThemedText
+              type="small"
+              style={{
+                color: isPremium ? theme.success : theme.textSecondary,
+                fontWeight: "600",
+              }}
+            >
+              {isPremium ? "Premium" : "Free"}
+            </ThemedText>
+          </View>
+        </View>
+
+        {isPremium ? (
+          <Pressable
+            onPress={() => {
+              haptics.impact(Haptics.ImpactFeedbackStyle.Light);
+              if (Platform.OS === "ios") {
+                Linking.openURL("https://apps.apple.com/account/subscriptions");
+              } else {
+                Linking.openURL(
+                  "https://play.google.com/store/account/subscriptions",
+                );
+              }
+            }}
+            accessibilityLabel="Manage subscription"
+            accessibilityRole="button"
+            style={({ pressed }) => [
+              styles.subscriptionAction,
+              {
+                backgroundColor: theme.backgroundSecondary,
+                opacity: pressed ? 0.7 : 1,
+              },
+            ]}
+          >
+            <Feather name="settings" size={16} color={theme.text} />
+            <ThemedText type="body">Manage Subscription</ThemedText>
+            <Feather
+              name="chevron-right"
+              size={16}
+              color={theme.textSecondary}
+            />
+          </Pressable>
+        ) : (
+          <Pressable
+            onPress={() => {
+              haptics.impact(Haptics.ImpactFeedbackStyle.Medium);
+              onUpgrade();
+            }}
+            accessibilityLabel="Upgrade to Premium"
+            accessibilityRole="button"
+            style={({ pressed }) => [
+              styles.upgradeButton,
+              {
+                backgroundColor: theme.success,
+                opacity: pressed ? 0.85 : 1,
+              },
+            ]}
+          >
+            <Feather name="zap" size={16} color={theme.buttonText} />
+            <ThemedText
+              type="body"
+              style={{ color: theme.buttonText, fontWeight: "600" }}
+            >
+              Upgrade to Premium
+            </ThemedText>
+          </Pressable>
+        )}
+      </Card>
+    </>
+  );
+});
+
 const LibrarySection = React.memo(function LibrarySection({
   savedItemCount,
   onPress,
@@ -1046,6 +1155,7 @@ export default function ProfileScreen() {
   const [isEditing, setIsEditing] = useState(false);
   const [displayName, setDisplayName] = useState(user?.displayName || "");
   const [isSaving, setIsSaving] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [nameSelection, setNameSelection] = useState<
     { start: number; end: number } | undefined
@@ -1271,7 +1381,16 @@ export default function ProfileScreen() {
           todaySummary={todaySummary}
           defaultCalorieGoal={calorieGoal}
           onSetup={() => navigation.navigate("GoalSetup")}
+          onUpgrade={() => setShowUpgradeModal(true)}
         />
+      </Animated.View>
+
+      <Animated.View
+        entering={
+          reducedMotion ? undefined : FadeInDown.delay(350).duration(400)
+        }
+      >
+        <SubscriptionSection onUpgrade={() => setShowUpgradeModal(true)} />
       </Animated.View>
 
       <Animated.View
@@ -1311,6 +1430,11 @@ export default function ProfileScreen() {
           onLogout={handleLogout}
         />
       </Animated.View>
+
+      <UpgradeModal
+        visible={showUpgradeModal}
+        onClose={() => setShowUpgradeModal(false)}
+      />
     </KeyboardAwareScrollViewCompat>
   );
 }
@@ -1610,5 +1734,37 @@ const styles = StyleSheet.create({
   },
   librarySubtitle: {
     opacity: 0.6,
+  },
+  subscriptionCard: {
+    padding: Spacing.lg,
+    marginBottom: Spacing["2xl"],
+  },
+  subscriptionHeader: {
+    marginBottom: Spacing.md,
+  },
+  tierBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: Spacing.xs,
+    paddingVertical: Spacing.xs,
+    paddingHorizontal: Spacing.md,
+    borderRadius: BorderRadius.full,
+  },
+  subscriptionAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.md,
+    padding: Spacing.md,
+    borderRadius: BorderRadius.sm,
+  },
+  upgradeButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.sm,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.full,
+    minHeight: 48,
   },
 });

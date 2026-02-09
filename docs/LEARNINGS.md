@@ -10,6 +10,7 @@ This document captures key learnings, gotchas, and architectural decisions disco
 - [Simplification Principles](#simplification-principles)
 - [Performance Learnings](#performance-learnings)
 - [Caching Learnings](#caching-learnings)
+- [Subscription & Payment Learnings](#subscription--payment-learnings)
 
 ---
 
@@ -603,6 +604,101 @@ if (cacheId) {
 
 ---
 
+## Subscription & Payment Learnings
+
+### Stub Services Must Fail-Safe in Production
+
+**Vulnerability Found:** Receipt validation stub was initially implemented to auto-approve all receipts unconditionally:
+
+```typescript
+// DANGEROUS: Auto-approves in all environments including production
+export async function validateReceipt(receipt: string): Promise<Result> {
+  // TODO: implement real validation
+  return { valid: true, expiresAt: oneYearFromNow() };
+}
+```
+
+**Impact:** If deployed, any user could upgrade to premium for free by sending any string as a receipt.
+
+**Fix:** Two-layer environment gating:
+
+```typescript
+const STUB_MODE = !process.env.APPLE_SHARED_SECRET;
+
+export async function validateReceipt(receipt: string, platform: Platform) {
+  if (STUB_MODE) {
+    if (process.env.NODE_ENV === "production") {
+      console.error("Receipt validation stubbed in production — rejecting.");
+      return { valid: false, errorCode: "NOT_IMPLEMENTED" };
+    }
+    console.warn("Receipt validation stubbed — auto-approving in dev.");
+    return { valid: true, expiresAt: oneYearFromNow() };
+  }
+  // Real validation...
+}
+```
+
+**Lesson:** Stubs that grant access (payment, auth, permissions) must **always** reject in production. Use credential presence (`!process.env.X`) as the stub trigger rather than a manual boolean, so production with credentials works and dev without credentials stubs safely. Add a second layer (`NODE_ENV` check) as defense in depth.
+
+**Pattern:** See "Stub Service with Production Safety Gate" in PATTERNS.md
+
+**File:** `/Users/williamtower/projects/Nutri-Cam/server/services/receipt-validation.ts`
+
+---
+
+### API Response Consistency: Match Existing Conventions
+
+**Problem:** The `sendError()` utility initially included `success: false` in error responses:
+
+```typescript
+// Initial implementation
+export function sendError(res: Response, status: number, error: string) {
+  res.status(status).json({ success: false, error }); // Extra field
+}
+```
+
+**Issue:** Every other error response in the codebase uses `{ error: "..." }` without a `success` field. Adding `success: false` to subscription endpoints created an inconsistency that clients would need to handle differently.
+
+**Fix:** Removed `success: false` to match the established convention:
+
+```typescript
+// Fixed: Matches existing pattern
+export function sendError(
+  res: Response,
+  status: number,
+  error: string,
+  options?: ErrorOptions,
+) {
+  const body: Record<string, unknown> = { error };
+  if (options?.code) body.code = options.code;
+  res.status(status).json(body);
+}
+```
+
+**Lesson:** Before introducing a helper that standardizes responses, check the existing response format. A utility that deviates from the established convention creates more inconsistency than it solves. When in doubt, grep for `res.status(` and `res.json({` to see the existing pattern.
+
+**Related:** Also caught `UpgradeResponseSchema` using `z.string()` for the tier field instead of the domain-specific `subscriptionTierSchema`. When referencing a constrained value in a Zod schema, always reuse the existing domain schema rather than a generic `z.string()`. This ensures client-side validation catches invalid values the same way the server does.
+
+---
+
+### Restore Endpoints Need the Same Rigor as Purchase Endpoints
+
+**Problem:** The upgrade endpoint had Zod validation, rate limiting, and transaction logging, but the restore endpoint was implemented with manual field checks and no transaction logging.
+
+**Root Cause:** Restore feels "less important" than purchase since it doesn't charge the user. This creates a false sense that it needs less protection.
+
+**Why it matters:**
+
+- A restore without Zod validation accepts malformed data that could cause downstream errors
+- A restore without transaction logging creates a gap in the audit trail
+- A restore without rate limiting can be abused to probe for valid receipts
+
+**Fix:** Applied identical safeguards to the restore endpoint: `RestoreRequestSchema.safeParse()`, `subscriptionRateLimit`, and `createTransaction()` call.
+
+**Lesson:** When building paired endpoints (create/restore, subscribe/unsubscribe, save/delete), apply the same validation, rate limiting, and logging to both. The "less important" endpoint is often the one attackers target because developers protect it less.
+
+---
+
 ## Key Takeaways
 
 1. **Security:** Authentication + Authorization + Input Validation on every endpoint
@@ -611,6 +707,8 @@ if (cacheId) {
 4. **Performance:** Index foreign keys, paginate lists, memoize renders
 5. **Types:** Inline response types, proper navigation types, no `any`
 6. **Caching:** Fire-and-forget for non-critical ops, hash-based invalidation for user-dependent content
+7. **Stubs & Mocks:** Services that grant access must fail-safe in production; derive stub mode from credential presence, not manual flags
+8. **Paired Endpoints:** Apply identical safeguards (validation, rate limiting, logging) to both sides of a paired operation (purchase/restore, create/delete)
 
 ---
 

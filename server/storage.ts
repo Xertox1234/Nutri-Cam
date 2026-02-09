@@ -17,6 +17,8 @@ import {
   type InsertRecipeIngredient,
   type MealPlanItem,
   type InsertMealPlanItem,
+  type Transaction,
+  type InsertTransaction,
   users,
   scannedItems,
   dailyLogs,
@@ -29,6 +31,7 @@ import {
   mealPlanRecipes,
   recipeIngredients,
   mealPlanItems,
+  transactions,
 } from "@shared/schema";
 import { type CreateSavedItemInput } from "@shared/schemas/saved-items";
 import { db } from "./db";
@@ -154,6 +157,10 @@ export interface IStorage {
     limit?: number,
     offset?: number,
   ): Promise<{ items: CommunityRecipe[]; total: number }>;
+
+  // Transactions
+  getTransaction(transactionId: string): Promise<Transaction | undefined>;
+  createTransaction(data: InsertTransaction): Promise<Transaction>;
 
   // Meal plan recipes
   findMealPlanRecipeByExternalId(
@@ -708,6 +715,25 @@ export class DatabaseStorage implements IStorage {
         .where(eq(communityRecipes.authorId, userId)),
     ]);
     return { items, total: Number(countResult[0]?.count ?? 0) };
+  }
+
+  // ============================================================================
+  // TRANSACTIONS
+  // ============================================================================
+
+  async getTransaction(
+    transactionId: string,
+  ): Promise<Transaction | undefined> {
+    const [txn] = await db
+      .select()
+      .from(transactions)
+      .where(eq(transactions.transactionId, transactionId));
+    return txn || undefined;
+  }
+
+  async createTransaction(data: InsertTransaction): Promise<Transaction> {
+    const [txn] = await db.insert(transactions).values(data).returning();
+    return txn;
   }
 
   // ============================================================================

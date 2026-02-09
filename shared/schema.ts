@@ -267,6 +267,7 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   savedItems: many(savedItems),
   mealPlanRecipes: many(mealPlanRecipes),
   mealPlanItems: many(mealPlanItems),
+  transactions: many(transactions),
   profile: one(userProfiles, {
     fields: [users.id],
     references: [userProfiles.userId],
@@ -586,6 +587,45 @@ export type InsertSavedItem = typeof savedItems.$inferInsert;
 export type CommunityRecipe = typeof communityRecipes.$inferSelect;
 export type InsertCommunityRecipe = typeof communityRecipes.$inferInsert;
 export type RecipeGenerationLog = typeof recipeGenerationLog.$inferSelect;
+
+// ============================================================================
+// TRANSACTIONS (subscription purchases)
+// ============================================================================
+
+export const transactions = pgTable(
+  "transactions",
+  {
+    id: serial("id").primaryKey(),
+    userId: varchar("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    transactionId: text("transaction_id").notNull().unique(),
+    receipt: text("receipt").notNull(),
+    platform: text("platform").notNull(),
+    productId: text("product_id").notNull(),
+    status: text("status").default("pending").notNull(),
+    createdAt: timestamp("created_at")
+      .default(sql`CURRENT_TIMESTAMP`)
+      .notNull(),
+    updatedAt: timestamp("updated_at")
+      .default(sql`CURRENT_TIMESTAMP`)
+      .notNull(),
+  },
+  (table) => ({
+    userIdIdx: index("transactions_user_id_idx").on(table.userId),
+    statusIdx: index("transactions_status_idx").on(table.status),
+  }),
+);
+
+export const transactionsRelations = relations(transactions, ({ one }) => ({
+  user: one(users, {
+    fields: [transactions.userId],
+    references: [users.id],
+  }),
+}));
+
+export type Transaction = typeof transactions.$inferSelect;
+export type InsertTransaction = typeof transactions.$inferInsert;
 
 // Meal planning types
 export const insertMealPlanRecipeSchema = createInsertSchema(

@@ -7,8 +7,10 @@ This document captures established patterns for the NutriScan codebase. Follow t
 - [Security Patterns](#security-patterns)
   - [SSRF Protection for Server-Side URL Fetching](#ssrf-protection-for-server-side-url-fetching)
 - [TypeScript Patterns](#typescript-patterns)
+  - [Zod Discriminated Union for Response Schemas](#zod-discriminated-union-for-response-schemas)
   - [Shared Client API Types](#shared-client-api-types-exception-pattern)
 - [API Patterns](#api-patterns)
+  - [Stub Service with Production Safety Gate](#stub-service-with-production-safety-gate)
 - [External API Patterns](#external-api-patterns)
   - [External Resource Dedup on Save](#external-resource-dedup-on-save)
   - [Multi-Source Nutrition Lookup Chain](#multi-source-nutrition-lookup-chain)
@@ -16,6 +18,7 @@ This document captures established patterns for the NutriScan codebase. Follow t
   - [Cross-Validation Between Data Sources](#cross-validation-between-data-sources)
   - [Graceful 404 Handling with Raw Fetch](#graceful-404-handling-with-raw-fetch)
 - [Database Patterns](#database-patterns)
+  - [`text()` Over `pgEnum` for Enum-Like Columns](#text-over-pgenum-for-enum-like-columns)
   - [Cache-First Pattern for Expensive Operations](#cache-first-pattern-for-expensive-operations)
   - [Fire-and-Forget for Non-Critical Background Operations](#fire-and-forget-for-non-critical-background-operations)
   - [Content Hash Invalidation Pattern](#content-hash-invalidation-pattern)
@@ -550,6 +553,68 @@ async getUser(id: string): Promise<User | null> {
 - Consider logging unexpected values for monitoring
 - The application continues working even with corrupted data
 
+### Zod Discriminated Union for Response Schemas
+
+When an API response has two distinct shapes (success vs error), use `z.discriminatedUnion()` to define both paths with a shared discriminant field. This gives both server and client compile-time safety over the response shape:
+
+```typescript
+// shared/schemas/subscription.ts
+export const UpgradeResponseSchema = z.discriminatedUnion("success", [
+  z.object({
+    success: z.literal(true),
+    tier: subscriptionTierSchema, // Reuse domain schema, not z.string()
+    expiresAt: z.string().nullable(),
+  }),
+  z.object({
+    success: z.literal(false),
+    error: z.string(),
+    code: z.string().optional(),
+  }),
+]);
+
+export type UpgradeResponse = z.infer<typeof UpgradeResponseSchema>;
+```
+
+```typescript
+// Server: TypeScript narrows based on the discriminant
+const response: UpgradeResponse = validation.valid
+  ? { success: true, tier: "premium", expiresAt: expiry.toISOString() }
+  : { success: false, error: "Invalid receipt", code: validation.errorCode };
+
+// Client: Safe narrowing
+const result = UpgradeResponseSchema.parse(data);
+if (result.success) {
+  // result.tier is typed as SubscriptionTier
+  // result.expiresAt is typed as string | null
+} else {
+  // result.error is typed as string
+  // result.code is typed as string | undefined
+}
+```
+
+```typescript
+// Bad: Loose object with optional fields
+const ResponseSchema = z.object({
+  success: z.boolean(),
+  tier: z.string().optional(),
+  expiresAt: z.string().optional(),
+  error: z.string().optional(),
+  code: z.string().optional(),
+});
+// Client must manually check which fields exist — no compile-time narrowing
+```
+
+**Key rules:**
+
+- Use a domain-specific Zod schema for constrained fields (e.g., `subscriptionTierSchema` not `z.string()`)
+- Make the discriminant field the first field for readability
+- Use `z.literal()` for the discriminant values
+- Place in `shared/schemas/` so both server and client share the same type
+
+**When to use:** Any API endpoint with distinctly different success and error response shapes (upgrades, payments, imports, multi-step workflows).
+
+**When NOT to use:** Simple endpoints where success returns data and error returns `{ error: string }` (use the standard API error structure instead).
+
 ### Extend Express Types Properly
 
 When adding properties to Express Request:
@@ -760,6 +825,67 @@ const usdaApiKey = process.env.USDA_API_KEY || "DEMO_KEY";
 - Any optional config where the fallback has significant limitations
 
 **Why:** Silent fallbacks cause unexpected failures in production. A startup warning ensures developers are aware of the limitation.
+
+### Stub Service with Production Safety Gate
+
+When integrating third-party services that require credentials not available in development (app store APIs, payment processors, push notification services), create a stub that auto-approves in dev but rejects in production:
+
+```typescript
+// server/services/receipt-validation.ts
+
+/**
+ * Stub mode activates when the required credential is missing.
+ * Two-layer defense: environment variable presence + NODE_ENV check.
+ */
+const STUB_MODE = !process.env.APPLE_SHARED_SECRET;
+
+export async function validateReceipt(
+  receipt: string,
+  platform: Platform,
+): Promise<ReceiptValidationResult> {
+  if (STUB_MODE) {
+    // Layer 2: Even if STUB_MODE, reject in production
+    if (process.env.NODE_ENV === "production") {
+      console.error(
+        "Receipt validation is stubbed in production — rejecting. " +
+          "Set APPLE_SHARED_SECRET to enable.",
+      );
+      return { valid: false, errorCode: "NOT_IMPLEMENTED" };
+    }
+    console.warn("Receipt validation is stubbed — auto-approving in dev.");
+    return { valid: true, expiresAt: oneYearFromNow() };
+  }
+
+  // Real implementation when credentials are available
+  return platform === "ios"
+    ? validateAppleReceipt(receipt)
+    : validateGoogleReceipt(receipt);
+}
+```
+
+```typescript
+// Bad: Boolean flag with no production protection
+const USE_STUB = true; // Developer forgets to change before deploy
+export async function validateReceipt(...) {
+  if (USE_STUB) return { valid: true }; // Auto-approves in production!
+}
+```
+
+**Key elements:**
+
+1. **Derive stub mode from credential presence** (`!process.env.X`), not a manual boolean flag
+2. **Two-layer defense**: stub mode check + production NODE_ENV rejection
+3. **Log loudly**: `console.error` in production, `console.warn` in dev
+4. **Return failure, not success** when stubbed in production
+
+**When to use:**
+
+- Payment/receipt validation (App Store, Google Play)
+- Push notification services (APNs, FCM)
+- SMS/email verification services
+- Any third-party service requiring production-only credentials
+
+**Reference:** `server/services/receipt-validation.ts`
 
 ### Pagination with useInfiniteQuery
 
@@ -1066,6 +1192,52 @@ a good default, but it prevents handling expected non-2xx responses gracefully.
 ---
 
 ## Database Patterns
+
+### `text()` Over `pgEnum` for Enum-Like Columns
+
+Use `text()` with application-level validation instead of `pgEnum` for columns with a fixed set of values:
+
+```typescript
+// Good: text() with Zod validation at the application boundary
+export const transactions = pgTable("transactions", {
+  status: text("status").default("pending").notNull(),
+  platform: text("platform").notNull(),
+});
+
+// Validate at API boundary with Zod
+const PlatformSchema = z.enum(["ios", "android"]);
+const StatusSchema = z.enum(["pending", "approved", "rejected"]);
+
+// Validate from database with safeParse + fallback
+const tier = subscriptionTierSchema.safeParse(row.subscriptionTier);
+return tier.success ? tier.data : "free";
+```
+
+```typescript
+// Avoid: pgEnum creates a database-level type requiring migrations to change
+import { pgEnum } from "drizzle-orm/pg-core";
+
+const statusEnum = pgEnum("transaction_status", [
+  "pending",
+  "approved",
+  "rejected",
+]);
+export const transactions = pgTable("transactions", {
+  status: statusEnum("status").default("pending").notNull(),
+});
+// Adding "refunded" later requires ALTER TYPE ... ADD VALUE migration
+```
+
+**Why:**
+
+- Adding/removing values requires a database migration with `pgEnum` but only a code change with `text()`
+- Drizzle ORM push (`npm run db:push`) handles `text()` columns cleanly; `pgEnum` changes can cause push conflicts
+- Validation belongs at the application boundary (Zod schemas), not the database layer
+- All existing tables in this project use `text()` for enum-like fields (subscriptionTier, sourceType, status, platform, mealType, category)
+
+**When to use:** Any column with a constrained set of values (status, type, tier, platform, role).
+
+**Pair with:** "Zod safeParse with Fallback for Database Values" pattern (above) for safe reads, and shared Zod schemas for safe writes.
 
 ### Cache-First Pattern for Expensive Operations
 
