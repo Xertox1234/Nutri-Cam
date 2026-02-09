@@ -1,0 +1,47 @@
+import { MOCK_PRODUCTS } from "./constants";
+import type { IAPPurchaseResult, UseIAPResult } from "./types";
+
+function generateMockReceipt(): string {
+  return `mock-receipt-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function generateMockTransactionId(): string {
+  return `mock-txn-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+export function useIAP(): UseIAPResult {
+  return {
+    connected: true,
+    products: MOCK_PRODUCTS,
+
+    async requestPurchase(productId: string): Promise<IAPPurchaseResult> {
+      console.info(`[MockIAP] requestPurchase: ${productId}`);
+      await new Promise((resolve) => setTimeout(resolve, 800));
+
+      const result: IAPPurchaseResult = {
+        productId,
+        transactionId: generateMockTransactionId(),
+        transactionReceipt: generateMockReceipt(),
+      };
+      console.info(`[MockIAP] Purchase completed: ${result.transactionId}`);
+      return result;
+    },
+
+    async restorePurchases(): Promise<IAPPurchaseResult> {
+      console.info("[MockIAP] restorePurchases");
+      await new Promise((resolve) => setTimeout(resolve, 800));
+
+      const result: IAPPurchaseResult = {
+        productId: MOCK_PRODUCTS[0].productId,
+        transactionId: generateMockTransactionId(),
+        transactionReceipt: generateMockReceipt(),
+      };
+      console.info(`[MockIAP] Restore completed: ${result.transactionId}`);
+      return result;
+    },
+
+    async finishTransaction(purchase: IAPPurchaseResult): Promise<void> {
+      console.info(`[MockIAP] finishTransaction: ${purchase.transactionId}`);
+    },
+  };
+}

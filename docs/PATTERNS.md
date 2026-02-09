@@ -8,6 +8,7 @@ This document captures established patterns for the NutriScan codebase. Follow t
   - [SSRF Protection for Server-Side URL Fetching](#ssrf-protection-for-server-side-url-fetching)
 - [TypeScript Patterns](#typescript-patterns)
   - [Zod Discriminated Union for Response Schemas](#zod-discriminated-union-for-response-schemas)
+  - [Discriminated Union State with Named Predicates](#discriminated-union-state-with-named-predicates)
   - [Shared Client API Types](#shared-client-api-types-exception-pattern)
 - [API Patterns](#api-patterns)
   - [Stub Service with Production Safety Gate](#stub-service-with-production-safety-gate)
@@ -62,6 +63,8 @@ This document captures established patterns for the NutriScan codebase. Follow t
   - [Semantic Theme Values](#semantic-theme-values-over-hardcoded-colors)
   - [Semantic BorderRadius Naming](#semantic-borderradius-naming)
 - [Documentation Patterns](#documentation-patterns)
+- [Testing Patterns](#testing-patterns)
+  - [Pure Function Extraction for Vitest Testability](#pure-function-extraction-for-vitest-testability)
 
 ---
 
@@ -614,6 +617,76 @@ const ResponseSchema = z.object({
 **When to use:** Any API endpoint with distinctly different success and error response shapes (upgrades, payments, imports, multi-step workflows).
 
 **When NOT to use:** Simple endpoints where success returns data and error returns `{ error: string }` (use the standard API error structure instead).
+
+### Discriminated Union State with Named Predicates
+
+When a hook or component tracks an async flow with multiple states (loading, error, success, cancelled, etc.), model the state as a TypeScript discriminated union keyed on `status`. Attach extra data only to the variants that need it, then write named predicate functions for each logical grouping of states:
+
+```typescript
+// shared/types/subscription.ts — define the state union
+export type PurchaseState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "pending" }
+  | { status: "success" }
+  | { status: "cancelled" }
+  | { status: "restoring" }
+  | { status: "error"; error: PurchaseError };
+
+// client/lib/subscription/type-guards.ts — named predicates
+export function isPurchaseInProgress(state: PurchaseState): boolean {
+  return (
+    state.status === "loading" ||
+    state.status === "pending" ||
+    state.status === "restoring"
+  );
+}
+
+export function canInitiatePurchase(state: PurchaseState): boolean {
+  return (
+    state.status === "idle" ||
+    state.status === "cancelled" ||
+    state.status === "error"
+  );
+}
+```
+
+```typescript
+// Hook uses predicates as guards before state transitions
+const purchase = useCallback(async () => {
+  if (!canInitiatePurchase(state)) return;  // guard
+  safeSetState({ status: "loading" });
+  // ... async flow
+}, [state]);
+
+// Component uses predicates for UI logic
+const inProgress = isPurchaseInProgress(state);
+<Pressable disabled={inProgress}>
+```
+
+```typescript
+// Bad: Inline status checks scattered across files
+if (
+  state.status === "loading" ||
+  state.status === "pending" ||
+  state.status === "restoring"
+) {
+  // duplicated in 3 places with risk of drift
+}
+```
+
+**Key elements:**
+
+1. **Union, not enum + separate data**: Each variant carries only the fields it needs (e.g., only `error` has the `error` field). TypeScript narrows automatically after `status` checks.
+2. **Named predicates, not inline checks**: Group related statuses into named functions (`canInitiatePurchase`, `isPurchaseInProgress`). This centralizes the logic and prevents drift when new statuses are added.
+3. **Predicates are pure**: They live in their own file (e.g., `type-guards.ts`), take the union as input, and are trivially testable.
+4. **Predicates used for both guards and UI**: The same predicate drives transition guards in hooks and disabled/loading states in components.
+
+**When to use:** Any async multi-step flow with 4+ states where different parts of the codebase need to check "can I start?" vs "is it in progress?" vs "is it done?" (purchases, uploads, onboarding wizards, multi-step forms).
+
+**When NOT to use:** Simple boolean loading/error states where `useState<boolean>` or TanStack Query's built-in `isLoading`/`isError` suffice.
+
+**Reference:** `shared/types/subscription.ts`, `client/lib/subscription/type-guards.ts`, `client/lib/iap/usePurchase.ts`
 
 ### Extend Express Types Properly
 
@@ -3903,6 +3976,118 @@ if (analysisResult.needsFollowUp) {
 **When NOT to use:** Deterministic lookups (barcode scans, database queries) where results are either correct or not found.
 
 **Why:** Low-confidence results displayed without refinement erode user trust. The follow-up is text-only (no image re-send), so it's cheap and fast. The threshold (0.7) is tunable — lower values reduce prompts but risk showing inaccurate data.
+
+---
+
+## Testing Patterns
+
+### Pure Function Extraction for Vitest Testability
+
+When a React Native hook or component contains business logic that you want to unit test, extract the pure functions into a separate `*-utils.ts` file that does **not** import from `react-native`, `expo-*`, or any native module. Vitest runs in Node via Vite/Rollup, which cannot parse React Native's JSX runtime or native module bindings.
+
+```
+# File structure
+client/lib/iap/
+  usePurchase.ts          # Hook — imports React Native, not directly testable in Vitest
+  purchase-utils.ts       # Pure functions — no RN imports, fully testable
+  __tests__/
+    usePurchase.test.ts   # Tests import from purchase-utils.ts only
+
+client/components/
+  UpgradeModal.tsx        # Component — imports React Native
+  upgrade-modal-utils.ts  # Pure functions — BENEFITS array, getCtaLabel(), isCtaDisabled()
+```
+
+```typescript
+// purchase-utils.ts — Pure, no React Native imports
+import type { PurchaseError } from "@shared/types/subscription";
+import type { UpgradeRequest } from "@shared/schemas/subscription";
+
+export function mapIAPError(error: unknown): PurchaseError {
+  if (error instanceof Error) {
+    const msg = error.message.toLowerCase();
+    if (msg.includes("user-cancelled") || msg.includes("user cancelled")) {
+      return { code: "USER_CANCELLED", message: "Purchase cancelled" };
+    }
+    // ... other mappings
+  }
+  return {
+    code: "UNKNOWN",
+    message: "An unexpected error occurred",
+    originalError: error,
+  };
+}
+
+export function buildReceiptPayload(
+  purchase: {
+    transactionReceipt: string;
+    productId: string;
+    transactionId: string;
+  },
+  platform: "ios" | "android",
+): UpgradeRequest {
+  return {
+    receipt: purchase.transactionReceipt,
+    platform,
+    productId: purchase.productId,
+    transactionId: purchase.transactionId,
+  };
+}
+```
+
+```typescript
+// usePurchase.ts — Hook that imports pure functions + React Native
+import { useState, useRef, useCallback, useEffect } from "react";
+import { Platform } from "react-native";
+import {
+  mapIAPError,
+  buildReceiptPayload,
+  isSupportedPlatform,
+} from "./purchase-utils";
+
+export function usePurchase() {
+  // ... uses pure functions for logic, RN APIs for platform/state
+}
+```
+
+```typescript
+// __tests__/usePurchase.test.ts — Tests pure functions directly
+import {
+  mapIAPError,
+  buildReceiptPayload,
+  isSupportedPlatform,
+} from "../purchase-utils";
+
+describe("mapIAPError", () => {
+  it("maps user-cancelled error", () => {
+    expect(mapIAPError(new Error("user-cancelled")).code).toBe(
+      "USER_CANCELLED",
+    );
+  });
+});
+```
+
+**Extraction checklist — move to `*-utils.ts` if the function:**
+
+- Takes plain data in, returns plain data out (no hooks, no `Platform.OS`, no `Haptics`)
+- Does not import from `react-native`, `expo-*`, or any native module
+- Can be described without mentioning React (e.g., "maps error codes", "builds payload", "computes label")
+
+**What stays in the hook/component:**
+
+- `useState`, `useRef`, `useCallback`, `useEffect`
+- `Platform.OS`, `Haptics.*`, `AsyncStorage`
+- Anything that requires a React rendering context
+
+**When to use:** Any time you write logic in a hook or component that you want to unit test and that logic does not inherently depend on React or native APIs.
+
+**When NOT to use:** Logic that is genuinely coupled to React state or native APIs (animation drivers, gesture handlers, navigation actions). For those, use integration tests or manual testing.
+
+**Existing examples:**
+
+- `client/lib/iap/purchase-utils.ts` — `mapIAPError`, `buildReceiptPayload`, `buildRestorePayload`, `isSupportedPlatform`
+- `client/components/upgrade-modal-utils.ts` — `BENEFITS`, `getCtaLabel`, `isCtaDisabled`
+- `client/lib/serving-size-utils.ts` — serving size calculation logic
 
 ---
 

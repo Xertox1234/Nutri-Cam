@@ -11,6 +11,7 @@ This document captures key learnings, gotchas, and architectural decisions disco
 - [Performance Learnings](#performance-learnings)
 - [Caching Learnings](#caching-learnings)
 - [Subscription & Payment Learnings](#subscription--payment-learnings)
+- [Testing & Tooling Learnings](#testing--tooling-learnings)
 
 ---
 
@@ -699,6 +700,132 @@ export function sendError(
 
 ---
 
+## Testing & Tooling Learnings
+
+### Vitest Cannot Import React Native Modules
+
+**Problem:** Tests for `usePurchase` hook initially imported the hook directly. Vitest (which uses Vite/Rollup under the hood) failed with parse errors on React Native's JSX runtime and native module bindings.
+
+**Error (abbreviated):**
+
+```
+SyntaxError: Unexpected token
+ > import { Platform } from "react-native";
+              ^
+
+[vite] Pre-transform error: Failed to resolve import "react-native"
+```
+
+**Root Cause:** Vitest runs in Node.js, not in a Metro bundler environment. React Native modules (`react-native`, `expo-haptics`, `expo-iap`, etc.) contain native bindings and JSX that Vite's Rollup-based transform pipeline cannot parse. Unlike Jest (which can be configured with `react-native` presets and module mappers), Vitest has no built-in RN transform support.
+
+**Solution:** Extract all testable business logic into pure `*-utils.ts` files that import **only** from `@shared/` or plain TypeScript modules. Test those files instead of the hooks.
+
+```
+# Testable (no RN imports)
+client/lib/iap/purchase-utils.ts         → mapIAPError, buildReceiptPayload, isSupportedPlatform
+client/components/upgrade-modal-utils.ts → BENEFITS, getCtaLabel, isCtaDisabled
+
+# Not directly testable in Vitest (imports RN)
+client/lib/iap/usePurchase.ts
+client/components/UpgradeModal.tsx
+```
+
+**Lesson:** In a Vitest + React Native project, draw a hard boundary: pure logic in `*-utils.ts` (testable), React/RN-dependent code in hooks/components (tested via simulator or integration tests). Do not try to mock `react-native` in Vitest -- it leads to fragile mocks that break on RN upgrades.
+
+**Pattern:** See "Pure Function Extraction for Vitest Testability" in PATTERNS.md
+
+---
+
+### `__DEV__` Conditional Require for Mock/Real Module Switching
+
+**Decision:** The IAP (In-App Purchase) module needs a mock implementation in development and the real `expo-iap` library in production native builds. We chose `__DEV__` (Metro's build-time global) with `require()` rather than environment variables or other approaches.
+
+**Implementation:**
+
+```typescript
+// client/lib/iap/index.ts
+const USE_MOCK = __DEV__;
+
+let _useIAP: () => UseIAPResult;
+
+if (USE_MOCK) {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const mock = require("./mock-iap");
+  _useIAP = mock.useIAP;
+} else {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const expoIap = require("expo-iap");
+  _useIAP = expoIap.useIAP;
+}
+
+export const useIAP: () => UseIAPResult = _useIAP;
+```
+
+**Why `__DEV__` over `.env` variables:**
+
+| Approach                        | Pros                                                                                            | Cons                                                                                   |
+| ------------------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| `__DEV__`                       | Automatically correct in dev vs prod; no config needed; Metro strips dead branch in prod builds | Requires `eslint-disable` for `require()`                                              |
+| `EXPO_PUBLIC_USE_MOCK_IAP=true` | Standard env pattern                                                                            | Easy to misconfigure; env vars persist across builds; developer must remember to unset |
+| Dynamic import `await import()` | No `require()`                                                                                  | Async at module level; complicates hook initialization                                 |
+
+**Key details:**
+
+1. The `_useIAP` variable must be explicitly typed as `() => UseIAPResult` to avoid `any` (code review finding H1)
+2. The `require()` calls need `eslint-disable` comments since our ESLint config forbids CommonJS require (code review finding H2)
+3. Both branches must conform to the same `UseIAPResult` interface -- the type contract is the abstraction boundary
+
+**Lesson:** When a module needs a dev stub that cannot coexist with the real implementation (because the real module only loads on native builds), use `__DEV__` conditional require with a shared type interface. This is the React Native equivalent of the server-side "Stub Service with Production Safety Gate" pattern.
+
+**File:** `client/lib/iap/index.ts`
+
+---
+
+### Mounted Ref Guard for Async Hooks
+
+**Problem:** The `usePurchase` hook runs async operations (IAP purchase, server receipt validation, subscription refresh) that may complete after the component unmounts. Calling `setState` on an unmounted component causes React warnings and can mask bugs.
+
+**Solution:** A `mountedRef` + `safeSetState` wrapper:
+
+```typescript
+export function usePurchase() {
+  const [state, setState] = useState<PurchaseState>({ status: "idle" });
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const safeSetState = useCallback((newState: PurchaseState) => {
+    if (mountedRef.current) {
+      setState(newState);
+    }
+  }, []);
+
+  // All async flows use safeSetState instead of setState
+  const purchase = useCallback(async () => {
+    safeSetState({ status: "loading" });
+    try {
+      // ... long async chain
+      safeSetState({ status: "success" });
+    } catch (error) {
+      safeSetState({ status: "error", error: mapIAPError(error) });
+    }
+  }, [safeSetState]);
+}
+```
+
+**Why not just useEffect cleanup with AbortController?** The IAP purchase flow spans multiple async steps (store purchase, server validation, transaction finish) from different libraries. An AbortController cannot cancel a store dialog or a `finishTransaction` call. The mounted ref is a simpler guard that lets the async chain complete but silently drops the state update if the component is gone.
+
+**Lesson:** For hooks with multi-step async flows that cross library boundaries, a mounted ref guard is simpler and more reliable than trying to cancel each step. Use `safeSetState` consistently throughout the hook -- never call raw `setState` in an async callback.
+
+**File:** `client/lib/iap/usePurchase.ts`
+
+---
+
 ## Key Takeaways
 
 1. **Security:** Authentication + Authorization + Input Validation on every endpoint
@@ -709,6 +836,7 @@ export function sendError(
 6. **Caching:** Fire-and-forget for non-critical ops, hash-based invalidation for user-dependent content
 7. **Stubs & Mocks:** Services that grant access must fail-safe in production; derive stub mode from credential presence, not manual flags
 8. **Paired Endpoints:** Apply identical safeguards (validation, rate limiting, logging) to both sides of a paired operation (purchase/restore, create/delete)
+9. **Testing:** Extract pure functions from RN hooks/components into `*-utils.ts` files for Vitest testability; Vitest cannot parse React Native imports
 
 ---
 
