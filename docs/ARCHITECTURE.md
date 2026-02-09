@@ -1021,7 +1021,7 @@ Client-Side Auth Check:
 3. Client caches status for 5 minutes (TanStack Query staleTime)
 4. Scan count cached for 30 seconds, refreshed after each successful scan
 
-> **Note:** Payment integration is not yet implemented. Tier is set manually via the storage layer (`storage.updateSubscription()`).
+> **Payment status:** Client-side IAP flow is implemented with a dev mock (`client/lib/iap/`). In development, `mock-iap.ts` auto-approves purchases. Server endpoints (`/api/subscription/upgrade`, `/restore`) accept receipts and update tiers, but receipt validation (`server/services/receipt-validation.ts`) is **stubbed** — Apple App Store Server API and Google Play Developer API integrations are not yet implemented. See `todos/062-production-iap-receipt-validation.md`.
 
 ---
 
