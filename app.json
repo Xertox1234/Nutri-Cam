@@ -45,6 +45,7 @@
         }
       ],
       "expo-web-browser",
+      "expo-iap",
       [
         "react-native-vision-camera",
         {
