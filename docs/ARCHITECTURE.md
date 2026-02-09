@@ -284,7 +284,14 @@ import { users } from "@shared/schema";
 - **users → user_profiles**: One-to-one (cascade delete)
 - **users → scanned_items**: One-to-many (cascade delete)
 - **users → daily_logs**: One-to-many (cascade delete)
+- **users → saved_items**: One-to-many (cascade delete)
+- **users → suggestion_cache**: One-to-many (cascade delete)
+- **users → transactions**: One-to-many (cascade delete)
 - **scanned_items → daily_logs**: One-to-many (cascade delete)
+- **scanned_items → suggestion_cache**: One-to-many (cascade delete)
+- **scanned_items → saved_items**: One-to-many (set null on delete)
+- **suggestion_cache → instruction_cache**: One-to-many (cascade delete)
+- **nutrition_cache**: Standalone (no FK relationships, keyed by query string)
 - **users → meal_plan_recipes**: One-to-many (cascade delete)
 - **meal_plan_recipes → recipe_ingredients**: One-to-many (cascade delete)
 - **meal_plan_recipes → meal_plan_items**: One-to-many (set null on delete)
@@ -601,7 +608,7 @@ When OFF returns data, it is cross-validated against a secondary source
 ### Storage Layer
 
 ```typescript
-// server/storage.ts - Database operations interface
+// server/storage.ts - Database operations interface (abbreviated)
 
 interface IStorage {
   // Users
@@ -615,55 +622,79 @@ interface IStorage {
   createUserProfile(data: InsertUserProfile): Promise<UserProfile>;
   updateUserProfile(
     userId: string,
-    updates: Partial<UserProfile>,
+    updates: Partial<InsertUserProfile>,
   ): Promise<UserProfile | undefined>;
 
   // Scanned Items
-  getScannedItems(userId: string): Promise<ScannedItem[]>;
+  getScannedItems(
+    userId: string,
+    limit?: number,
+    offset?: number,
+  ): Promise<{ items: ScannedItem[]; total: number }>;
   getScannedItem(id: number): Promise<ScannedItem | undefined>;
   createScannedItem(data: InsertScannedItem): Promise<ScannedItem>;
 
   // Daily Logs
+  getDailyLogs(userId: string, date: Date): Promise<DailyLog[]>;
   getDailySummary(userId: string, date: Date): Promise<DailySummary>;
   createDailyLog(data: InsertDailyLog): Promise<DailyLog>;
 
-  // Meal Plan Recipes
-  findMealPlanRecipeByExternalId(
+  // Subscriptions
+  getSubscriptionStatus(
     userId: string,
-    externalId: string,
-  ): Promise<MealPlanRecipe | undefined>;
-  getMealPlanRecipe(id: number): Promise<MealPlanRecipe | undefined>;
-  getMealPlanRecipeWithIngredients(
-    id: number,
-  ): Promise<
-    (MealPlanRecipe & { ingredients: RecipeIngredient[] }) | undefined
-  >;
-  getUserMealPlanRecipes(
+  ): Promise<{ tier: SubscriptionTier; expiresAt: Date | null } | undefined>;
+  updateSubscription(
     userId: string,
-    limit?: number,
-    offset?: number,
-  ): Promise<{ items: MealPlanRecipe[]; total: number }>;
-  createMealPlanRecipe(
-    recipe: InsertMealPlanRecipe,
-    ingredients?: InsertRecipeIngredient[],
-  ): Promise<MealPlanRecipe>;
-  updateMealPlanRecipe(
-    id: number,
-    userId: string,
-    updates: Partial<InsertMealPlanRecipe>,
-  ): Promise<MealPlanRecipe | undefined>;
-  deleteMealPlanRecipe(id: number, userId: string): Promise<boolean>;
+    tier: SubscriptionTier,
+    expiresAt: Date | null,
+  ): Promise<User | undefined>;
+  getDailyScanCount(userId: string, date: Date): Promise<number>;
 
-  // Meal Plan Items
-  getMealPlanItems(
+  // Saved Items
+  getSavedItems(userId: string): Promise<SavedItem[]>;
+  getSavedItemCount(userId: string): Promise<number>;
+  createSavedItem(
     userId: string,
-    startDate: string,
-    endDate: string,
-  ): Promise<MealPlanItemWithRelations[]>;
-  addMealPlanItem(item: InsertMealPlanItem): Promise<MealPlanItem>;
-  removeMealPlanItem(id: number, userId: string): Promise<boolean>;
+    item: CreateSavedItemInput,
+  ): Promise<SavedItem | null>;
+  deleteSavedItem(id: number, userId: string): Promise<boolean>;
+
+  // Suggestion Cache
+  getSuggestionCache(
+    scannedItemId: number,
+    userId: string,
+    profileHash: string,
+  ): Promise<{ id: number; suggestions: SuggestionData[] } | undefined>;
+  createSuggestionCache(
+    scannedItemId: number,
+    userId: string,
+    profileHash: string,
+    suggestions: SuggestionData[],
+    expiresAt: Date,
+  ): Promise<{ id: number }>;
+  incrementSuggestionCacheHit(id: number): Promise<void>;
+  invalidateSuggestionCacheForUser(userId: string): Promise<number>;
+
+  // Instruction Cache
+  getInstructionCache(
+    suggestionCacheId: number,
+    suggestionIndex: number,
+  ): Promise<{ id: number; instructions: string } | undefined>;
+  createInstructionCache(
+    suggestionCacheId: number,
+    suggestionIndex: number,
+    suggestionTitle: string,
+    suggestionType: string,
+    instructions: string,
+  ): Promise<void>;
+  incrementInstructionCacheHit(id: number): Promise<void>;
+
+  // Meal Plan Recipes & Items (see full interface in server/storage.ts)
+  // Community Recipes, Transactions (see full interface in server/storage.ts)
 }
 ```
+
+**Note:** `nutritionCache` is accessed directly via Drizzle in `server/services/nutrition-lookup.ts`, not through the `IStorage` interface, since it's a service-internal concern with its own upsert logic.
 
 ### Meal Planning Services
 
@@ -875,6 +906,81 @@ Client-Side Auth Check:
 │ Return to Client │
 └──────────────────┘
 ```
+
+### Caching Strategy
+
+Three database-backed caches reduce redundant API calls and AI generation costs. All use a cache-first pattern: check cache before making external requests.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Caching Architecture                          │
+└─────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────┐
+│                    nutrition_cache                             │
+│  Key: normalized query string (lowercase, trimmed)            │
+│  TTL: 7 days                                                  │
+│  Scope: global (shared across all users)                      │
+│  Source: nutrition-lookup.ts (direct Drizzle, not IStorage)   │
+│  Upsert: on conflict, update data + expiry                    │
+│                                                               │
+│  Flow:                                                        │
+│  GET /api/nutrition/lookup?name=chicken                       │
+│    → getCachedNutrition(["chicken"])                           │
+│    → cache hit? return with source="cache"                    │
+│    → cache miss? CNF → USDA → API Ninjas → cacheNutrition()  │
+└──────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────┐
+│                   suggestion_cache                             │
+│  Key: (scannedItemId, userId, profileHash)                    │
+│  TTL: 30 days                                                 │
+│  Scope: per-item per-user (personalized by dietary profile)   │
+│  Source: storage.ts (IStorage interface)                       │
+│                                                               │
+│  Flow:                                                        │
+│  POST /api/items/:id/suggestions                              │
+│    → calculateProfileHash(userProfile)                        │
+│    → getSuggestionCache(itemId, userId, profileHash)          │
+│    → cache hit? return + increment hit count (fire-and-forget)│
+│    → cache miss? OpenAI gpt-4o-mini → createSuggestionCache() │
+└──────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────┐
+│                   instruction_cache                            │
+│  Key: (suggestionCacheId, suggestionIndex)                    │
+│  TTL: none (cascades with parent suggestion_cache)            │
+│  Scope: per-suggestion drill-down                             │
+│  Source: storage.ts (IStorage interface)                       │
+│                                                               │
+│  Flow:                                                        │
+│  POST /api/items/:id/suggestions/:index/instructions          │
+│    → getInstructionCache(cacheId, index)                      │
+│    → cache hit? return + increment hit count                  │
+│    → cache miss? OpenAI gpt-4o-mini → createInstructionCache()│
+└──────────────────────────────────────────────────────────────┘
+```
+
+#### Profile-Hash Cache Invalidation
+
+Suggestion cache entries are keyed partly by a SHA-256 hash of the user's dietary profile fields (`allergies`, `dietType`, `cookingSkillLevel`, `cookingTimeAvailable`). This provides two invalidation mechanisms:
+
+1. **Implicit** — If a user changes their dietary preferences, the new `profileHash` won't match any existing cache entries, causing a cache miss and fresh generation.
+2. **Explicit** — When the profile update endpoint detects changes to cache-affecting fields, it calls `invalidateSuggestionCacheForUser()` to delete all that user's cached suggestions (fire-and-forget, non-blocking). This also cascades to delete related instruction cache entries.
+
+```
+Profile Update Flow:
+  PUT /api/profile/dietary
+    → detect changed fields (allergies, dietType, etc.)
+    → update profile in DB
+    → if cache-affecting fields changed:
+        storage.invalidateSuggestionCacheForUser(userId)  // fire-and-forget
+        (cascades: deletes suggestion_cache → instruction_cache)
+```
+
+#### Hit Counting
+
+All three cache tables track `hitCount` which is incremented on each cache hit via fire-and-forget calls (`incrementSuggestionCacheHit`, `incrementInstructionCacheHit`). This provides observability into cache effectiveness without blocking responses.
 
 ### Photo Analysis Pipeline
 

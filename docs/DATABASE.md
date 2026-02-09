@@ -210,6 +210,106 @@ CREATE TABLE daily_logs (
 | meal_type       | TEXT         | nullable           | Meal category        |
 | logged_at       | TIMESTAMP    | NOT NULL           | When food was logged |
 
+### Nutrition Cache Table
+
+Caches nutrition lookup results from external APIs (CNF, USDA, API Ninjas) to avoid redundant requests. Uses a normalized query key for deduplication and a 7-day TTL with hit counting for observability.
+
+```sql
+CREATE TABLE nutrition_cache (
+  id SERIAL PRIMARY KEY,
+  query_key VARCHAR(255) NOT NULL UNIQUE,
+  normalized_name VARCHAR(255) NOT NULL,
+  source VARCHAR(50) NOT NULL,
+  data JSONB NOT NULL,
+  hit_count INTEGER DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+  expires_at TIMESTAMP NOT NULL
+);
+
+CREATE INDEX nutrition_cache_query_key_idx ON nutrition_cache (query_key);
+CREATE INDEX nutrition_cache_expires_at_idx ON nutrition_cache (expires_at);
+```
+
+| Column          | Type         | Constraints      | Description                                          |
+| --------------- | ------------ | ---------------- | ---------------------------------------------------- |
+| id              | SERIAL       | PK               | Auto-incrementing ID                                 |
+| query_key       | VARCHAR(255) | NOT NULL, UNIQUE | Normalized lowercase query (e.g. `"chicken breast"`) |
+| normalized_name | VARCHAR(255) | NOT NULL         | Canonical food name from the source                  |
+| source          | VARCHAR(50)  | NOT NULL         | `"cnf"`, `"usda"`, or `"api-ninjas"`                 |
+| data            | JSONB        | NOT NULL         | Full `NutritionData` object (calories, macros, etc.) |
+| hit_count       | INTEGER      | DEFAULT 0        | Number of cache hits                                 |
+| created_at      | TIMESTAMP    | NOT NULL, auto   | When entry was cached                                |
+| expires_at      | TIMESTAMP    | NOT NULL         | TTL expiry (7 days from creation)                    |
+
+**Key normalization:** `query.toLowerCase().trim().replace(/\s+/g, " ")` — see `normalizeForCache()` in `server/services/nutrition-lookup.ts`.
+
+**Upsert on conflict:** If a query key already exists, the data and expiry are updated (not duplicated).
+
+### Suggestion Cache Table
+
+Caches the 4 AI-generated suggestions (2 recipes, 1 craft, 1 pairing) per scanned item per user. Uses a profile hash to invalidate when dietary preferences change. 30-day TTL.
+
+```sql
+CREATE TABLE suggestion_cache (
+  id SERIAL PRIMARY KEY,
+  scanned_item_id INTEGER REFERENCES scanned_items(id) ON DELETE CASCADE NOT NULL,
+  user_id VARCHAR REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+  profile_hash VARCHAR(64) NOT NULL,
+  suggestions JSONB NOT NULL,
+  hit_count INTEGER DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+  expires_at TIMESTAMP NOT NULL
+);
+
+CREATE INDEX suggestion_cache_item_user_idx ON suggestion_cache (scanned_item_id, user_id);
+CREATE INDEX suggestion_cache_expires_at_idx ON suggestion_cache (expires_at);
+```
+
+| Column          | Type        | Constraints        | Description                                     |
+| --------------- | ----------- | ------------------ | ----------------------------------------------- |
+| id              | SERIAL      | PK                 | Auto-incrementing ID                            |
+| scanned_item_id | INTEGER     | FK → scanned_items | The food item these suggestions are for         |
+| user_id         | VARCHAR     | FK → users         | The user who requested suggestions              |
+| profile_hash    | VARCHAR(64) | NOT NULL           | SHA-256 of dietary profile fields (see below)   |
+| suggestions     | JSONB       | NOT NULL           | Array of `SuggestionData[]` (type, title, desc) |
+| hit_count       | INTEGER     | DEFAULT 0          | Number of cache hits                            |
+| created_at      | TIMESTAMP   | NOT NULL, auto     | When suggestions were cached                    |
+| expires_at      | TIMESTAMP   | NOT NULL           | TTL expiry (30 days from creation)              |
+
+**Profile hash fields:** SHA-256 of `{ allergies, dietType, cookingSkillLevel, cookingTimeAvailable }` — see `server/utils/profile-hash.ts`.
+
+**Cache invalidation:** When a user updates any of these dietary profile fields, `invalidateSuggestionCacheForUser()` deletes all their cached suggestions (fire-and-forget in profile update route).
+
+### Instruction Cache Table
+
+Caches individual instruction text for a specific suggestion (drill-down from suggestion → full instructions). Linked to the parent suggestion cache entry. No TTL — instructions are deleted when the parent suggestion cache entry is deleted.
+
+```sql
+CREATE TABLE instruction_cache (
+  id SERIAL PRIMARY KEY,
+  suggestion_cache_id INTEGER REFERENCES suggestion_cache(id) ON DELETE CASCADE NOT NULL,
+  suggestion_index INTEGER NOT NULL,
+  suggestion_title TEXT NOT NULL,
+  suggestion_type TEXT NOT NULL,
+  instructions TEXT NOT NULL,
+  hit_count INTEGER DEFAULT 0,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+);
+
+CREATE INDEX instruction_cache_suggestion_idx ON instruction_cache (suggestion_cache_id, suggestion_index);
+```
+
+| Column              | Type      | Constraints           | Description                              |
+| ------------------- | --------- | --------------------- | ---------------------------------------- |
+| id                  | SERIAL    | PK                    | Auto-incrementing ID                     |
+| suggestion_cache_id | INTEGER   | FK → suggestion_cache | Parent suggestion set                    |
+| suggestion_index    | INTEGER   | NOT NULL              | Index (0–3) within the suggestions array |
+| suggestion_title    | TEXT      | NOT NULL              | Title of the suggestion                  |
+| suggestion_type     | TEXT      | NOT NULL              | `"recipe"`, `"craft"`, or `"pairing"`    |
+| instructions        | TEXT      | NOT NULL              | Full generated instruction text          |
+| hit_count           | INTEGER   | DEFAULT 0             | Number of cache hits                     |
+| created_at          | TIMESTAMP | NOT NULL, auto        | When instructions were cached            |
+
 ### Recipe Generation Log Table
 
 Tracks daily AI recipe generation usage per user for premium limit enforcement.
@@ -286,10 +386,13 @@ export const dailyLogsRelations = relations(dailyLogs, ({ one }) => ({
 
 ### Cascade Deletes
 
-All foreign keys use `ON DELETE CASCADE`:
+All foreign keys use `ON DELETE CASCADE` unless noted:
 
-- Deleting a user removes all their profiles, scanned items, and daily logs
-- Deleting a scanned item removes all related daily logs
+- Deleting a user removes all their profiles, scanned items, daily logs, saved items, suggestion cache entries, and transactions
+- Deleting a scanned item removes all related daily logs and suggestion cache entries
+- Deleting a suggestion cache entry removes all related instruction cache entries
+- `saved_items.source_item_id` uses `ON DELETE SET NULL` (saved item preserved if source deleted)
+- `meal_plan_items.recipe_id` and `meal_plan_items.scanned_item_id` use `ON DELETE SET NULL`
 
 ---
 
