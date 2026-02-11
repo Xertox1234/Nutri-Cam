@@ -807,7 +807,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
 
         // Validate receipt with platform store
-        const validation = await validateReceipt(receipt, platform);
+        const validation = await validateReceipt(receipt, platform, productId);
         if (!validation.valid) {
           await storage.createTransaction({
             userId: req.userId!,

@@ -21,6 +21,8 @@ This document captures established patterns for the NutriScan codebase. Follow t
   - [Barcode Padding Normalization](#barcode-padding-normalization)
   - [Cross-Validation Between Data Sources](#cross-validation-between-data-sources)
   - [Graceful 404 Handling with Raw Fetch](#graceful-404-handling-with-raw-fetch)
+  - [Fetch Timeout with AbortSignal for External APIs](#fetch-timeout-with-abortsignal-for-external-apis)
+  - [Zod safeParse for External API Responses](#zod-safeparse-for-external-api-responses)
 - [Database Patterns](#database-patterns)
   - [`text()` Over `pgEnum` for Enum-Like Columns](#text-over-pgenum-for-enum-like-columns)
   - [Cache-First Pattern for Expensive Operations](#cache-first-pattern-for-expensive-operations)
@@ -76,6 +78,7 @@ This document captures established patterns for the NutriScan codebase. Follow t
   - [Pure Function Extraction for Vitest Testability](#pure-function-extraction-for-vitest-testability)
   - [Pure Function Extraction for Server Services](#pure-function-extraction-for-server-services)
   - [Type Guard Over `as` Cast for Runtime Safety](#type-guard-over-as-cast-for-runtime-safety)
+  - [vi.resetModules for Env-Dependent Module Testing](#viresetmodules-for-env-dependent-module-testing)
 
 ---
 
@@ -1460,6 +1463,100 @@ application states rather than errors (404 = "not found, try manual search",
 a good default, but it prevents handling expected non-2xx responses gracefully.
 
 **Reference:** `fetchBarcodeData()` in `client/screens/NutritionDetailScreen.tsx`
+
+### Fetch Timeout with AbortSignal for External APIs
+
+Every outbound `fetch()` to an external API must include `AbortSignal.timeout()` to prevent hung connections from blocking server resources indefinitely. Node.js `fetch` has no default timeout — a slow or unresponsive upstream will hold the connection open until the OS-level TCP timeout (often 2+ minutes).
+
+```typescript
+/** Timeout for outbound API requests (10 seconds). */
+const FETCH_TIMEOUT_MS = 10_000;
+
+// Good: Explicit timeout prevents hung connections
+const response = await fetch("https://api.example.com/data", {
+  headers: { Authorization: `Bearer ${token}` },
+  signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+});
+
+// Bad: No timeout — connection hangs if upstream is slow
+const response = await fetch("https://api.example.com/data", {
+  headers: { Authorization: `Bearer ${token}` },
+});
+```
+
+**When to use:** Every `fetch()` call to an external API (payment processors, nutrition databases, OAuth endpoints, third-party services). Define the timeout as a named constant at module level.
+
+**When NOT to use:** Internal service calls where you control both endpoints and have other timeout mechanisms (e.g., Express request timeout middleware).
+
+**Recommended timeouts:**
+
+- Payment/auth APIs (Google OAuth, Apple receipt): `10_000` (10s)
+- Data APIs (USDA, nutrition lookup): `10_000` (10s)
+- Large content fetches (recipe import, URL scraping): `15_000`-`30_000` (15-30s)
+
+**Rationale:** The receipt-validation code review found that both Google OAuth token exchange and subscription verification calls had no timeouts. In production, a hung Google API call would block the subscription upgrade endpoint indefinitely. `AbortSignal.timeout()` is the modern Node.js approach (available since Node 18) and is cleaner than manual `AbortController` + `setTimeout` patterns.
+
+**References:**
+
+- `server/services/receipt-validation.ts` — Google OAuth and subscription API calls
+- `server/services/recipe-import.ts` — `safeFetch` already uses `AbortSignal.timeout()`
+- Related learning: "Fetch Without Timeout Hangs Indefinitely" in LEARNINGS.md
+
+### Zod safeParse for External API Responses
+
+When consuming JSON from external APIs (payment providers, third-party services, OAuth endpoints), validate the response shape with a Zod schema using `safeParse()` instead of casting with `as`. External APIs can change their response format without warning, and `as` casts provide zero runtime protection.
+
+```typescript
+import { z } from "zod";
+
+// Define a schema for the expected response shape
+const googleOAuthResponseSchema = z.object({
+  access_token: z.string(),
+  expires_in: z.number(),
+});
+
+// Good: safeParse validates the shape at runtime
+const raw = await response.json();
+const parsed = googleOAuthResponseSchema.safeParse(raw);
+if (!parsed.success) {
+  console.error("Unexpected API response shape:", parsed.error);
+  return { valid: false, errorCode: "STORE_API_ERROR" };
+}
+// parsed.data is now typed and validated
+const token = parsed.data.access_token;
+```
+
+```typescript
+// Bad: as cast trusts the API response blindly
+const data = (await response.json()) as {
+  access_token: string;
+  expires_in: number;
+};
+// If Google changes the response, `data.access_token` is undefined
+// and the error surfaces far from where the data was received
+```
+
+**When to use:**
+
+- Any `response.json()` from an external API (Google Play, Apple App Store, Spoonacular, USDA, etc.)
+- Decoded payloads from JWS/JWT tokens
+- Webhook payloads from third-party services
+
+**When NOT to use:**
+
+- Internal API responses where you control the server (use shared types instead)
+- Responses already validated by a client SDK that provides typed results
+
+**Pattern:** Define the schema next to the function that consumes the response. Use `safeParse()` (not `parse()`) so you can return a structured error instead of throwing. Keep schemas minimal — only validate fields you actually use.
+
+**Rationale:** During the receipt-validation code review, three `as` casts on Google API and Apple JWS payloads were replaced with Zod schemas. This catches API-breaking changes at the validation boundary rather than letting invalid data propagate into business logic.
+
+**References:**
+
+- `server/services/receipt-validation.ts` — `appleTransactionSchema`, `googleOAuthResponseSchema`, `googleSubscriptionResponseSchema`
+- `server/services/recipe-catalog.ts` — `catalogSearchResponseSchema`, `recipeDetailSchema`
+- `server/services/nutrition-lookup.ts` — `apiNinjasResponseSchema`, `usdaResponseSchema`
+- Related pattern: "Zod safeParse with Fallback for Database Values" (for internal data)
 
 ---
 
@@ -4706,6 +4803,102 @@ const features = TIER_FEATURES[isValidSubscriptionTier(tier) ? tier : "free"];
 
 - `shared/types/premium.ts` — `isValidSubscriptionTier()` type guard, `subscriptionTiers` tuple, and `SubscriptionTier` type (type guard is colocated with the source array it validates)
 - Related learning: "Unsafe `as` Casts Hide Runtime Bugs" in LEARNINGS.md
+
+### vi.resetModules for Env-Dependent Module Testing
+
+When a module evaluates environment variables at the top level (e.g., `const STUB_MODE = !process.env.X`), Vitest caches the module after the first import. Changing `process.env` in a later test has no effect because the cached module still has the old values baked into its constants. Use `vi.resetModules()` + dynamic `await import()` to get a fresh module evaluation with the current `process.env`.
+
+```typescript
+describe("stub mode (no credentials)", () => {
+  beforeEach(() => {
+    delete process.env.APPLE_ISSUER_ID;
+    delete process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+  });
+
+  afterEach(() => {
+    process.env = { ...originalEnv }; // Restore original env
+  });
+
+  it("auto-approves in development", async () => {
+    process.env.NODE_ENV = "development";
+
+    vi.resetModules(); // Clear Vitest's module cache
+    const { validateReceipt } = await import("../receipt-validation"); // Fresh import
+
+    const result = await validateReceipt("fake-receipt", "ios");
+    expect(result.valid).toBe(true);
+  });
+
+  it("rejects in production", async () => {
+    process.env.NODE_ENV = "production";
+
+    vi.resetModules();
+    const { validateReceipt } = await import("../receipt-validation");
+
+    const result = await validateReceipt("fake-receipt", "ios");
+    expect(result.valid).toBe(false);
+  });
+});
+```
+
+For tests with repetitive setup (multiple env vars + fetch mocking), extract a setup helper:
+
+```typescript
+/**
+ * Setup helper for Google validation tests. Re-imports module with fresh
+ * env, resets caches, and mocks fetch with the given subscription response.
+ */
+async function setupGoogleTest(subscriptionResponse: object, status = 200) {
+  vi.resetModules();
+  const mod = await import("../receipt-validation");
+  mod.resetGoogleTokenCache();
+
+  const fetchSpy = vi.spyOn(global, "fetch").mockImplementation(async (url) => {
+    const urlStr = typeof url === "string" ? url : url.toString();
+    if (urlStr.includes("oauth2.googleapis.com")) {
+      return new Response(
+        JSON.stringify({ access_token: "mock", expires_in: 3600 }),
+        { status: 200 },
+      );
+    }
+    if (urlStr.includes("androidpublisher.googleapis.com")) {
+      return new Response(JSON.stringify(subscriptionResponse), { status });
+    }
+    throw new Error(`Unexpected fetch to ${urlStr}`);
+  });
+
+  return { validate: mod.validateReceipt, fetchSpy };
+}
+
+// Usage — each test gets a fresh module with correct env
+it("validates active subscription", async () => {
+  const { validate, fetchSpy } = await setupGoogleTest({
+    subscriptionState: "SUBSCRIPTION_STATE_ACTIVE",
+    lineItems: [{ productId: "premium_monthly", expiryTime: futureDate }],
+  });
+  const result = await validate("token", "android");
+  expect(result.valid).toBe(true);
+  fetchSpy.mockRestore();
+});
+```
+
+**When to use:**
+
+- Testing modules that read `process.env` at the top level (module-scope `const` evaluated at import time)
+- Testing different configurations of the same service (stub mode vs. real mode, different platform credentials)
+- Any module with `const X = !!process.env.Y` or `const X = process.env.Y ?? "default"` at module scope
+
+**When NOT to use:**
+
+- Modules that read env vars lazily inside functions (just set `process.env.X` before calling the function)
+- Tests where a single env configuration is sufficient for the entire describe block
+
+**Key pitfall:** After `vi.resetModules()`, you must re-import the module with `await import()`. Any references to the old module's exports are stale. If the module also has internal caches (like token caches), export a `resetCache()` function and call it after re-import.
+
+**References:**
+
+- `server/services/__tests__/receipt-validation.test.ts` — `setupGoogleTest()` helper and stub mode tests
+- Related learning: "Module-Level Service Client Initialization Breaks Test Imports" in LEARNINGS.md
 
 ---
 

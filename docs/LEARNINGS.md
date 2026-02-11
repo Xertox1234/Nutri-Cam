@@ -415,6 +415,64 @@ const registerSchema = z.object({
 
 ---
 
+### URL Injection via Unencoded Path Segments
+
+**Category:** Security
+
+**Problem:** The initial Google Play receipt validation built a URL by interpolating `purchaseToken` directly into a path segment without encoding:
+
+```typescript
+// Bug: purchaseToken could contain /, ?, # or other URL-significant characters
+const url = `https://androidpublisher.googleapis.com/.../tokens/${purchaseToken}`;
+```
+
+If `purchaseToken` contained path traversal characters (e.g., `../` or `?injected=param`), the request would be sent to an unintended URL. This is a URL injection / SSRF-adjacent vulnerability.
+
+**Fix:** Apply `encodeURIComponent()` to all user-supplied values embedded in URL paths:
+
+```typescript
+const url = `https://androidpublisher.googleapis.com/.../tokens/${encodeURIComponent(purchaseToken)}`;
+```
+
+**Lesson:** Always `encodeURIComponent()` values interpolated into URL path segments or query parameters. This is easy to forget because template literals make string interpolation feel safe. The rule: if the value comes from the client (request body, params, headers) or from an external source, it must be encoded before embedding in a URL.
+
+**Existing examples in codebase:**
+
+- `server/services/nutrition-lookup.ts` — encodes query params for USDA and API Ninjas
+- `server/services/receipt-validation.ts` — encodes `packageName` and `purchaseToken` in Google API URL
+
+**File:** `server/services/receipt-validation.ts`
+
+---
+
+### Deferred JWS Signature Verification: Risk-Based Security Decisions
+
+**Category:** Security / Decision
+
+**Context:** The Apple receipt validation decodes JWS (JSON Web Signature) payloads from App Store Server API v2. Full security requires verifying the JWS signature against Apple's root certificate chain (Apple Root CA - G3), which involves x5c certificate chain validation.
+
+**Decision:** Deferred cryptographic signature verification with a documented SECURITY TODO, rather than blocking the feature or implementing a partial solution.
+
+**Rationale:**
+
+1. **Complexity:** Apple JWS verification requires downloading Apple's root certificate, parsing the x5c header, building the certificate chain, and verifying each step. This is a non-trivial cryptographic operation.
+2. **Mitigation:** Server-side transaction lookups via the App Store Server API provide an alternative verification path for high-value purchases.
+3. **Risk assessment:** Forging a valid-looking JWS payload requires knowledge of the expected schema and bundle ID. The attack surface is limited to users who can craft valid-looking but unsigned payloads.
+4. **Pragmatism:** Shipping real receipt validation for Google (which was fully implemented) plus basic Apple validation was better than blocking the entire feature.
+
+**Lesson:** When a security measure is complex to implement and has reasonable mitigations, it is acceptable to defer it with a clearly documented SECURITY TODO that includes:
+
+- What exactly is missing (signature verification against Apple Root CA - G3)
+- Why it matters (prevents forged receipts)
+- What mitigations exist (server-side transaction lookups)
+- A link to the relevant documentation
+
+Do NOT defer without documentation. A bare `// TODO: verify signature` will be forgotten. Include enough context that a future developer can implement it without re-researching the problem.
+
+**File:** `server/services/receipt-validation.ts` (see `decodeAppleJWS` SECURITY TODO comment)
+
+---
+
 ## Simplification Principles
 
 ### Delete Code Aggressively
@@ -530,6 +588,70 @@ app.get("/api/scanned-items", async (req, res) => {
 **Client-side:** FlatList virtualization + infinite scroll prevents rendering all items at once.
 
 **Lesson:** ALWAYS paginate list endpoints. Default page size 20-50, max 100. Let clients request more via offset/cursor.
+
+---
+
+### Dynamic Imports in Hot Paths Add Latency
+
+**Problem:** The initial receipt-validation implementation used `const crypto = await import("crypto")` inside the `getGoogleAccessToken()` function. Every call to this function paid the dynamic import overhead, even though the `crypto` module is a Node.js built-in that never changes.
+
+```typescript
+// Bad: Dynamic import in a function called on every Google receipt validation
+async function getGoogleAccessToken(): Promise<string> {
+  const crypto = await import("crypto"); // ~1-5ms overhead per call
+  const sign = crypto.createSign("RSA-SHA256");
+  // ...
+}
+
+// Good: Static import at module top level
+import crypto from "crypto";
+
+async function getGoogleAccessToken(): Promise<string> {
+  const sign = crypto.createSign("RSA-SHA256"); // Instant, already loaded
+  // ...
+}
+```
+
+**Why it happened:** The developer may have been following a pattern from ESM modules where dynamic `import()` is used to conditionally load heavy dependencies. For Node.js built-ins like `crypto`, `fs`, and `path`, static imports are always preferred because:
+
+1. Built-ins are already loaded by the Node.js runtime
+2. Static imports are resolved at module load time (once), not per-call
+3. Dynamic imports prevent bundlers from tree-shaking
+
+**Lesson:** Use static `import` for Node.js built-in modules and lightweight dependencies. Reserve dynamic `import()` for conditional loading of heavy optional dependencies (e.g., only loading a PDF parser when the user requests PDF import). If a module is used every time a function runs, it should be a static import.
+
+**File:** `server/services/receipt-validation.ts`
+
+---
+
+### Fetch Without Timeout Hangs Indefinitely
+
+**Problem:** The receipt-validation Google API calls (`fetch("https://oauth2.googleapis.com/token", ...)` and `fetch("https://androidpublisher.googleapis.com/...", ...)`) had no timeout. If the Google API was slow or unresponsive, the Express request handler would hang indefinitely, consuming a server connection.
+
+**Why it matters:** Node.js `fetch` has no default timeout. Unlike browsers (which typically timeout after 30-60 seconds), Node.js will keep the connection open until the OS TCP timeout (often 2+ minutes on Linux, longer on macOS). During this time:
+
+- The Express request connection is held open
+- The user's upgrade flow appears frozen
+- Server connection pool can be exhausted under load
+
+**Fix:** Add `AbortSignal.timeout()` to every outbound fetch:
+
+```typescript
+const FETCH_TIMEOUT_MS = 10_000;
+
+const response = await fetch(url, {
+  headers: { Authorization: `Bearer ${token}` },
+  signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+});
+```
+
+**Audit note:** Several other server services (`nutrition-lookup.ts`, `recipe-catalog.ts`) also use `fetch` without timeouts. The `recipe-import.ts` service already uses `AbortSignal.timeout()` via its `safeFetch` wrapper. Consider adding timeouts to all outbound fetches.
+
+**Lesson:** Always add `AbortSignal.timeout()` to outbound `fetch()` calls. Make the timeout a named constant at the module level so it is easy to find and adjust. 10 seconds is a reasonable default for API calls.
+
+**Pattern Reference:** See "Fetch Timeout with AbortSignal for External APIs" in PATTERNS.md
+
+**File:** `server/services/receipt-validation.ts`
 
 ---
 
@@ -1042,6 +1164,56 @@ const features = TIER_FEATURES[isValidSubscriptionTier(tier) ? tier : "free"];
 
 ---
 
+### `as` Casts on External API Responses Mask Breaking Changes
+
+**Problem:** The initial receipt-validation implementation used `as` casts to type external API response data:
+
+```typescript
+// Bad: Trusts Google's response shape at compile time only
+const data = (await response.json()) as {
+  access_token: string;
+  expires_in: number;
+};
+const token = data.access_token; // undefined if Google changes the response
+```
+
+This was done in three places: the Google OAuth token response, the Google subscription status response, and the decoded Apple JWS payload.
+
+**Why `as` is especially dangerous for external APIs:**
+
+- You don't control the API — the provider can change response shapes in minor updates
+- API documentation may be inaccurate or outdated
+- Different API versions may return different shapes
+- Error responses often have completely different shapes than success responses
+- The failure mode is silent: `data.access_token` evaluates to `undefined`, which propagates until it causes a confusing error far from the source
+
+**Fix:** Replace each `as` cast with a Zod schema + `safeParse()`:
+
+```typescript
+const googleOAuthResponseSchema = z.object({
+  access_token: z.string(),
+  expires_in: z.number(),
+});
+
+const raw = await response.json();
+const parsed = googleOAuthResponseSchema.safeParse(raw);
+if (!parsed.success) {
+  console.error("Unexpected Google OAuth response:", parsed.error);
+  throw new Error("Invalid Google OAuth response");
+}
+const token = parsed.data.access_token; // Guaranteed to be a string
+```
+
+**Key distinction from the existing "Unsafe `as` Casts" learning:** That learning covers `as` on database values (internal data with known schema). This learning extends the principle to external API responses, where the risk is higher because you have zero control over the data source.
+
+**Lesson:** When integrating with any external API, define a Zod schema for each response shape you consume. Use `safeParse()` and handle the failure case explicitly. This creates a clear validation boundary between "untrusted external data" and "validated internal data". Three `as` casts were replaced with three schemas in receipt-validation.ts; the same pattern was already used in recipe-catalog.ts and nutrition-lookup.ts.
+
+**Pattern Reference:** See "Zod safeParse for External API Responses" in PATTERNS.md
+
+**File:** `server/services/receipt-validation.ts`
+
+---
+
 ## Key Takeaways
 
 1. **Security:** Authentication + Authorization + Input Validation on every endpoint
@@ -1057,6 +1229,10 @@ const features = TIER_FEATURES[isValidSubscriptionTier(tier) ? tier : "free"];
 11. **Service Initialization:** Lazy-init external clients (OpenAI, Stripe) to keep modules importable by tests without credentials
 12. **Type Safety:** Never use `as` casts on external data — use type guards with safe fallbacks. `as` hides runtime bugs that only surface in production.
 13. **Schema Migrations:** When making a FK nullable, audit all JOINs on that column — INNER JOINs silently drop NULL rows, breaking aggregations
+14. **External API Safety:** Validate external API responses with Zod `safeParse()`, not `as` casts. External APIs can change without warning; `as` provides zero runtime protection.
+15. **Fetch Timeouts:** Always add `AbortSignal.timeout()` to outbound `fetch()` calls. Node.js fetch has no default timeout; hung connections consume server resources indefinitely.
+16. **URL Encoding:** Always `encodeURIComponent()` user-supplied values interpolated into URL paths. Template literals make unencoded interpolation feel safe, but it enables URL injection.
+17. **Static Imports:** Use static `import` for Node.js built-ins and lightweight dependencies. Dynamic `import()` in hot-path functions adds per-call overhead for no benefit.
 
 ---
 

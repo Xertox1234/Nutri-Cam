@@ -11,6 +11,9 @@ const limit = pLimit(RATE_LIMIT);
 // Cache expiry: 7 days
 const CACHE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000;
 
+// Timeout for outbound API requests (10 seconds)
+const FETCH_TIMEOUT_MS = 10_000;
+
 // Zod schema for API Ninjas nutrition response validation.
 // Free tier returns some fields as "Only available for premium subscribers."
 // so we coerce strings to 0 for those fields.
@@ -156,6 +159,7 @@ async function lookupAPINinjas(query: string): Promise<NutritionData | null> {
       `https://api.api-ninjas.com/v1/nutrition?query=${encodeURIComponent(query)}`,
       {
         headers: { "X-Api-Key": apiKey },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       },
     );
 
@@ -378,6 +382,7 @@ async function lookupCNF(query: string): Promise<NutritionData | null> {
   try {
     const nutRes = await fetch(
       `https://food-nutrition.canada.ca/api/canadian-nutrient-file/nutrientamount/?lang=en&type=json&id=${matchCode}`,
+      { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) },
     );
     const nutrients: CNFNutrientAmount[] = await nutRes.json();
 
@@ -428,6 +433,7 @@ async function lookupUSDA(query: string): Promise<NutritionData | null> {
   try {
     const response = await fetch(
       `https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(query)}&pageSize=1&api_key=${USDA_API_KEY}`,
+      { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) },
     );
 
     if (!response.ok) {
@@ -495,6 +501,7 @@ async function lookupUSDAByUPC(
             dataType: ["Branded"],
             pageSize: 3,
           }),
+          signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
         },
       );
 
@@ -802,6 +809,7 @@ export async function lookupBarcode(
     try {
       const res = await fetch(
         `https://world.openfoodfacts.org/api/v0/product/${variant}.json`,
+        { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) },
       );
       const json = await res.json();
       if (json.status === 1 && json.product) {
