@@ -540,7 +540,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     requireAuth,
     nutritionLookupRateLimit,
     async (req: Request, res: Response) => {
-      const code = req.params.code?.trim();
+      const rawCode = req.params.code;
+      const code = typeof rawCode === "string" ? rawCode.trim() : "";
       if (!code || code.length > 50 || !/^\d+$/.test(code)) {
         res.status(400).json({ error: "Invalid barcode" });
         return;
