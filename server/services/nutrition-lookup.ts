@@ -235,7 +235,7 @@ async function ensureCNFFoods(): Promise<void> {
       console.warn(
         `CNF loaded: ${cnfFoodsEN?.length} EN + ${cnfFoodsFR?.length} FR foods`,
       );
-    } catch (_err) {
+    } catch (err) {
       console.warn("Failed to load CNF food lists:", err);
     }
     cnfFetchPromise = null;
@@ -539,7 +539,7 @@ async function lookupUSDAByUPC(
         },
         brandName: match.brandOwner || match.brandName || undefined,
       };
-    } catch (_err) {
+    } catch {
       // Continue to next variant
     }
   }
