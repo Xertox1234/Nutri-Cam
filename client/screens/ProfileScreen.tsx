@@ -93,16 +93,27 @@ const MOCK_FOOD_GRID = [
 
 // ---------- Sub-components ----------
 
-const CoverPhotoSection = React.memo(function CoverPhotoSection() {
+const CoverPhotoSection = React.memo(function CoverPhotoSection({
+  topInset,
+}: {
+  topInset: number;
+}) {
   const { theme } = useTheme();
+  const totalHeight = COVER_HEIGHT + topInset;
 
   return (
-    <View style={styles.coverContainer}>
+    <View style={[styles.coverContainer, { height: totalHeight }]}>
       <Image
         source={require("../../assets/images/login-hero.jpg")}
         style={styles.coverImage}
         resizeMode="cover"
       />
+      {/* Top gradient for status bar legibility */}
+      <LinearGradient
+        colors={[withOpacity("#000000", 0.45), "transparent"]} // hardcoded — dark overlay for status bar legibility
+        style={[styles.coverGradientTop, { height: topInset + 24 }]}
+      />
+      {/* Bottom gradient blending into background */}
       <LinearGradient
         colors={[
           "transparent",
@@ -110,7 +121,7 @@ const CoverPhotoSection = React.memo(function CoverPhotoSection() {
           theme.backgroundRoot,
         ]}
         locations={[0, 0.5, 1]}
-        style={styles.coverGradient}
+        style={[styles.coverGradientBottom, { height: totalHeight }]}
       />
     </View>
   );
@@ -288,13 +299,13 @@ const PhotoGridItem = React.memo(function PhotoGridItem({
 
   return (
     <View
+      accessibilityLabel={item.name}
       style={[
         styles.gridItem,
         { backgroundColor: theme.backgroundSecondary, width: itemWidth },
       ]}
     >
       <View style={styles.gridItemContent}>
-        <Feather name="camera" size={24} color={theme.textSecondary} />
         <ThemedText style={styles.gridItemEmoji}>{item.emoji}</ThemedText>
       </View>
       <LinearGradient
@@ -451,12 +462,16 @@ const SettingsSection = React.memo(function SettingsSection({
   );
 });
 
-const ProfileSkeleton = React.memo(function ProfileSkeleton() {
+const ProfileSkeleton = React.memo(function ProfileSkeleton({
+  topInset,
+}: {
+  topInset: number;
+}) {
   const gridItemWidth = useGridItemWidth();
 
   return (
     <View accessibilityElementsHidden>
-      <SkeletonBox width="100%" height={COVER_HEIGHT} />
+      <SkeletonBox width="100%" height={COVER_HEIGHT + topInset} />
       <View style={styles.skeletonAvatarRow}>
         <SkeletonBox
           width={AVATAR_RING_SIZE}
@@ -628,7 +643,7 @@ export default function ProfileScreen() {
           paddingBottom: tabBarHeight + Spacing.xl,
         }}
       >
-        <ProfileSkeleton />
+        <ProfileSkeleton topInset={insets.top} />
       </ScrollView>
     );
   }
@@ -643,7 +658,7 @@ export default function ProfileScreen() {
       scrollIndicatorInsets={{ bottom: insets.bottom }}
     >
       {/* Cover Photo */}
-      <CoverPhotoSection />
+      <CoverPhotoSection topInset={insets.top} />
 
       {/* Avatar + Name + Bio */}
       <Animated.View
@@ -743,7 +758,6 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   // Cover photo
   coverContainer: {
-    height: COVER_HEIGHT,
     width: "100%",
     position: "relative",
   },
@@ -751,12 +765,17 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
   },
-  coverGradient: {
+  coverGradientTop: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+  },
+  coverGradientBottom: {
     position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
-    height: COVER_HEIGHT,
   },
 
   // Avatar
@@ -824,12 +843,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   statNumber: {
-    fontSize: 12,
+    fontSize: 16,
     fontFamily: FontFamily.medium,
     fontWeight: "500",
   },
   statLabel: {
-    fontSize: 10,
+    fontSize: 12,
     fontFamily: FontFamily.regular,
     fontWeight: "400",
   },
@@ -889,10 +908,11 @@ const styles = StyleSheet.create({
   },
   gridItemContent: {
     alignItems: "center",
-    gap: Spacing.sm,
+    justifyContent: "center",
   },
   gridItemEmoji: {
-    fontSize: 32,
+    fontSize: 48,
+    lineHeight: 64,
   },
   gridItemGradient: {
     position: "absolute",
@@ -906,7 +926,7 @@ const styles = StyleSheet.create({
     bottom: 8,
     left: 12,
     color: "#FFFFFF", // hardcoded — always white over dark gradient overlay
-    fontSize: 10,
+    fontSize: 12,
     fontFamily: FontFamily.medium,
     fontWeight: "500",
   },
