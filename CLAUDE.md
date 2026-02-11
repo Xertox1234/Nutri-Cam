@@ -148,6 +148,14 @@ If tests fail or linting errors occur, the commit is blocked.
 - `AI_INTEGRATIONS_OPENAI_BASE_URL` - Custom OpenAI endpoint
 - `SPOONACULAR_API_KEY` - Spoonacular recipe catalog API
 - `EXPO_PUBLIC_DOMAIN` - Public API domain for mobile client
+- `APPLE_ISSUER_ID` - Apple App Store Connect issuer ID (for IAP receipt validation)
+- `APPLE_KEY_ID` - Apple App Store Connect API key ID
+- `APPLE_PRIVATE_KEY` - Apple App Store Connect private key (PEM)
+- `APPLE_BUNDLE_ID` - iOS app bundle identifier (e.g. `com.nutriscan.app`)
+- `APPLE_ENVIRONMENT` - Apple API environment (`sandbox` or `production`, defaults to `sandbox`)
+- `GOOGLE_PACKAGE_NAME` - Android app package name (e.g. `com.nutriscan.app`)
+- `GOOGLE_SERVICE_ACCOUNT_EMAIL` - Google service account email (for IAP receipt validation)
+- `GOOGLE_SERVICE_ACCOUNT_KEY` - Google service account private key (PEM, use `\n` for newlines)
 
 ## iOS Simulator Setup
 

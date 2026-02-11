@@ -6,6 +6,9 @@ import type {
 
 const SPOONACULAR_BASE = "https://api.spoonacular.com";
 
+// Timeout for outbound API requests (10 seconds)
+const FETCH_TIMEOUT_MS = 10_000;
+
 const SPOONACULAR_API_KEY = process.env.SPOONACULAR_API_KEY;
 if (!SPOONACULAR_API_KEY && process.env.NODE_ENV !== "test") {
   console.warn(
@@ -214,7 +217,9 @@ export async function searchCatalogRecipes(
   if (params.maxReadyTime)
     url.searchParams.set("maxReadyTime", String(params.maxReadyTime));
 
-  const res = await fetch(url.toString());
+  const res = await fetch(url.toString(), {
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
 
   if (res.status === 402) {
     throw new CatalogQuotaError("Spoonacular API quota exceeded");
@@ -246,7 +251,9 @@ export async function getCatalogRecipeDetail(spoonacularId: number): Promise<{
   if (!SPOONACULAR_API_KEY) return null;
 
   const url = `${SPOONACULAR_BASE}/recipes/${spoonacularId}/information?includeNutrition=true&apiKey=${SPOONACULAR_API_KEY}`;
-  const res = await fetch(url);
+  const res = await fetch(url, {
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
 
   if (res.status === 402) {
     throw new CatalogQuotaError("Spoonacular API quota exceeded");
