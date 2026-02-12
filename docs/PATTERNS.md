@@ -42,7 +42,7 @@ This document captures established patterns for the NutriScan codebase. Follow t
   - [Intentional useEffect Dependencies](#intentional-useeffect-dependencies)
   - [Route Params for Mode Toggling](#route-params-for-mode-toggling)
   - [CompositeNavigationProp for Cross-Stack Navigation](#compositenavigationprop-for-cross-stack-navigation)
-  - [Custom Bottom Sheet with fullScreenModal](#custom-bottom-sheet-with-fullscreenmodal)
+  - [Full-Screen Detail with transparentModal](#full-screen-detail-with-transparentmodal)
   - [Coordinated Pull-to-Refresh](#coordinated-pull-to-refresh-for-multiple-queries)
   - [Accessibility Props Pattern](#accessibility-props-pattern)
   - [Touch Target Size Pattern](#touch-target-size-pattern)
@@ -2770,9 +2770,18 @@ export default function HistoryScreen() {
 
 **Why:** Standard `NativeStackNavigationProp` only knows about screens in its own stack. `CompositeNavigationProp` combines the stack navigator's type with the tab navigator's type, enabling type-safe navigation across both.
 
-### Custom Bottom Sheet with fullScreenModal
+### Full-Screen Detail with transparentModal
 
-Use `presentation: "fullScreenModal"` with a transparent background to build a fully custom bottom sheet modal. This avoids native iOS sheet chrome (grabber handles, detents, corner radius) that `modal`, `formSheet`, `containedTransparentModal`, and `transparentModal` add on iOS.
+Use `presentation: "transparentModal"` with `slide_from_bottom` animation for full-screen detail views. The screen component fills the entire screen with its own background, close button, and scrollable content. The hero image extends to the very top with no native chrome.
+
+**Key learnings from iOS modal presentations:**
+
+| Presentation                | Background visible            | Native chrome        | Verdict          |
+| --------------------------- | ----------------------------- | -------------------- | ---------------- |
+| `modal` / `formSheet`       | Yes                           | Grabber bar, detents | Not customizable |
+| `containedTransparentModal` | Yes                           | Grabber bar          | Not customizable |
+| `fullScreenModal`           | No (detaches previous screen) | None                 | Black background |
+| `transparentModal`          | Yes                           | None                 | Use this one     |
 
 **Navigator config:**
 
@@ -2783,9 +2792,8 @@ Use `presentation: "fullScreenModal"` with a transparent background to build a f
   component={RecipeDetailScreen}
   options={{
     headerShown: false,
-    presentation: "fullScreenModal",
+    presentation: "transparentModal",
     animation: "slide_from_bottom",
-    contentStyle: { backgroundColor: "transparent" },
   }}
 />
 ```
@@ -2795,71 +2803,67 @@ Use `presentation: "fullScreenModal"` with a transparent background to build a f
 ```typescript
 // RecipeDetailScreen.tsx
 export default function RecipeDetailScreen() {
-  const { height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const navigation = useNavigation();
   const dismiss = useCallback(() => navigation.goBack(), [navigation]);
 
   return (
-    <View style={styles.container}>
-      {/* Tappable backdrop for dismiss */}
-      <Pressable
-        style={styles.backdrop}
-        onPress={dismiss}
-        accessibilityLabel="Close"
-        accessibilityRole="button"
-      />
-      {/* Custom sheet */}
-      <View
-        style={[
-          styles.sheet,
-          {
-            height: windowHeight * 0.85,
-            backgroundColor: theme.backgroundRoot,
-          },
-        ]}
-      >
-        {/* Close button header */}
-        <View style={[styles.header, { backgroundColor: theme.backgroundRoot }]}>
-          <Pressable onPress={dismiss} hitSlop={8}>
-            <Feather name="chevron-down" size={22} color={theme.text} />
-          </Pressable>
-        </View>
-        <ScrollView>{/* Content */}</ScrollView>
+    <View style={[styles.container, { backgroundColor: theme.backgroundRoot }]}>
+      {/* Close button — floats over hero image */}
+      <View style={[styles.closeHeader, { top: insets.top + Spacing.xs }]}>
+        <Pressable
+          onPress={dismiss}
+          hitSlop={8}
+          style={styles.closeButton}
+          accessibilityLabel="Close"
+          accessibilityRole="button"
+        >
+          <Feather name="chevron-down" size={20} color="#fff" />
+        </Pressable>
       </View>
+
+      <ScrollView
+        contentInsetAdjustmentBehavior="never"
+        automaticallyAdjustContentInsets={false}
+        contentContainerStyle={{ paddingBottom: insets.bottom + Spacing.xl }}
+      >
+        <Image source={{ uri: imageUri }} style={styles.heroImage} />
+        {/* Content below image */}
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: "flex-end" },
-  backdrop: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(0,0,0,0.4)",
-  },
-  sheet: {
-    borderTopLeftRadius: BorderRadius.card,
-    borderTopRightRadius: BorderRadius.card,
-    overflow: "hidden",
-  },
-  header: {
+  container: { flex: 1 },
+  closeHeader: {
     position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
+    right: Spacing.md,
     zIndex: 10,
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.lg,
-    alignItems: "flex-end",
+  },
+  closeButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(0,0,0,0.4)", // hardcoded
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  heroImage: {
+    width: "100%",
+    height: 250,
   },
 });
 ```
 
-**When to use:** Detail views, recipe cards, or any modal that needs a custom bottom-sheet appearance without native iOS sheet behavior.
+**Critical ScrollView props:** On iOS, ScrollView inside a modal automatically adds content insets for the status bar. Set `contentInsetAdjustmentBehavior="never"` and `automaticallyAdjustContentInsets={false}` to prevent a gap above the hero image.
+
+**When to use:** Detail views, recipe cards, or any screen that slides up over the current content as a full-screen overlay.
 
 **When NOT to use:** Standard modals that benefit from native iOS sheet gestures (drag-to-dismiss detents). Use `presentation: "modal"` or `formSheet` for those.
 
-**Why:** iOS native sheet presentations (`modal`, `formSheet`, `containedTransparentModal`, `transparentModal`) all add platform-specific chrome that cannot be fully disabled — grabber handles, forced corner radius, or detent behavior. `fullScreenModal` with `contentStyle: { backgroundColor: "transparent" }` gives a blank canvas where you control every visual element. The tradeoff is you must implement your own dismiss gestures (backdrop tap, close button).
+**Why:** `transparentModal` is the only native-stack presentation that both keeps the previous screen visible (no black/grey background flash) and adds no native chrome (no grabber bars or forced corner radius). The tradeoff is you must handle your own close button and cannot use native swipe-to-dismiss.
 
 ### Coordinated Pull-to-Refresh for Multiple Queries
 
