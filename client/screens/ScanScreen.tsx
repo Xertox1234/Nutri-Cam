@@ -339,7 +339,7 @@ export default function ScanScreen() {
             />
           </Pressable>
           <Pressable
-            onPress={() => navigation.navigate("HistoryTab")}
+            onPress={() => navigation.goBack()}
             accessibilityLabel="Close camera"
             accessibilityRole="button"
             style={[
