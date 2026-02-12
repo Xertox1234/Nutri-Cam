@@ -6,14 +6,12 @@ import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import type { RootStackParamList } from "@/navigation/RootStackNavigator";
 import type { MainTabParamList } from "@/navigation/MainTabNavigator";
 import type { HistoryStackParamList } from "@/navigation/HistoryStackNavigator";
-import type { ScanStackParamList } from "@/navigation/ScanStackNavigator";
 import type { MealPlanStackParamList } from "@/navigation/MealPlanStackNavigator";
 
 // Re-export types from navigation files for convenience
 export type { RootStackParamList } from "@/navigation/RootStackNavigator";
 export type { MainTabParamList } from "@/navigation/MainTabNavigator";
 export type { HistoryStackParamList } from "@/navigation/HistoryStackNavigator";
-export type { ScanStackParamList } from "@/navigation/ScanStackNavigator";
 export type { MealPlanStackParamList } from "@/navigation/MealPlanStackNavigator";
 
 /**
@@ -29,25 +27,24 @@ export type HistoryScreenNavigationProp = NativeStackNavigationProp<
  * Navigation prop for HistoryScreen (Today dashboard).
  * Uses CompositeNavigationProp to navigate across stacks:
  * - Navigate within HistoryStack (ItemDetail)
- * - Navigate to ScanTab (MainTab - for quick scan CTA)
+ * - Navigate to other tabs (MainTab)
+ * - Navigate to RootStack screens (Scan modal)
  */
 export type TodayDashboardNavigationProp = CompositeNavigationProp<
   NativeStackNavigationProp<HistoryStackParamList, "History">,
-  BottomTabNavigationProp<MainTabParamList>
->;
-
-/**
- * Navigation prop for ScanScreen
- * Uses CompositeNavigationProp to navigate across stacks:
- * - Navigate to NutritionDetail (RootStack)
- * - Navigate to HistoryTab (MainTab)
- */
-export type ScanScreenNavigationProp = CompositeNavigationProp<
-  NativeStackNavigationProp<ScanStackParamList, "Scan">,
   CompositeNavigationProp<
     BottomTabNavigationProp<MainTabParamList>,
     NativeStackNavigationProp<RootStackParamList>
   >
+>;
+
+/**
+ * Navigation prop for ScanScreen
+ * Now a RootStack modal — can navigate to NutritionDetail, goBack, etc.
+ */
+export type ScanScreenNavigationProp = NativeStackNavigationProp<
+  RootStackParamList,
+  "Scan"
 >;
 
 /**

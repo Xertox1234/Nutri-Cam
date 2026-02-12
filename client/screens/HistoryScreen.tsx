@@ -627,7 +627,7 @@ export default function HistoryScreen() {
 
   const handleScanPress = useCallback(() => {
     haptics.impact(Haptics.ImpactFeedbackStyle.Medium);
-    navigation.navigate("ScanTab");
+    navigation.navigate("Scan");
   }, [navigation, haptics]);
 
   const handleViewAllPress = useCallback(() => {

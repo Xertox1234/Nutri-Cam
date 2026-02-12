@@ -4,6 +4,7 @@ import { ActivityIndicator, View, StyleSheet } from "react-native";
 
 import MainTabNavigator from "@/navigation/MainTabNavigator";
 import LoginScreen from "@/screens/LoginScreen";
+import ScanScreen from "@/screens/ScanScreen";
 import NutritionDetailScreen from "@/screens/NutritionDetailScreen";
 import PhotoIntentScreen from "@/screens/PhotoIntentScreen";
 import PhotoAnalysisScreen from "@/screens/PhotoAnalysisScreen";
@@ -21,6 +22,7 @@ export type RootStackParamList = {
   Login: undefined;
   Onboarding: undefined;
   Main: undefined;
+  Scan: undefined;
   NutritionDetail: {
     barcode?: string;
     imageUri?: string;
@@ -75,6 +77,15 @@ export default function RootStackNavigator() {
             name="Main"
             component={MainTabNavigator}
             options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="Scan"
+            component={ScanScreen}
+            options={{
+              headerShown: false,
+              presentation: "fullScreenModal",
+              animation: "slide_from_bottom",
+            }}
           />
           <Stack.Screen
             name="NutritionDetail"
