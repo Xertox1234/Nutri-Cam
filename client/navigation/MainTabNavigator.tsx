@@ -3,17 +3,19 @@ import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Feather } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import { Platform, StyleSheet, View } from "react-native";
+import type { NavigatorScreenParams } from "@react-navigation/native";
 
-import HistoryStackNavigator from "@/navigation/HistoryStackNavigator";
+import HomeStackNavigator from "@/navigation/HomeStackNavigator";
 import MealPlanStackNavigator from "@/navigation/MealPlanStackNavigator";
 import ProfileStackNavigator from "@/navigation/ProfileStackNavigator";
 import { ScanFAB } from "@/components/ScanFAB";
 import { useTheme } from "@/hooks/useTheme";
 import { FontFamily, TAB_BAR_HEIGHT } from "@/constants/theme";
+import type { MealPlanStackParamList } from "@/navigation/MealPlanStackNavigator";
 
 export type MainTabParamList = {
-  HistoryTab: undefined;
-  MealPlanTab: undefined;
+  HomeTab: undefined;
+  MealPlanTab: NavigatorScreenParams<MealPlanStackParamList> | undefined;
   ProfileTab: undefined;
 };
 
@@ -25,7 +27,7 @@ export default function MainTabNavigator() {
   return (
     <View style={styles.container}>
       <Tab.Navigator
-        initialRouteName="HistoryTab"
+        initialRouteName="HomeTab"
         screenOptions={{
           tabBarActiveTintColor: theme.link,
           tabBarInactiveTintColor: theme.tabIconDefault,
@@ -61,12 +63,12 @@ export default function MainTabNavigator() {
         }}
       >
         <Tab.Screen
-          name="HistoryTab"
-          component={HistoryStackNavigator}
+          name="HomeTab"
+          component={HomeStackNavigator}
           options={{
-            title: "Today",
+            title: "Home",
             tabBarIcon: ({ color, size }) => (
-              <Feather name="clock" size={size} color={color} />
+              <Feather name="home" size={size} color={color} />
             ),
           }}
         />

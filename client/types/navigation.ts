@@ -6,12 +6,14 @@ import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import type { RootStackParamList } from "@/navigation/RootStackNavigator";
 import type { MainTabParamList } from "@/navigation/MainTabNavigator";
 import type { HistoryStackParamList } from "@/navigation/HistoryStackNavigator";
+import type { HomeStackParamList } from "@/navigation/HomeStackNavigator";
 import type { MealPlanStackParamList } from "@/navigation/MealPlanStackNavigator";
 
 // Re-export types from navigation files for convenience
 export type { RootStackParamList } from "@/navigation/RootStackNavigator";
 export type { MainTabParamList } from "@/navigation/MainTabNavigator";
 export type { HistoryStackParamList } from "@/navigation/HistoryStackNavigator";
+export type { HomeStackParamList } from "@/navigation/HomeStackNavigator";
 export type { MealPlanStackParamList } from "@/navigation/MealPlanStackNavigator";
 
 /**
@@ -32,6 +34,21 @@ export type HistoryScreenNavigationProp = NativeStackNavigationProp<
  */
 export type TodayDashboardNavigationProp = CompositeNavigationProp<
   NativeStackNavigationProp<HistoryStackParamList, "History">,
+  CompositeNavigationProp<
+    BottomTabNavigationProp<MainTabParamList>,
+    NativeStackNavigationProp<RootStackParamList>
+  >
+>;
+
+/**
+ * Navigation prop for HomeScreen
+ * Uses CompositeNavigationProp to navigate across stacks:
+ * - Navigate within HomeStack
+ * - Navigate to other tabs (MainTab)
+ * - Navigate to RootStack screens (FeaturedRecipeDetail modal)
+ */
+export type HomeScreenNavigationProp = CompositeNavigationProp<
+  NativeStackNavigationProp<HomeStackParamList, "Home">,
   CompositeNavigationProp<
     BottomTabNavigationProp<MainTabParamList>,
     NativeStackNavigationProp<RootStackParamList>

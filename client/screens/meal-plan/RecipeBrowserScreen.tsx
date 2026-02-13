@@ -104,9 +104,9 @@ const CatalogCard = React.memo(function CatalogCard({
         accessibilityLabel={`Add ${item.title} to meal plan`}
       >
         {adding ? (
-          <ActivityIndicator size="small" color="#FFFFFF" />
+          <ActivityIndicator size="small" color="#FFFFFF" /> // hardcoded — always white on accent button
         ) : (
-          <Feather name="plus" size={18} color="#FFFFFF" />
+          <Feather name="plus" size={18} color="#FFFFFF" /> // hardcoded — always white on accent button
         )}
       </Pressable>
     </View>
@@ -176,9 +176,9 @@ const MyRecipeCard = React.memo(function MyRecipeCard({
         accessibilityLabel={`Add ${recipe.title} to meal plan`}
       >
         {adding ? (
-          <ActivityIndicator size="small" color="#FFFFFF" />
+          <ActivityIndicator size="small" color="#FFFFFF" /> // hardcoded — always white on accent button
         ) : (
-          <Feather name="plus" size={18} color="#FFFFFF" />
+          <Feather name="plus" size={18} color="#FFFFFF" /> // hardcoded — always white on accent button
         )}
       </Pressable>
     </View>
@@ -195,16 +195,16 @@ export default function RecipeBrowserScreen() {
   const { theme } = useTheme();
   const haptics = useHaptics();
 
-  const { mealType, plannedDate } = route.params || {};
+  const { mealType, plannedDate, searchQuery } = route.params || {};
 
   const [tab, setTab] = useState<"catalog" | "my">("catalog");
-  const [searchText, setSearchText] = useState("");
+  const [searchText, setSearchText] = useState(searchQuery || "");
   const [activeCuisine, setActiveCuisine] = useState<string | undefined>();
   const [activeDiet, setActiveDiet] = useState<string | undefined>();
   const [addingId, setAddingId] = useState<number | null>(null);
 
   // Debounce search
-  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState(searchQuery || "");
   const searchTimerRef = React.useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const handleSearchChange = useCallback((text: string) => {
