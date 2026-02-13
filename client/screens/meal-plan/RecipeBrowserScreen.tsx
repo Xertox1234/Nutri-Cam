@@ -64,19 +64,27 @@ const CatalogCard = React.memo(function CatalogCard({
   item,
   onAdd,
   adding,
+  browseOnly,
 }: {
   item: CatalogSearchResult;
   onAdd: (item: CatalogSearchResult) => void;
   adding: boolean;
+  browseOnly?: boolean;
 }) {
   const { theme } = useTheme();
 
   return (
-    <View
+    <Pressable
+      onPress={() => onAdd(item)}
+      disabled={adding}
       style={[
         styles.recipeCard,
         { backgroundColor: withOpacity(theme.text, 0.04) },
       ]}
+      accessibilityRole="button"
+      accessibilityLabel={
+        browseOnly ? `View ${item.title}` : `Add ${item.title} to meal plan`
+      }
     >
       <View style={styles.recipeCardContent}>
         <ThemedText style={styles.recipeCardTitle} numberOfLines={2}>
@@ -96,20 +104,18 @@ const CatalogCard = React.memo(function CatalogCard({
           </View>
         )}
       </View>
-      <Pressable
-        onPress={() => onAdd(item)}
-        disabled={adding}
-        style={[styles.addButton, { backgroundColor: theme.link }]}
-        accessibilityRole="button"
-        accessibilityLabel={`Add ${item.title} to meal plan`}
-      >
+      <View style={[styles.addButton, { backgroundColor: theme.link }]}>
         {adding ? (
           <ActivityIndicator size="small" color="#FFFFFF" /> // hardcoded — always white on accent button
         ) : (
-          <Feather name="plus" size={18} color="#FFFFFF" /> // hardcoded — always white on accent button
+          <Feather
+            name={browseOnly ? "chevron-right" : "plus"}
+            size={18}
+            color="#FFFFFF"
+          /> // hardcoded — always white on accent button
         )}
-      </Pressable>
-    </View>
+      </View>
+    </Pressable>
   );
 });
 
@@ -119,21 +125,29 @@ const MyRecipeCard = React.memo(function MyRecipeCard({
   recipe,
   onAdd,
   adding,
+  browseOnly,
 }: {
   recipe: MealPlanRecipe;
   onAdd: (recipe: MealPlanRecipe) => void;
   adding: boolean;
+  browseOnly?: boolean;
 }) {
   const { theme } = useTheme();
   const totalTime =
     (recipe.prepTimeMinutes || 0) + (recipe.cookTimeMinutes || 0);
 
   return (
-    <View
+    <Pressable
+      onPress={() => onAdd(recipe)}
+      disabled={adding}
       style={[
         styles.recipeCard,
         { backgroundColor: withOpacity(theme.text, 0.04) },
       ]}
+      accessibilityRole="button"
+      accessibilityLabel={
+        browseOnly ? `View ${recipe.title}` : `Add ${recipe.title} to meal plan`
+      }
     >
       <View style={styles.recipeCardContent}>
         <ThemedText style={styles.recipeCardTitle} numberOfLines={2}>
@@ -168,20 +182,18 @@ const MyRecipeCard = React.memo(function MyRecipeCard({
           )}
         </View>
       </View>
-      <Pressable
-        onPress={() => onAdd(recipe)}
-        disabled={adding}
-        style={[styles.addButton, { backgroundColor: theme.link }]}
-        accessibilityRole="button"
-        accessibilityLabel={`Add ${recipe.title} to meal plan`}
-      >
+      <View style={[styles.addButton, { backgroundColor: theme.link }]}>
         {adding ? (
           <ActivityIndicator size="small" color="#FFFFFF" /> // hardcoded — always white on accent button
         ) : (
-          <Feather name="plus" size={18} color="#FFFFFF" /> // hardcoded — always white on accent button
+          <Feather
+            name={browseOnly ? "chevron-right" : "plus"}
+            size={18}
+            color="#FFFFFF"
+          /> // hardcoded — always white on accent button
         )}
-      </Pressable>
-    </View>
+      </View>
+    </Pressable>
   );
 });
 
@@ -249,19 +261,24 @@ export default function RecipeBrowserScreen() {
     return myRecipes.filter((r) => r.title.toLowerCase().includes(q));
   }, [myRecipes, searchText]);
 
+  const isBrowseOnly = !plannedDate || !mealType;
+
   const handleAddCatalogRecipe = useCallback(
     async (item: CatalogSearchResult) => {
-      if (!plannedDate || !mealType) return;
       haptics.selection();
       setAddingId(item.id);
       try {
         const saved = await saveCatalogMutation.mutateAsync(item.id);
-        await addItemMutation.mutateAsync({
-          recipeId: saved.id,
-          plannedDate,
-          mealType,
-        });
-        navigation.goBack();
+        if (isBrowseOnly) {
+          navigation.navigate("RecipeDetail", { recipeId: saved.id });
+        } else {
+          await addItemMutation.mutateAsync({
+            recipeId: saved.id,
+            plannedDate,
+            mealType,
+          });
+          navigation.goBack();
+        }
       } catch {
         // Error handled by mutation
       } finally {
@@ -275,12 +292,17 @@ export default function RecipeBrowserScreen() {
       plannedDate,
       mealType,
       navigation,
+      isBrowseOnly,
     ],
   );
 
   const handleAddMyRecipe = useCallback(
     async (recipe: MealPlanRecipe) => {
-      if (!plannedDate || !mealType) return;
+      if (isBrowseOnly) {
+        haptics.selection();
+        navigation.navigate("RecipeDetail", { recipeId: recipe.id });
+        return;
+      }
       haptics.selection();
       setAddingId(recipe.id);
       try {
@@ -296,7 +318,7 @@ export default function RecipeBrowserScreen() {
         setAddingId(null);
       }
     },
-    [haptics, addItemMutation, plannedDate, mealType, navigation],
+    [haptics, addItemMutation, plannedDate, mealType, navigation, isBrowseOnly],
   );
 
   const handleToggleCuisine = useCallback(
@@ -321,9 +343,10 @@ export default function RecipeBrowserScreen() {
         item={item}
         onAdd={handleAddCatalogRecipe}
         adding={addingId === item.id}
+        browseOnly={isBrowseOnly}
       />
     ),
-    [handleAddCatalogRecipe, addingId],
+    [handleAddCatalogRecipe, addingId, isBrowseOnly],
   );
 
   const renderMyRecipeItem = useCallback(
@@ -332,9 +355,10 @@ export default function RecipeBrowserScreen() {
         recipe={item}
         onAdd={handleAddMyRecipe}
         adding={addingId === item.id}
+        browseOnly={isBrowseOnly}
       />
     ),
-    [handleAddMyRecipe, addingId],
+    [handleAddMyRecipe, addingId, isBrowseOnly],
   );
 
   const catalogKeyExtractor = useCallback(

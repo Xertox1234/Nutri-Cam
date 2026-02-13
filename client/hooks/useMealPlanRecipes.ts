@@ -36,7 +36,8 @@ export function useUserMealPlanRecipes() {
     queryFn: async () => {
       const res = await apiRequest("GET", "/api/meal-plan/recipes");
       if (!res.ok) throw new Error(`${res.status}`);
-      return res.json();
+      const data = await res.json();
+      return data.items ?? data;
     },
   });
 }
