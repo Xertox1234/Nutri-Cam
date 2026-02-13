@@ -425,6 +425,7 @@ const SettingsSection = React.memo(function SettingsSection({
   onDietaryProfile,
   onNutritionGoals,
   onLibrary,
+  onScanHistory,
   onThemeToggle,
   onSubscription,
   onLogout,
@@ -433,6 +434,7 @@ const SettingsSection = React.memo(function SettingsSection({
   onDietaryProfile: () => void;
   onNutritionGoals: () => void;
   onLibrary: () => void;
+  onScanHistory: () => void;
   onThemeToggle: () => void;
   onSubscription: () => void;
   onLogout: () => void;
@@ -458,6 +460,12 @@ const SettingsSection = React.memo(function SettingsSection({
         />
         <View style={[styles.divider, { backgroundColor: theme.border }]} />
         <SettingsItem icon="bookmark" label="My Library" onPress={onLibrary} />
+        <View style={[styles.divider, { backgroundColor: theme.border }]} />
+        <SettingsItem
+          icon="clock"
+          label="Scan History"
+          onPress={onScanHistory}
+        />
         <View style={[styles.divider, { backgroundColor: theme.border }]} />
         <SettingsItem
           icon={
@@ -768,6 +776,7 @@ export default function ProfileScreen() {
           onDietaryProfile={() => navigation.navigate("EditDietaryProfile")}
           onNutritionGoals={() => navigation.navigate("GoalSetup")}
           onLibrary={() => navigation.navigate("SavedItems")}
+          onScanHistory={() => navigation.navigate("ScanHistory")}
           onThemeToggle={handleThemeToggle}
           onSubscription={() => {
             haptics.impact(Haptics.ImpactFeedbackStyle.Light);

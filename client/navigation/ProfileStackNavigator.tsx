@@ -3,12 +3,16 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 
 import ProfileScreen from "@/screens/ProfileScreen";
 import SavedItemsScreen from "@/screens/SavedItemsScreen";
+import HistoryScreen from "@/screens/HistoryScreen";
+import ItemDetailScreen from "@/screens/ItemDetailScreen";
 import { HeaderTitle } from "@/components/HeaderTitle";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
 
 export type ProfileStackParamList = {
   Profile: undefined;
   SavedItems: undefined;
+  ScanHistory: { showAll?: boolean } | undefined;
+  ItemDetail: { itemId: number };
 };
 
 const Stack = createNativeStackNavigator<ProfileStackParamList>();
@@ -30,6 +34,25 @@ export default function ProfileStackNavigator() {
         component={SavedItemsScreen}
         options={{
           headerTitle: () => <HeaderTitle title="My Library" />,
+        }}
+      />
+      <Stack.Screen
+        name="ScanHistory"
+        component={HistoryScreen}
+        initialParams={{ showAll: true }}
+        options={{
+          headerTitle: () => (
+            <HeaderTitle title="Scan History" showIcon={false} />
+          ),
+        }}
+      />
+      <Stack.Screen
+        name="ItemDetail"
+        component={ItemDetailScreen}
+        options={{
+          headerTitle: () => (
+            <HeaderTitle title="Item Details" showIcon={false} />
+          ),
         }}
       />
     </Stack.Navigator>

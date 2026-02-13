@@ -16,7 +16,11 @@ import type { ImportedRecipeData } from "@shared/types/recipe-import";
 export type MealPlanStackParamList = {
   MealPlanHome: undefined;
   RecipeDetail: { recipeId: number };
-  RecipeBrowser: { mealType?: string; plannedDate?: string };
+  RecipeBrowser: {
+    mealType?: string;
+    plannedDate?: string;
+    searchQuery?: string;
+  };
   RecipeCreate: { prefill?: ImportedRecipeData };
   RecipeImport: undefined;
   GroceryLists: undefined;
