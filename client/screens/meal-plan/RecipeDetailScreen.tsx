@@ -1,6 +1,7 @@
 import React, { useMemo } from "react";
 import { StyleSheet, View, ScrollView, ActivityIndicator } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useRoute } from "@react-navigation/native";
 import { Feather } from "@expo/vector-icons";
@@ -48,6 +49,7 @@ export default function RecipeDetailScreen() {
   const { recipeId } = route.params;
   const headerHeight = useHeaderHeight();
   const insets = useSafeAreaInsets();
+  const tabBarHeight = useBottomTabBarHeight();
   const { theme } = useTheme();
 
   const { data: recipe, isLoading, error } = useMealPlanRecipeDetail(recipeId);
@@ -101,7 +103,7 @@ export default function RecipeDetailScreen() {
       <ScrollView
         contentContainerStyle={{
           paddingTop: headerHeight + Spacing.sm,
-          paddingBottom: insets.bottom + Spacing.xl,
+          paddingBottom: tabBarHeight + Spacing.xl,
         }}
         showsVerticalScrollIndicator={false}
       >

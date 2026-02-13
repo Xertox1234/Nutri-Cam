@@ -1,10 +1,12 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import {
   StyleSheet,
   View,
   ScrollView,
   RefreshControl,
   Image,
+  TextInput,
+  Pressable,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
@@ -22,7 +24,13 @@ import { useTheme } from "@/hooks/useTheme";
 import { useHaptics } from "@/hooks/useHaptics";
 import { useAccessibility } from "@/hooks/useAccessibility";
 import { useAuthContext } from "@/context/AuthContext";
-import { Spacing, FontFamily, FAB_CLEARANCE } from "@/constants/theme";
+import {
+  Spacing,
+  FontFamily,
+  BorderRadius,
+  FAB_CLEARANCE,
+  withOpacity,
+} from "@/constants/theme";
 import type { CommunityRecipe } from "@shared/schema";
 import type { HomeScreenNavigationProp } from "@/types/navigation";
 
@@ -97,6 +105,19 @@ export default function HomeScreen() {
     queryKey: ["/api/recipes/featured"],
     enabled: !!user,
   });
+
+  const [searchText, setSearchText] = useState("");
+
+  const handleSearchSubmit = useCallback(() => {
+    const query = searchText.trim();
+    if (!query) return;
+    haptics.impact(Haptics.ImpactFeedbackStyle.Light);
+    navigation.navigate("MealPlanTab", {
+      screen: "RecipeBrowser",
+      params: { searchQuery: query },
+    });
+    setSearchText("");
+  }, [searchText, haptics, navigation]);
 
   const handleTagPress = useCallback(
     (tag: string) => {
@@ -187,6 +208,45 @@ export default function HomeScreen() {
             </ThemedText>
           </Animated.View>
 
+          {/* Search bar */}
+          <Animated.View
+            entering={
+              reducedMotion ? undefined : FadeInDown.delay(120).duration(400)
+            }
+            style={styles.searchContainer}
+          >
+            <View
+              style={[
+                styles.searchBar,
+                { backgroundColor: withOpacity(theme.text, 0.06) },
+              ]}
+            >
+              <Feather name="search" size={16} color={theme.textSecondary} />
+              <TextInput
+                style={[styles.searchInput, { color: theme.text }]}
+                placeholder="Search recipes..."
+                placeholderTextColor={theme.textSecondary}
+                value={searchText}
+                onChangeText={setSearchText}
+                onSubmitEditing={handleSearchSubmit}
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="search"
+                accessibilityLabel="Search recipes"
+              />
+              {searchText.length > 0 && (
+                <Pressable
+                  onPress={() => setSearchText("")}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear search"
+                >
+                  <Feather name="x" size={16} color={theme.textSecondary} />
+                </Pressable>
+              )}
+            </View>
+          </Animated.View>
+
           {/* Trending tags */}
           <TrendingTags onTagPress={handleTagPress} />
 
@@ -257,6 +317,24 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontFamily: FontFamily.bold,
     lineHeight: 28,
+  },
+  searchContainer: {
+    paddingHorizontal: Spacing.lg,
+    marginBottom: Spacing.xl,
+  },
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.card,
+    gap: Spacing.sm,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: FontFamily.regular,
+    padding: 0,
   },
   sectionHeader: {
     paddingHorizontal: Spacing.lg,

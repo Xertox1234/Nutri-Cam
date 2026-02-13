@@ -27,18 +27,16 @@ function AppContent() {
   const { isDark } = useThemePreference();
 
   return (
-    <SafeAreaProvider>
-      <GestureHandlerRootView style={styles.root}>
-        <KeyboardProvider>
-          <BottomSheetModalProvider>
-            <NavigationContainer>
-              <RootStackNavigator />
-            </NavigationContainer>
-          </BottomSheetModalProvider>
-          <StatusBar style={isDark ? "light" : "dark"} />
-        </KeyboardProvider>
-      </GestureHandlerRootView>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={styles.root}>
+      <KeyboardProvider>
+        <BottomSheetModalProvider>
+          <NavigationContainer>
+            <RootStackNavigator />
+          </NavigationContainer>
+        </BottomSheetModalProvider>
+        <StatusBar style={isDark ? "light" : "dark"} />
+      </KeyboardProvider>
+    </GestureHandlerRootView>
   );
 }
 
@@ -59,17 +57,19 @@ export default function App() {
   }
 
   return (
-    <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <PremiumProvider>
-            <ThemeProvider>
-              <AppContent />
-            </ThemeProvider>
-          </PremiumProvider>
-        </AuthProvider>
-      </QueryClientProvider>
-    </ErrorBoundary>
+    <SafeAreaProvider>
+      <ErrorBoundary>
+        <QueryClientProvider client={queryClient}>
+          <AuthProvider>
+            <PremiumProvider>
+              <ThemeProvider>
+                <AppContent />
+              </ThemeProvider>
+            </PremiumProvider>
+          </AuthProvider>
+        </QueryClientProvider>
+      </ErrorBoundary>
+    </SafeAreaProvider>
   );
 }
 
