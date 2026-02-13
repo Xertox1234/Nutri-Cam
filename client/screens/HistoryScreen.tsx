@@ -203,7 +203,7 @@ const HistoryItem = React.memo(function HistoryItem({
             onPress={handlePress}
             onPressIn={handlePressIn}
             onPressOut={handlePressOut}
-            accessibilityLabel={`${item.productName}${item.brandName ? ` by ${item.brandName}` : ""}, ${calorieText}. ${isExpanded ? "Tap to view details." : "Tap to show actions."}`}
+            accessibilityLabel={`${item.productName}${item.brandName && item.brandName !== "null" ? ` by ${item.brandName}` : ""}, ${calorieText}. ${isExpanded ? "Tap to view details." : "Tap to show actions."}`}
             accessibilityRole="button"
           >
             <View style={styles.itemContent}>
@@ -235,7 +235,7 @@ const HistoryItem = React.memo(function HistoryItem({
                 >
                   {item.productName}
                 </ThemedText>
-                {item.brandName ? (
+                {item.brandName && item.brandName !== "null" ? (
                   <ThemedText
                     type="small"
                     style={{ color: theme.textSecondary }}
@@ -244,7 +244,7 @@ const HistoryItem = React.memo(function HistoryItem({
                     {item.brandName}
                   </ThemedText>
                 ) : null}
-                {item.servingSize ? (
+                {item.servingSize && item.servingSize !== "null" ? (
                   <ThemedText
                     type="caption"
                     style={{
@@ -816,7 +816,9 @@ export default function HistoryScreen() {
       const calories = item.calories
         ? `${Math.round(parseFloat(item.calories))} kcal`
         : "";
-      const content = [item.productName, item.brandName, calories]
+      const brand =
+        item.brandName && item.brandName !== "null" ? item.brandName : "";
+      const content = [item.productName, brand, calories]
         .filter(Boolean)
         .join(" - ");
 
