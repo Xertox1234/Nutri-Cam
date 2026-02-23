@@ -223,6 +223,7 @@ const StatsRow = React.memo(function StatsRow({
       </View>
       <View style={[styles.statDivider, { backgroundColor: theme.border }]} />
       <View style={styles.statItem}>
+        {/* TODO: fetch real streak from API — this is a placeholder */}
         <ThemedText style={styles.statNumber}>7 Days</ThemedText>
         <ThemedText style={[styles.statLabel, { color: theme.textSecondary }]}>
           Streak

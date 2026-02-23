@@ -203,7 +203,13 @@ export default function HomeScreen() {
                 Hello {displayName}
               </ThemedText>
             </View>
-            <Feather name="bell" size={22} color={theme.textSecondary} />
+            <Feather
+              name="bell"
+              size={22}
+              color={theme.textSecondary}
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+            />
           </Animated.View>
 
           {/* Headline */}
