@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRoute, useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useQuery } from "@tanstack/react-query";
 import { Feather } from "@expo/vector-icons";
 import type { RouteProp } from "@react-navigation/native";
@@ -25,6 +26,10 @@ import {
 } from "@/constants/theme";
 import type { RootStackParamList } from "@/navigation/RootStackNavigator";
 import type { CommunityRecipe } from "@shared/schema";
+
+const CLOSE_BUTTON_SIZE = 32;
+const HERO_IMAGE_HEIGHT = 250;
+const HERO_PLACEHOLDER_HEIGHT = 200;
 
 type FeaturedRecipeDetailRouteProp = RouteProp<
   RootStackParamList,
@@ -47,7 +52,8 @@ function InfoChip({ icon, text }: { icon: FeatherIconName; text: string }) {
 
 export default function FeaturedRecipeDetailScreen() {
   const route = useRoute<FeaturedRecipeDetailRouteProp>();
-  const navigation = useNavigation();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { recipeId } = route.params;
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
@@ -206,10 +212,10 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   closeButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "rgba(0,0,0,0.4)",
+    width: CLOSE_BUTTON_SIZE,
+    height: CLOSE_BUTTON_SIZE,
+    borderRadius: CLOSE_BUTTON_SIZE / 2,
+    backgroundColor: withOpacity("#000000", 0.4), // hardcoded — black overlay for close button
     alignItems: "center",
     justifyContent: "center",
   },
@@ -220,11 +226,11 @@ const styles = StyleSheet.create({
   },
   heroImage: {
     width: "100%",
-    height: 250,
+    height: HERO_IMAGE_HEIGHT,
   },
   heroPlaceholder: {
     width: "100%",
-    height: 200,
+    height: HERO_PLACEHOLDER_HEIGHT,
     justifyContent: "center",
     alignItems: "center",
   },

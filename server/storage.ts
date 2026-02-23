@@ -1168,6 +1168,8 @@ export class DatabaseStorage implements IStorage {
     limit?: number;
   }): Promise<{ community: CommunityRecipe[]; personal: MealPlanRecipe[] }> {
     const { userId, query, cuisine, diet } = params;
+    // Limit is applied independently to each source, so the total result
+    // set may contain up to 2× this value (community + personal).
     const resultLimit = Math.min(params.limit ?? 50, 100);
 
     const communityConditions = [eq(communityRecipes.isPublic, true)];

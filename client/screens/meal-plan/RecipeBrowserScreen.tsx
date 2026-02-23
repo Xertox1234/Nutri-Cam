@@ -8,6 +8,8 @@ import {
   ActivityIndicator,
   ScrollView,
   Image,
+  type StyleProp,
+  type ViewStyle,
 } from "react-native";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -54,9 +56,38 @@ type UnifiedRecipeItem = TaggedCommunity | TaggedPersonal;
 
 // ── Item Separator ──────────────────────────────────────────────────
 
-function ItemSeparator() {
+const ItemSeparator = React.memo(function ItemSeparator() {
   return <View style={{ height: Spacing.sm }} />;
-}
+});
+
+// ── Search Online Button ────────────────────────────────────────────
+
+const SearchOnlineButton = React.memo(function SearchOnlineButton({
+  onPress,
+  style,
+}: {
+  onPress: () => void;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const { theme } = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      style={[
+        styles.onlineSearchButton,
+        { borderColor: withOpacity(theme.text, 0.15) },
+        style,
+      ]}
+      accessibilityRole="button"
+      accessibilityLabel="Search online for more recipes"
+    >
+      <Feather name="globe" size={16} color={theme.link} />
+      <ThemedText style={[styles.onlineSearchText, { color: theme.link }]}>
+        Search online
+      </ThemedText>
+    </Pressable>
+  );
+});
 
 const CUISINE_PRESETS = [
   "Italian",
@@ -501,22 +532,7 @@ export default function RecipeBrowserScreen() {
     return (
       <View style={styles.footerContainer}>
         {!showSpoonacular ? (
-          <Pressable
-            onPress={() => setShowSpoonacular(true)}
-            style={[
-              styles.onlineSearchButton,
-              { borderColor: withOpacity(theme.text, 0.15) },
-            ]}
-            accessibilityRole="button"
-            accessibilityLabel="Search online for more recipes"
-          >
-            <Feather name="globe" size={16} color={theme.link} />
-            <ThemedText
-              style={[styles.onlineSearchText, { color: theme.link }]}
-            >
-              Search online
-            </ThemedText>
-          </Pressable>
+          <SearchOnlineButton onPress={() => setShowSpoonacular(true)} />
         ) : (
           <SpoonacularResults
             loading={spoonacularLoading}
@@ -533,7 +549,6 @@ export default function RecipeBrowserScreen() {
     showSpoonacular,
     spoonacularLoading,
     spoonacularData,
-    theme,
     handleAddCatalogRecipe,
     addingId,
     isBrowseOnly,
@@ -635,7 +650,12 @@ export default function RecipeBrowserScreen() {
               accessibilityLabel={`Filter by ${c}`}
             />
           ))}
-          <View style={styles.filterDivider} />
+          <View
+            style={[
+              styles.filterDivider,
+              { backgroundColor: withOpacity(theme.text, 0.15) },
+            ]}
+          />
           {DIET_PRESETS.map((d) => (
             <Chip
               key={d}
@@ -673,25 +693,10 @@ export default function RecipeBrowserScreen() {
               : "No recipes yet. Create or import one!"}
           </ThemedText>
           {debouncedQuery && (
-            <Pressable
+            <SearchOnlineButton
               onPress={() => setShowSpoonacular(true)}
-              style={[
-                styles.onlineSearchButton,
-                {
-                  borderColor: withOpacity(theme.text, 0.15),
-                  marginTop: Spacing.md,
-                },
-              ]}
-              accessibilityRole="button"
-              accessibilityLabel="Search online for more recipes"
-            >
-              <Feather name="globe" size={16} color={theme.link} />
-              <ThemedText
-                style={[styles.onlineSearchText, { color: theme.link }]}
-              >
-                Search online
-              </ThemedText>
-            </Pressable>
+              style={{ marginTop: Spacing.md }}
+            />
           )}
           {/* Show spoonacular results inline in empty state */}
           {showSpoonacular && debouncedQuery && (
