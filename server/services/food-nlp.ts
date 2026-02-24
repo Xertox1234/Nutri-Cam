@@ -1,5 +1,8 @@
 import OpenAI from "openai";
+import pLimit from "p-limit";
 import { lookupNutrition } from "./nutrition-lookup";
+
+const limit = pLimit(5);
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -55,12 +58,14 @@ Return JSON: { "items": [{ "name": string, "quantity": number, "unit": string }]
   };
   if (!parsed.items || !Array.isArray(parsed.items)) return [];
 
-  // Look up nutrition for all parsed items in parallel
+  // Look up nutrition for all parsed items in parallel (rate-limited)
   const settled = await Promise.allSettled(
-    parsed.items.map((item) => {
-      const searchTerm = `${item.quantity} ${item.unit} ${item.name}`;
-      return lookupNutrition(searchTerm);
-    }),
+    parsed.items.map((item) =>
+      limit(() => {
+        const searchTerm = `${item.quantity} ${item.unit} ${item.name}`;
+        return lookupNutrition(searchTerm);
+      }),
+    ),
   );
 
   const results: ParsedFoodItem[] = parsed.items.map((item, i) => {
