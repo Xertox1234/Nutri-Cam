@@ -12,19 +12,9 @@ import {
   FontFamily,
 } from "@/constants/theme";
 import type { MenuAnalysisItem } from "@/hooks/useMenuScan";
+import type { RootStackParamList } from "@/navigation/RootStackNavigator";
 
-type MenuScanResultParams = {
-  MenuScanResult: {
-    items: MenuAnalysisItem[];
-    restaurantName?: string;
-    cuisine?: string;
-  };
-};
-
-type MenuScanResultRouteProp = RouteProp<
-  MenuScanResultParams,
-  "MenuScanResult"
->;
+type MenuScanResultRouteProp = RouteProp<RootStackParamList, "MenuScanResult">;
 
 const RECOMMENDATION_STYLES: Record<
   string,

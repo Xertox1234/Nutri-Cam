@@ -20,6 +20,7 @@ import {
 } from "@/hooks/useMedication";
 import MedicationLogCard from "@/components/MedicationLogCard";
 import AppetiteTracker from "@/components/AppetiteTracker";
+import { HighProteinSuggestions } from "@/components/HighProteinSuggestions";
 
 const COMMON_MEDICATIONS = [
   { name: "semaglutide", brands: ["Ozempic", "Wegovy", "Rybelsus"] },
@@ -234,6 +235,8 @@ export default function GLP1CompanionScreen() {
               ))}
             </View>
           )}
+
+        <HighProteinSuggestions />
 
         <View style={[styles.section, { marginTop: Spacing.md }]}>
           <Text

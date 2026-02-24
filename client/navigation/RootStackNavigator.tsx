@@ -12,12 +12,14 @@ import GoalSetupScreen from "@/screens/GoalSetupScreen";
 import EditDietaryProfileScreen from "@/screens/EditDietaryProfileScreen";
 import FeaturedRecipeDetailScreen from "@/screens/FeaturedRecipeDetailScreen";
 import QuickLogScreen from "@/screens/QuickLogScreen";
+import MenuScanResultScreen from "@/screens/MenuScanResultScreen";
 import OnboardingNavigator from "@/navigation/OnboardingNavigator";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
 import { useAuthContext } from "@/context/AuthContext";
 import { useTheme } from "@/hooks/useTheme";
 import { Colors } from "@/constants/theme";
 import type { PhotoIntent } from "@shared/constants/preparation";
+import type { MenuAnalysisItem } from "@/hooks/useMenuScan";
 
 export type RootStackParamList = {
   Login: undefined;
@@ -40,6 +42,11 @@ export type RootStackParamList = {
   EditDietaryProfile: undefined;
   FeaturedRecipeDetail: { recipeId: number };
   QuickLog: undefined;
+  MenuScanResult: {
+    items: MenuAnalysisItem[];
+    restaurantName?: string;
+    cuisine?: string;
+  };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -144,6 +151,14 @@ export default function RootStackNavigator() {
             component={QuickLogScreen}
             options={{
               headerTitle: "Quick Log",
+              presentation: "modal",
+            }}
+          />
+          <Stack.Screen
+            name="MenuScanResult"
+            component={MenuScanResultScreen}
+            options={{
+              headerTitle: "Menu Analysis",
               presentation: "modal",
             }}
           />

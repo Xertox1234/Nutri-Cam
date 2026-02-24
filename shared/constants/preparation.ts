@@ -1,6 +1,12 @@
 import { z } from "zod";
 
-export const photoIntents = ["log", "identify", "recipe", "calories"] as const;
+export const photoIntents = [
+  "log",
+  "identify",
+  "recipe",
+  "calories",
+  "menu",
+] as const;
 export const photoIntentSchema = z.enum(photoIntents);
 export type PhotoIntent = z.infer<typeof photoIntentSchema>;
 
@@ -85,6 +91,12 @@ export const INTENT_CONFIG: Record<
     needsSession: false,
     canLog: false,
     label: "Quick calorie check",
+  },
+  menu: {
+    needsNutrition: false,
+    needsSession: false,
+    canLog: false,
+    label: "Scan restaurant menu",
   },
 };
 

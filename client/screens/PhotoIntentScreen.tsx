@@ -64,6 +64,13 @@ const INTENT_OPTIONS: IntentOption[] = [
     description: "See what foods are in the photo",
     icon: "search",
   },
+  {
+    intent: "menu",
+    label: "Scan restaurant menu",
+    description: "Analyze a menu photo for nutrition info",
+    icon: "list",
+    requiresPremium: true,
+  },
 ];
 
 export default function PhotoIntentScreen() {

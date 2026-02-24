@@ -167,3 +167,12 @@ export type GroceryListScreenNavigationProp = NativeStackNavigationProp<
   MealPlanStackParamList,
   "GroceryList"
 >;
+
+/**
+ * Navigation prop for MenuScanResultScreen
+ * Can use goBack or navigate within RootStack
+ */
+export type MenuScanResultScreenNavigationProp = NativeStackNavigationProp<
+  RootStackParamList,
+  "MenuScanResult"
+>;

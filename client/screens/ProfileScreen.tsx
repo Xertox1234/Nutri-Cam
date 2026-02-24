@@ -52,6 +52,8 @@ import {
   useThemePreference,
   type ThemePreference,
 } from "@/context/ThemeContext";
+import { useHealthKitSettings } from "@/hooks/useHealthKit";
+import { HealthKitSyncIndicator } from "@/components/HealthKitSyncIndicator";
 
 type ProfileScreenNavigationProp = CompositeNavigationProp<
   NativeStackNavigationProp<ProfileStackParamList, "Profile">,
@@ -445,6 +447,7 @@ const SettingsSection = React.memo(function SettingsSection({
   onLogout: () => void;
 }) {
   const { theme } = useTheme();
+  const { data: healthKitSettings } = useHealthKitSettings();
 
   return (
     <View style={styles.settingsSection}>
@@ -458,7 +461,18 @@ const SettingsSection = React.memo(function SettingsSection({
           onPress={onWeightTracking}
         />
         <View style={[styles.divider, { backgroundColor: theme.border }]} />
-        <SettingsItem icon="heart" label="Apple Health" onPress={onHealthKit} />
+        <View style={styles.healthKitRow}>
+          <View style={{ flex: 1 }}>
+            <SettingsItem
+              icon="heart"
+              label="Apple Health"
+              onPress={onHealthKit}
+            />
+          </View>
+          {healthKitSettings && healthKitSettings.length > 0 && (
+            <HealthKitSyncIndicator settings={healthKitSettings} />
+          )}
+        </View>
         <View style={[styles.divider, { backgroundColor: theme.border }]} />
         <SettingsItem
           icon="clipboard"
@@ -1002,6 +1016,11 @@ const styles = StyleSheet.create({
   settingsCard: {
     padding: 0,
     overflow: "hidden",
+  },
+  healthKitRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingRight: Spacing.md,
   },
   settingsItem: {
     flexDirection: "row",
