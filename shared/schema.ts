@@ -925,6 +925,59 @@ export const medicationLogsRelations = relations(medicationLogs, ({ one }) => ({
 // GOAL ADJUSTMENT LOGS (Adaptive Goals)
 // ============================================================================
 
+// ============================================================================
+// MENU SCANS
+// ============================================================================
+
+export const menuScans = pgTable(
+  "menu_scans",
+  {
+    id: serial("id").primaryKey(),
+    userId: varchar("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    restaurantName: text("restaurant_name"),
+    cuisine: text("cuisine"),
+    menuItems: jsonb("menu_items")
+      .$type<
+        {
+          name: string;
+          description?: string;
+          price?: string;
+          calories?: number;
+          protein?: number;
+          carbs?: number;
+          fat?: number;
+        }[]
+      >()
+      .default([]),
+    imageUrl: text("image_url"),
+    scannedAt: timestamp("scanned_at")
+      .default(sql`CURRENT_TIMESTAMP`)
+      .notNull(),
+  },
+  (table) => ({
+    userScannedAtIdx: index("menu_scans_user_scanned_at_idx").on(
+      table.userId,
+      table.scannedAt,
+    ),
+  }),
+);
+
+export const menuScansRelations = relations(menuScans, ({ one }) => ({
+  user: one(users, {
+    fields: [menuScans.userId],
+    references: [users.id],
+  }),
+}));
+
+export type MenuScan = typeof menuScans.$inferSelect;
+export type InsertMenuScan = typeof menuScans.$inferInsert;
+
+// ============================================================================
+// GOAL ADJUSTMENT LOGS (Adaptive Goals)
+// ============================================================================
+
 export const goalAdjustmentLogs = pgTable(
   "goal_adjustment_logs",
   {

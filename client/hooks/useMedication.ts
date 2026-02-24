@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/query-client";
+import type { ProteinSuggestionsResponse } from "@shared/types/protein-suggestions";
 
 interface MedicationLog {
   id: number;
@@ -100,6 +101,18 @@ export function useDeleteMedicationLog() {
         queryKey: ["/api/medication/insights"],
       });
     },
+  });
+}
+
+export type {
+  ProteinSuggestion,
+  ProteinSuggestionsResponse,
+} from "@shared/types/protein-suggestions";
+
+export function useHighProteinSuggestions(enabled = true) {
+  return useQuery<ProteinSuggestionsResponse>({
+    queryKey: ["/api/medication/protein-suggestions"],
+    enabled,
   });
 }
 

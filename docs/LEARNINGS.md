@@ -4,6 +4,7 @@ This document captures key learnings, gotchas, and architectural decisions disco
 
 ## Table of Contents
 
+- [PostgreSQL Decimal Aggregates Return Strings via Drizzle (2026-02-24)](#postgresql-decimal-aggregates-return-strings-via-drizzle-2026-02-24)
 - [Phase 0-7 Code Review Learnings (2026-02-24)](#phase-0-7-code-review-learnings-2026-02-24)
 - [Phase 8-11 Code Review Learnings (2026-02-24)](#phase-8-11-code-review-learnings-2026-02-24)
 - [History Item Actions Learnings (2026-02-12)](#history-item-actions-learnings-2026-02-12)
@@ -18,6 +19,69 @@ This document captures key learnings, gotchas, and architectural decisions disco
 - [Testing & Tooling Learnings](#testing--tooling-learnings)
 - [Database Migration Gotchas](#database-migration-gotchas)
 - [TypeScript Safety Learnings](#typescript-safety-learnings)
+
+---
+
+## [2026-02-24] PostgreSQL Decimal Aggregates Return Strings via Drizzle
+
+**Category:** Gotcha
+
+### Context
+
+The `getDailySummary` method in `server/storage.ts` uses `sql<number>` tagged templates with `SUM(...CAST...AS DECIMAL)` to aggregate nutrition totals (calories, protein, carbs, fat). The protein-suggestions route in `server/routes/medication.ts` consumed `dailySummary.totalProtein` directly in arithmetic to calculate the remaining protein needed for the day.
+
+### Problem
+
+Drizzle's `sql<number>` generic parameter is a compile-time type annotation only -- it tells TypeScript the value is a `number`, but does not coerce the runtime value. PostgreSQL's `pg` driver returns DECIMAL/NUMERIC column results as JavaScript strings to avoid floating-point precision loss. So `dailySummary.totalProtein` could be `"45.5"` (string) instead of `45.5` (number) at runtime.
+
+The expression `proteinGoal - dailySummary.totalProtein` would then produce string concatenation (`"80-45.5"` -> `NaN` or unexpected results) instead of the expected arithmetic subtraction.
+
+### Investigation
+
+1. Noticed the protein-suggestions route used `dailySummary.totalProtein` in arithmetic without wrapping it
+2. Checked the `getDailySummary` storage method -- uses `sql<number>\`SUM(CAST(... AS DECIMAL))\``
+3. Confirmed via PostgreSQL documentation and the `pg` driver source that DECIMAL/NUMERIC types are always returned as strings
+4. Verified that Drizzle's `sql<T>` generic is purely a TypeScript-level annotation with no runtime coercion
+
+### Solution
+
+Wrap all `sql<number>` results with `Number()` when using them in arithmetic:
+
+```typescript
+// ❌ Bad: totalProtein is actually a string at runtime
+const remaining = proteinGoal - dailySummary.totalProtein;
+
+// ✅ Good: Explicit coercion to number
+const remaining = proteinGoal - Number(dailySummary.totalProtein);
+```
+
+Alternative approach: use `::integer` or `::float` casts in the SQL instead of `::decimal` to get numeric values from the driver:
+
+```sql
+-- Returns string: SUM(CAST(column AS DECIMAL))
+-- Returns number: SUM(CAST(column AS FLOAT))
+-- Returns number: SUM(CAST(column AS INTEGER))
+```
+
+### Outcome
+
+The protein-suggestions route now correctly computes the remaining protein gap as a number. Without the fix, users could have received nonsensical protein suggestions based on `NaN` arithmetic.
+
+### Takeaways
+
+- Drizzle's `sql<T>` generic parameter is TypeScript-only; it does not coerce the runtime value
+- PostgreSQL DECIMAL/NUMERIC types always return as strings through the `pg` driver (to preserve precision)
+- Always wrap `sql<number>` results with `Number()` when using them in arithmetic
+- Alternative: use `::integer` or `::float` casts in SQL instead of `::decimal` if precision loss is acceptable
+- This is a general gotcha for any ORM or query builder that uses tagged templates with type annotations -- the type parameter is a developer hint, not a runtime guarantee
+
+### References
+
+- `server/storage.ts` — `getDailySummary()` method (SUM with DECIMAL casts)
+- `server/routes/medication.ts` — protein-suggestions route
+- [Drizzle ORM sql tagged template docs](https://orm.drizzle.team/docs/sql)
+- [node-postgres type parsing](https://node-postgres.com/features/types) — NUMERIC (OID 1700) parsed as string by default
+- Related pattern: "IDOR Protection" in PATTERNS.md (same storage method involved)
 
 ---
 
@@ -1827,6 +1891,7 @@ const token = parsed.data.access_token; // Guaranteed to be a string
 29. **Express Route Ordering:** Register fixed-path routes (`/api/resource/trend`) before parameterized routes (`/api/resource/:id`) within the same route module. Express matches in registration order, and `:id` greedily captures "trend" as a parameter.
 30. **OpenAI Client Initialization Recurrence:** Module-level `new OpenAI()` keeps appearing in new service files (7 out of 8 services). "Document and hope" has failed; this needs a structural fix (shared lazy singleton or lint rule).
 31. **Time-Window Dedup for Health APIs:** When deduplicating data from external health/fitness APIs (HealthKit, Google Fit), use a time window (30s-2min) rather than exact timestamp matching. Precision differences between systems cause false negatives with exact matching.
+32. **Drizzle `sql<number>` is TypeScript-only:** PostgreSQL DECIMAL/NUMERIC types return as strings through the `pg` driver. Always wrap `sql<number>` results with `Number()` before arithmetic, or use `::float`/`::integer` casts instead of `::decimal` in SQL.
 
 ---
 

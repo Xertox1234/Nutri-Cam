@@ -39,6 +39,15 @@ import {
   type InsertMedicationLog,
   type GoalAdjustmentLog,
   type InsertGoalAdjustmentLog,
+  type FastingSchedule,
+  type InsertFastingSchedule,
+  type FastingLog,
+  type InsertFastingLog,
+  type MenuScan,
+  type InsertMenuScan,
+  fastingSchedules,
+  fastingLogs,
+  menuScans,
   healthKitSync,
   chatConversations,
   chatMessages,
@@ -461,6 +470,29 @@ export interface IStorage {
     userId: string,
     limit?: number,
   ): Promise<GoalAdjustmentLog[]>;
+
+  // Menu scans
+  getMenuScans(userId: string, limit?: number): Promise<MenuScan[]>;
+  createMenuScan(scan: InsertMenuScan): Promise<MenuScan>;
+  deleteMenuScan(id: number, userId: string): Promise<boolean>;
+
+  // Fasting
+  getFastingSchedule(userId: string): Promise<FastingSchedule | undefined>;
+  upsertFastingSchedule(
+    userId: string,
+    schedule: Omit<InsertFastingSchedule, "userId">,
+  ): Promise<FastingSchedule>;
+  getActiveFastingLog(userId: string): Promise<FastingLog | undefined>;
+  getFastingLogs(userId: string, limit?: number): Promise<FastingLog[]>;
+  createFastingLog(log: InsertFastingLog): Promise<FastingLog>;
+  endFastingLog(
+    id: number,
+    userId: string,
+    endedAt: Date,
+    actualDurationMinutes: number,
+    completed: boolean,
+    note?: string,
+  ): Promise<FastingLog | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2255,6 +2287,99 @@ export class DatabaseStorage implements IStorage {
       return query.limit(limit);
     }
     return query;
+  }
+
+  // ============================================================================
+  // MENU SCANS
+  // ============================================================================
+
+  async getMenuScans(userId: string, limit = 20): Promise<MenuScan[]> {
+    return db
+      .select()
+      .from(menuScans)
+      .where(eq(menuScans.userId, userId))
+      .orderBy(desc(menuScans.scannedAt))
+      .limit(limit);
+  }
+
+  async createMenuScan(scan: InsertMenuScan): Promise<MenuScan> {
+    const [created] = await db.insert(menuScans).values(scan).returning();
+    return created;
+  }
+
+  async deleteMenuScan(id: number, userId: string): Promise<boolean> {
+    const result = await db
+      .delete(menuScans)
+      .where(and(eq(menuScans.id, id), eq(menuScans.userId, userId)))
+      .returning({ id: menuScans.id });
+    return result.length > 0;
+  }
+
+  // ============================================================================
+  // FASTING
+  // ============================================================================
+
+  async getFastingSchedule(
+    userId: string,
+  ): Promise<FastingSchedule | undefined> {
+    const [schedule] = await db
+      .select()
+      .from(fastingSchedules)
+      .where(eq(fastingSchedules.userId, userId));
+    return schedule || undefined;
+  }
+
+  async upsertFastingSchedule(
+    userId: string,
+    schedule: Omit<InsertFastingSchedule, "userId">,
+  ): Promise<FastingSchedule> {
+    const [result] = await db
+      .insert(fastingSchedules)
+      .values({ userId, ...schedule })
+      .onConflictDoUpdate({
+        target: [fastingSchedules.userId],
+        set: schedule,
+      })
+      .returning();
+    return result;
+  }
+
+  async getActiveFastingLog(userId: string): Promise<FastingLog | undefined> {
+    const [active] = await db
+      .select()
+      .from(fastingLogs)
+      .where(and(eq(fastingLogs.userId, userId), isNull(fastingLogs.endedAt)));
+    return active || undefined;
+  }
+
+  async getFastingLogs(userId: string, limit = 30): Promise<FastingLog[]> {
+    return db
+      .select()
+      .from(fastingLogs)
+      .where(eq(fastingLogs.userId, userId))
+      .orderBy(desc(fastingLogs.startedAt))
+      .limit(limit);
+  }
+
+  async createFastingLog(log: InsertFastingLog): Promise<FastingLog> {
+    const [created] = await db.insert(fastingLogs).values(log).returning();
+    return created;
+  }
+
+  async endFastingLog(
+    id: number,
+    userId: string,
+    endedAt: Date,
+    actualDurationMinutes: number,
+    completed: boolean,
+    note?: string,
+  ): Promise<FastingLog | undefined> {
+    const [updated] = await db
+      .update(fastingLogs)
+      .set({ endedAt, actualDurationMinutes, completed, note })
+      .where(and(eq(fastingLogs.id, id), eq(fastingLogs.userId, userId)))
+      .returning();
+    return updated || undefined;
   }
 }
 

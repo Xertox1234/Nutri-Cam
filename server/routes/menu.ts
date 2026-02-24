@@ -1,5 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { requireAuth } from "../middleware/auth";
+import { storage } from "../storage";
 import { analyzeMenuPhoto } from "../services/menu-analysis";
 import { checkPremiumFeature, ipKeyGenerator } from "./_helpers";
 import { rateLimit } from "express-rate-limit";
@@ -51,10 +52,63 @@ export function register(app: Express): void {
         const imageBase64 = req.file.buffer.toString("base64");
         const result = await analyzeMenuPhoto(imageBase64, req.userId!);
 
-        res.json(result);
+        // Persist the scan result
+        const saved = await storage.createMenuScan({
+          userId: req.userId!,
+          restaurantName: result.restaurantName ?? null,
+          cuisine: result.cuisine ?? null,
+          menuItems: result.menuItems ?? [],
+        });
+
+        res.json({ ...result, id: saved.id });
       } catch (error) {
         console.error("Menu scan error:", error);
         res.status(500).json({ error: "Failed to analyze menu" });
+      }
+    },
+  );
+
+  // GET /api/menu/history
+  app.get(
+    "/api/menu/history",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      try {
+        const features = await checkPremiumFeature(
+          req,
+          res,
+          "menuScanner",
+          "Menu Scanner",
+        );
+        if (!features) return;
+
+        const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
+        const scans = await storage.getMenuScans(req.userId!, limit);
+        res.json(scans);
+      } catch (error) {
+        console.error("Get menu history error:", error);
+        res.status(500).json({ error: "Failed to get menu history" });
+      }
+    },
+  );
+
+  // DELETE /api/menu/scans/:id
+  app.delete(
+    "/api/menu/scans/:id",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      try {
+        const id = parseInt(req.params.id as string, 10);
+        if (isNaN(id))
+          return res.status(400).json({ error: "Invalid scan ID" });
+
+        const deleted = await storage.deleteMenuScan(id, req.userId!);
+        if (!deleted)
+          return res.status(404).json({ error: "Menu scan not found" });
+        res.json({ success: true });
+      } catch (error) {
+        console.error("Delete menu scan error:", error);
+        res.status(500).json({ error: "Failed to delete menu scan" });
       }
     },
   );

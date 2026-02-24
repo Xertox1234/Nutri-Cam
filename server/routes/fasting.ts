@@ -1,12 +1,10 @@
 import type { Express, Request, Response } from "express";
 import { z } from "zod";
 import { rateLimit } from "express-rate-limit";
-import { eq, and, desc, isNull } from "drizzle-orm";
 import { ipKeyGenerator, formatZodError } from "./_helpers";
-import { db } from "../db";
+import { storage } from "../storage";
 import { requireAuth } from "../middleware/auth";
 import { calculateFastingStats } from "../services/fasting-stats";
-import { fastingSchedules, fastingLogs } from "@shared/schema";
 
 const fastingRateLimit = rateLimit({
   windowMs: 60 * 1000,
@@ -25,10 +23,7 @@ export function register(app: Express): void {
     fastingRateLimit,
     async (req: Request, res: Response) => {
       try {
-        const [schedule] = await db
-          .select()
-          .from(fastingSchedules)
-          .where(eq(fastingSchedules.userId, req.userId!));
+        const schedule = await storage.getFastingSchedule(req.userId!);
         res.json(schedule || null);
       } catch (error) {
         console.error("Get fasting schedule error:", error);
@@ -62,14 +57,10 @@ export function register(app: Express): void {
         if (!parsed.success)
           return res.status(400).json({ error: formatZodError(parsed.error) });
 
-        const [result] = await db
-          .insert(fastingSchedules)
-          .values({ userId: req.userId!, ...parsed.data })
-          .onConflictDoUpdate({
-            target: [fastingSchedules.userId],
-            set: parsed.data,
-          })
-          .returning();
+        const result = await storage.upsertFastingSchedule(
+          req.userId!,
+          parsed.data,
+        );
         res.json(result);
       } catch (error) {
         console.error("Update fasting schedule error:", error);
@@ -86,34 +77,19 @@ export function register(app: Express): void {
     async (req: Request, res: Response) => {
       try {
         // Check no active fast
-        const [active] = await db
-          .select()
-          .from(fastingLogs)
-          .where(
-            and(
-              eq(fastingLogs.userId, req.userId!),
-              isNull(fastingLogs.endedAt),
-            ),
-          );
+        const active = await storage.getActiveFastingLog(req.userId!);
         if (active)
           return res
             .status(409)
             .json({ error: "A fast is already in progress" });
 
-        const [schedule] = await db
-          .select()
-          .from(fastingSchedules)
-          .where(eq(fastingSchedules.userId, req.userId!));
-
+        const schedule = await storage.getFastingSchedule(req.userId!);
         const targetHours = schedule?.fastingHours || 16;
 
-        const [log] = await db
-          .insert(fastingLogs)
-          .values({
-            userId: req.userId!,
-            targetDurationHours: targetHours,
-          })
-          .returning();
+        const log = await storage.createFastingLog({
+          userId: req.userId!,
+          targetDurationHours: targetHours,
+        });
         res.status(201).json(log);
       } catch (error) {
         console.error("Start fast error:", error);
@@ -132,15 +108,7 @@ export function register(app: Express): void {
         const schema = z.object({ note: z.string().max(500).optional() });
         const parsed = schema.safeParse(req.body);
 
-        const [active] = await db
-          .select()
-          .from(fastingLogs)
-          .where(
-            and(
-              eq(fastingLogs.userId, req.userId!),
-              isNull(fastingLogs.endedAt),
-            ),
-          );
+        const active = await storage.getActiveFastingLog(req.userId!);
         if (!active)
           return res.status(404).json({ error: "No active fast found" });
 
@@ -152,16 +120,14 @@ export function register(app: Express): void {
         const targetMinutes = active.targetDurationHours * 60;
         const completed = actualMinutes >= targetMinutes * 0.9; // 90% threshold
 
-        const [updated] = await db
-          .update(fastingLogs)
-          .set({
-            endedAt: now,
-            actualDurationMinutes: actualMinutes,
-            completed,
-            note: parsed.success ? parsed.data.note : undefined,
-          })
-          .where(eq(fastingLogs.id, active.id))
-          .returning();
+        const updated = await storage.endFastingLog(
+          active.id,
+          req.userId!,
+          now,
+          actualMinutes,
+          completed,
+          parsed.success ? parsed.data.note : undefined,
+        );
         res.json(updated);
       } catch (error) {
         console.error("End fast error:", error);
@@ -177,15 +143,7 @@ export function register(app: Express): void {
     fastingRateLimit,
     async (req: Request, res: Response) => {
       try {
-        const [active] = await db
-          .select()
-          .from(fastingLogs)
-          .where(
-            and(
-              eq(fastingLogs.userId, req.userId!),
-              isNull(fastingLogs.endedAt),
-            ),
-          );
+        const active = await storage.getActiveFastingLog(req.userId!);
         res.json(active || null);
       } catch (error) {
         console.error("Get current fast error:", error);
@@ -203,13 +161,7 @@ export function register(app: Express): void {
       try {
         const limit = Math.min(parseInt(req.query.limit as string) || 30, 100);
 
-        const logs = await db
-          .select()
-          .from(fastingLogs)
-          .where(eq(fastingLogs.userId, req.userId!))
-          .orderBy(desc(fastingLogs.startedAt))
-          .limit(limit);
-
+        const logs = await storage.getFastingLogs(req.userId!, limit);
         const stats = calculateFastingStats(logs);
         res.json({ logs, stats });
       } catch (error) {

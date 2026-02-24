@@ -5,6 +5,8 @@ This document captures established patterns for the NutriScan codebase. Follow t
 ## Table of Contents
 
 - [Security Patterns](#security-patterns)
+  - [IDOR Protection: Auth + Ownership Check](#idor-protection-auth--ownership-check)
+    - [Storage-Layer Defense-in-Depth](#storage-layer-defense-in-depth)
   - [SSRF Protection for Server-Side URL Fetching](#ssrf-protection-for-server-side-url-fetching)
 - [TypeScript Patterns](#typescript-patterns)
   - [Zod Discriminated Union for Response Schemas](#zod-discriminated-union-for-response-schemas)
@@ -151,6 +153,44 @@ app.get(
   },
 );
 ```
+
+#### Storage-Layer Defense-in-Depth
+
+Route-level ownership checks are the primary defense, but storage mutation methods that operate on user-owned resources should also include `userId` in their WHERE clause. This prevents IDOR if a storage method is called from a different code path that forgets the ownership check.
+
+**When to use:** Any `IStorage` method that updates or deletes a row in a user-owned table by primary key (`id`).
+
+**When NOT to use:** Read-only methods where the route already verifies ownership before returning data, or methods that operate on non-user-scoped resources (e.g., shared recipe catalog).
+
+**Implementation:**
+
+```typescript
+// ❌ Bad: Storage method trusts the caller to pass the right ID
+async endFastingLog(id: number, ...): Promise<FastingLog | undefined> {
+  const [updated] = await db.update(fastingLogs)
+    .set({ ... })
+    .where(eq(fastingLogs.id, id))  // No userId check!
+    .returning();
+  return updated || undefined;
+}
+
+// ✅ Good: Storage method enforces ownership itself
+async endFastingLog(id: number, userId: string, ...): Promise<FastingLog | undefined> {
+  const [updated] = await db.update(fastingLogs)
+    .set({ ... })
+    .where(and(eq(fastingLogs.id, id), eq(fastingLogs.userId, userId)))
+    .returning();
+  return updated || undefined;
+}
+```
+
+**Rationale:** A route may look safe because it first looks up the active record by `userId` and then passes the `id` to the storage mutation. But if a future code path calls the mutation directly with an untrusted `id`, the missing `userId` filter becomes an IDOR vulnerability. Adding `userId` to the WHERE clause makes the storage layer independently safe regardless of how it is called. The cost is one extra parameter; the benefit is defense-in-depth against authorization bypass.
+
+**References:**
+
+- `server/storage.ts` — `endFastingLog`, `deleteMenuScan`, `deleteMedicationLog`, `softDeleteScannedItem`
+- Related learning: "IDOR in Micronutrients and Chat Routes" in LEARNINGS.md
+- See also: [IDOR Protection: Auth + Ownership Check](#idor-protection-auth--ownership-check)
 
 ### SSRF Protection for Server-Side URL Fetching
 
