@@ -37,6 +37,8 @@ import {
   type ChatMessage,
   type MedicationLog,
   type InsertMedicationLog,
+  type GoalAdjustmentLog,
+  type InsertGoalAdjustmentLog,
   healthKitSync,
   chatConversations,
   chatMessages,
@@ -62,6 +64,7 @@ import {
   exerciseLogs,
   exerciseLibrary,
   medicationLogs,
+  goalAdjustmentLogs,
 } from "@shared/schema";
 import { type CreateSavedItemInput } from "@shared/schemas/saved-items";
 import type { MealSuggestion } from "@shared/types/meal-suggestions";
@@ -449,6 +452,15 @@ export interface IStorage {
     updates: Partial<InsertMedicationLog>,
   ): Promise<MedicationLog | undefined>;
   deleteMedicationLog(id: number, userId: string): Promise<boolean>;
+
+  // Goal adjustment logs (Adaptive Goals)
+  createGoalAdjustmentLog(
+    log: InsertGoalAdjustmentLog,
+  ): Promise<GoalAdjustmentLog>;
+  getGoalAdjustmentLogs(
+    userId: string,
+    limit?: number,
+  ): Promise<GoalAdjustmentLog[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2214,6 +2226,35 @@ export class DatabaseStorage implements IStorage {
       );
 
     return Number(result[0]?.count ?? 0);
+  }
+
+  // ============================================================================
+  // GOAL ADJUSTMENT LOGS
+  // ============================================================================
+
+  async createGoalAdjustmentLog(
+    log: InsertGoalAdjustmentLog,
+  ): Promise<GoalAdjustmentLog> {
+    const [result] = await db
+      .insert(goalAdjustmentLogs)
+      .values(log)
+      .returning();
+    return result;
+  }
+
+  async getGoalAdjustmentLogs(
+    userId: string,
+    limit?: number,
+  ): Promise<GoalAdjustmentLog[]> {
+    const query = db
+      .select()
+      .from(goalAdjustmentLogs)
+      .where(eq(goalAdjustmentLogs.userId, userId))
+      .orderBy(desc(goalAdjustmentLogs.appliedAt));
+    if (limit) {
+      return query.limit(limit);
+    }
+    return query;
   }
 }
 
