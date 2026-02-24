@@ -35,6 +35,8 @@ export const users = pgTable("users", {
   gender: text("gender"),
   goalWeight: decimal("goal_weight", { precision: 6, scale: 2 }),
   goalsCalculatedAt: timestamp("goals_calculated_at"),
+  adaptiveGoalsEnabled: boolean("adaptive_goals_enabled").default(false),
+  lastGoalAdjustmentAt: timestamp("last_goal_adjustment_at"),
   onboardingCompleted: boolean("onboarding_completed").default(false),
   subscriptionTier: text("subscription_tier").default("free"),
   subscriptionExpiresAt: timestamp("subscription_expires_at"),
@@ -919,6 +921,47 @@ export const medicationLogsRelations = relations(medicationLogs, ({ one }) => ({
   }),
 }));
 
+// ============================================================================
+// GOAL ADJUSTMENT LOGS (Adaptive Goals)
+// ============================================================================
+
+export const goalAdjustmentLogs = pgTable(
+  "goal_adjustment_logs",
+  {
+    id: serial("id").primaryKey(),
+    userId: varchar("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    previousCalories: integer("previous_calories").notNull(),
+    newCalories: integer("new_calories").notNull(),
+    previousProtein: integer("previous_protein").notNull(),
+    newProtein: integer("new_protein").notNull(),
+    previousCarbs: integer("previous_carbs").notNull(),
+    newCarbs: integer("new_carbs").notNull(),
+    previousFat: integer("previous_fat").notNull(),
+    newFat: integer("new_fat").notNull(),
+    reason: text("reason").notNull(),
+    weightTrendRate: decimal("weight_trend_rate", { precision: 5, scale: 2 }),
+    appliedAt: timestamp("applied_at")
+      .default(sql`CURRENT_TIMESTAMP`)
+      .notNull(),
+    acceptedByUser: boolean("accepted_by_user").default(false),
+  },
+  (table) => ({
+    userIdx: index("goal_adj_user_idx").on(table.userId),
+  }),
+);
+
+export const goalAdjustmentLogsRelations = relations(
+  goalAdjustmentLogs,
+  ({ one }) => ({
+    user: one(users, {
+      fields: [goalAdjustmentLogs.userId],
+      references: [users.id],
+    }),
+  }),
+);
+
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,
@@ -1241,3 +1284,6 @@ export type InsertFastingLog = typeof fastingLogs.$inferInsert;
 
 export type MedicationLog = typeof medicationLogs.$inferSelect;
 export type InsertMedicationLog = typeof medicationLogs.$inferInsert;
+
+export type GoalAdjustmentLog = typeof goalAdjustmentLogs.$inferSelect;
+export type InsertGoalAdjustmentLog = typeof goalAdjustmentLogs.$inferInsert;
