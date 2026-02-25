@@ -5,6 +5,7 @@ import {
 } from "@shared/constants/preparation";
 import { getCuisineForFood } from "./cultural-food-map";
 import { openai } from "../lib/openai";
+import { sanitizeUserInput, SYSTEM_PROMPT_BOUNDARY } from "../lib/ai-safety";
 
 // Zod schemas for runtime validation (from institutional learning: unsafe-type-cast-zod-validation)
 const foodItemSchema = z.object({
@@ -45,6 +46,8 @@ Rules:
 - If you see a beverage, note it separately
 - If portion is unclear, set needsClarification to true
 
+${SYSTEM_PROMPT_BOUNDARY}
+
 Respond with JSON only matching this schema:
 {
   "foods": [
@@ -70,6 +73,8 @@ For each food item provide:
 
 Keep responses brief. No confidence scoring needed — set confidence to 1.0 and needsClarification to false.
 
+${SYSTEM_PROMPT_BOUNDARY}
+
 Respond with JSON only:
 {
   "foods": [
@@ -92,6 +97,8 @@ For each ingredient provide:
 3. Category: one of "protein", "vegetable", "grain", "fruit", "dairy", "beverage", "other"
 
 Focus on identifying ingredients that could be used in recipes. Set confidence to 1.0 and needsClarification to false.
+
+${SYSTEM_PROMPT_BOUNDARY}
 
 Respond with JSON only:
 {
@@ -212,6 +219,9 @@ export async function refineAnalysis(
   question: string,
   answer: string,
 ): Promise<AnalysisResult> {
+  // Sanitize user answer before interpolation into prompt
+  const sanitizedAnswer = sanitizeUserInput(answer);
+
   try {
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
@@ -223,11 +233,13 @@ export async function refineAnalysis(
 
 Previous analysis: ${JSON.stringify(previousResult)}
 
+${SYSTEM_PROMPT_BOUNDARY}
+
 Respond with JSON matching the same schema, with updated foods and confidence.`,
         },
         {
           role: "user",
-          content: `Question: "${question}"\nAnswer: "${answer}"\n\nUpdate the analysis based on this clarification.`,
+          content: `Question: "${question}"\nAnswer: "${sanitizedAnswer}"\n\nUpdate the analysis based on this clarification.`,
         },
       ],
       response_format: { type: "json_object" },
