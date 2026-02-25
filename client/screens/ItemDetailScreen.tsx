@@ -18,6 +18,7 @@ import { Card } from "@/components/Card";
 import { useTheme } from "@/hooks/useTheme";
 import { useAccessibility } from "@/hooks/useAccessibility";
 import { Spacing, BorderRadius } from "@/constants/theme";
+import { formatDateLong as formatDate } from "@/lib/format";
 import type { ScannedItemResponse } from "@/types/api";
 
 type ItemDetailRouteProp = RouteProp<
@@ -70,18 +71,6 @@ export default function ItemDetailScreen() {
   } = useQuery<ScannedItemResponse>({
     queryKey: [`/api/scanned-items/${itemId}`],
   });
-
-  const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString("en-US", {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  };
 
   if (isLoading) {
     return (

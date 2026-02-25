@@ -37,22 +37,7 @@ import {
   FAB_CLEARANCE,
   withOpacity,
 } from "@/constants/theme";
-
-function formatDuration(minutes: number): string {
-  const h = Math.floor(minutes / 60);
-  const m = Math.round(minutes % 60);
-  if (h === 0) return `${m}m`;
-  if (m === 0) return `${h}h`;
-  return `${h}h ${m}m`;
-}
-
-function formatDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  return d.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  });
-}
+import { formatDuration, formatDateShort as formatDate } from "@/lib/format";
 
 /** Compute elapsed minutes from a start time to now */
 function getElapsedMinutes(startedAt: string): number {
