@@ -18,6 +18,7 @@ export default defineConfig({
     alias: {
       "@shared": path.resolve(__dirname, "./shared"),
       "@": path.resolve(__dirname, "./client"),
+      "react-native": path.resolve(__dirname, "./test/mocks/react-native.ts"),
     },
   },
 });
