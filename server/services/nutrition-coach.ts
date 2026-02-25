@@ -1,4 +1,9 @@
 import OpenAI from "openai";
+import {
+  sanitizeUserInput,
+  containsDangerousDietaryAdvice,
+  SYSTEM_PROMPT_BOUNDARY,
+} from "../lib/ai-safety";
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -33,6 +38,9 @@ function buildSystemPrompt(context: CoachContext): string {
     "Be conversational, supportive, and evidence-based. Keep responses concise (2-4 paragraphs max).",
     "Use markdown formatting for emphasis and structure when appropriate.",
     "Never diagnose medical conditions or replace professional medical advice.",
+    "Never recommend extreme calorie restriction (below 1200 cal/day), extreme fasting protocols, or any advice that could promote disordered eating.",
+    "",
+    SYSTEM_PROMPT_BOUNDARY,
     "",
     "USER CONTEXT:",
   ];
@@ -75,21 +83,42 @@ export async function* generateCoachResponse(
 ): AsyncGenerator<string> {
   const systemPrompt = buildSystemPrompt(context);
 
+  // Sanitize user messages before including in conversation history
+  const sanitizedMessages = messages.map((m) => ({
+    role: m.role,
+    content: m.role === "user" ? sanitizeUserInput(m.content) : m.content,
+  }));
+
   const stream = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     stream: true,
-    messages: [
-      { role: "system", content: systemPrompt },
-      ...messages.map((m) => ({ role: m.role, content: m.content })),
-    ],
+    messages: [{ role: "system", content: systemPrompt }, ...sanitizedMessages],
     max_tokens: 1000,
     temperature: 0.7,
   });
 
+  // Accumulate full response for content filtering
+  let fullResponse = "";
+
   for await (const chunk of stream) {
     const delta = chunk.choices[0]?.delta?.content;
     if (delta) {
+      fullResponse += delta;
+
+      // Check periodically (every ~200 chars) for dangerous content
+      if (fullResponse.length % 200 < delta.length) {
+        if (containsDangerousDietaryAdvice(fullResponse)) {
+          yield "\n\n*I need to be careful here. For specific dietary plans, especially very low calorie or fasting protocols, please consult a registered dietitian or healthcare provider who can assess your individual needs.*";
+          return;
+        }
+      }
+
       yield delta;
     }
+  }
+
+  // Final check on complete response
+  if (containsDangerousDietaryAdvice(fullResponse)) {
+    yield "\n\n*Please note: For specific dietary plans, especially restrictive ones, consult a registered dietitian or healthcare provider.*";
   }
 }

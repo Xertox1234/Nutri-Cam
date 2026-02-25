@@ -1,12 +1,29 @@
 import OpenAI from "openai";
 import pLimit from "p-limit";
+import { z } from "zod";
 import { lookupNutrition } from "./nutrition-lookup";
+import {
+  sanitizeUserInput,
+  validateAiResponse,
+  SYSTEM_PROMPT_BOUNDARY,
+} from "../lib/ai-safety";
 
 const limit = pLimit(5);
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+});
+
+/** Schema for validating the AI food parsing response */
+const foodNlpResponseSchema = z.object({
+  items: z.array(
+    z.object({
+      name: z.string(),
+      quantity: z.number(),
+      unit: z.string(),
+    }),
+  ),
 });
 
 export interface ParsedFoodItem {
@@ -27,6 +44,9 @@ export interface ParsedFoodItem {
 export async function parseNaturalLanguageFood(
   text: string,
 ): Promise<ParsedFoodItem[]> {
+  // Sanitize user input before sending to AI
+  const sanitizedText = sanitizeUserInput(text);
+
   const response = await openai.chat.completions.create({
     model: "gpt-4o-mini",
     temperature: 0.1,
@@ -41,11 +61,13 @@ Return JSON: { "items": [{ "name": string, "quantity": number, "unit": string }]
 - "unit" should be a common serving unit (e.g., "medium", "cup", "slice", "tablespoon", "piece", "oz", "g")
 - If multiple foods mentioned, return each as a separate item
 - Be specific: "toast with butter" becomes two items: "whole wheat toast" and "butter"
-- Use standard serving sizes when unspecified`,
+- Use standard serving sizes when unspecified
+
+${SYSTEM_PROMPT_BOUNDARY}`,
       },
       {
         role: "user",
-        content: text,
+        content: sanitizedText,
       },
     ],
   });
@@ -53,10 +75,9 @@ Return JSON: { "items": [{ "name": string, "quantity": number, "unit": string }]
   const content = response.choices[0]?.message?.content;
   if (!content) return [];
 
-  const parsed = JSON.parse(content) as {
-    items: { name: string; quantity: number; unit: string }[];
-  };
-  if (!parsed.items || !Array.isArray(parsed.items)) return [];
+  // Validate AI response against expected schema
+  const parsed = validateAiResponse(JSON.parse(content), foodNlpResponseSchema);
+  if (!parsed || !Array.isArray(parsed.items)) return [];
 
   // Look up nutrition for all parsed items in parallel (rate-limited)
   const settled = await Promise.allSettled(
