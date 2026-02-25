@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 import { z } from "zod";
 import { storage } from "../storage";
 import { requireAuth } from "../middleware/auth";
+import { sendError } from "../lib/api-errors";
 import { type Allergy } from "@shared/schema";
 import { calculateProfileHash } from "../utils/profile-hash";
 import { instructionsRateLimit, parsePositiveIntParam } from "./_helpers";
@@ -22,14 +23,14 @@ export function register(app: Express): void {
       try {
         const itemId = parsePositiveIntParam(req.params.id as string);
         if (!itemId) {
-          return res.status(400).json({ error: "Invalid item ID" });
+          return sendError(res, 400, "Invalid item ID");
         }
 
         const item = await storage.getScannedItem(itemId);
 
         // IDOR protection: verify user owns the item
         if (!item || item.userId !== req.userId) {
-          return res.status(404).json({ error: "Item not found" });
+          return sendError(res, 404, "Item not found");
         }
 
         const userProfile = await storage.getUserProfile(req.userId!);
@@ -140,7 +141,7 @@ Keep descriptions concise. Make recipes practical and kid activities fun and saf
         });
       } catch (error) {
         console.error("Error generating suggestions:", error);
-        res.status(500).json({ error: "Failed to generate suggestions" });
+        sendError(res, 500, "Failed to generate suggestions");
       }
     },
   );
@@ -157,28 +158,26 @@ Keep descriptions concise. Make recipes practical and kid activities fun and saf
           10,
         );
 
-        if (!itemId) {
-          return res.status(400).json({ error: "Invalid item ID" });
+        if (isNaN(itemId) || itemId <= 0) {
+          return sendError(res, 400, "Invalid item ID");
         }
         if (isNaN(suggestionIndex) || suggestionIndex < 0) {
-          return res.status(400).json({ error: "Invalid suggestion index" });
+          return sendError(res, 400, "Invalid suggestion index");
         }
 
         const item = await storage.getScannedItem(itemId);
         if (!item) {
-          return res.status(404).json({ error: "Item not found" });
+          return sendError(res, 404, "Item not found");
         }
 
         // Validate user owns the item
         if (item.userId !== req.userId) {
-          return res.status(403).json({ error: "Not authorized" });
+          return sendError(res, 403, "Not authorized");
         }
 
         const parsed = instructionsRequestSchema.safeParse(req.body);
         if (!parsed.success) {
-          return res
-            .status(400)
-            .json({ error: "Invalid input", details: parsed.error.flatten() });
+          return sendError(res, 400, "Invalid input");
         }
 
         const { suggestionTitle, suggestionType, cacheId } = parsed.data;
@@ -295,7 +294,7 @@ Format as plain text with clear sections.`;
         res.json({ instructions });
       } catch (error) {
         console.error("Error generating instructions:", error);
-        res.status(500).json({ error: "Failed to generate instructions" });
+        sendError(res, 500, "Failed to generate instructions");
       }
     },
   );

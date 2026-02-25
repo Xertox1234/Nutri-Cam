@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 import { z, ZodError } from "zod";
 import { storage } from "../storage";
 import { requireAuth } from "../middleware/auth";
+import { sendError } from "../lib/api-errors";
 import { TIER_FEATURES, isValidSubscriptionTier } from "@shared/types/premium";
 import {
   generateFullRecipe,
@@ -76,7 +77,7 @@ export function register(app: Express): void {
         res.json(stripAuthorId(recipes));
       } catch (error) {
         console.error("Get featured recipes error:", error);
-        res.status(500).json({ error: "Failed to fetch featured recipes" });
+        sendError(res, 500, "Failed to fetch featured recipes");
       }
     },
   );
@@ -90,7 +91,7 @@ export function register(app: Express): void {
       try {
         const parsed = browseQuerySchema.safeParse(req.query);
         if (!parsed.success) {
-          res.status(400).json({ error: "Invalid query parameters" });
+          sendError(res, 400, "Invalid query parameters");
           return;
         }
         const { query, cuisine, diet, limit } = parsed.data;
@@ -108,7 +109,7 @@ export function register(app: Express): void {
         });
       } catch (error) {
         console.error("Browse recipes error:", error);
-        res.status(500).json({ error: "Failed to browse recipes" });
+        sendError(res, 500, "Failed to browse recipes");
       }
     },
   );
@@ -123,7 +124,7 @@ export function register(app: Express): void {
         const productName = req.query.productName as string;
 
         if (!productName) {
-          res.status(400).json({ error: "productName is required" });
+          sendError(res, 400, "productName is required");
           return;
         }
 
@@ -136,7 +137,7 @@ export function register(app: Express): void {
         res.json(stripAuthorId(recipes));
       } catch (error) {
         console.error("Get community recipes error:", error);
-        res.status(500).json({ error: "Failed to fetch recipes" });
+        sendError(res, 500, "Failed to fetch recipes");
       }
     },
   );
@@ -168,7 +169,7 @@ export function register(app: Express): void {
         });
       } catch (error) {
         console.error("Get generation status error:", error);
-        res.status(500).json({ error: "Failed to fetch generation status" });
+        sendError(res, 500, "Failed to fetch generation status");
       }
     },
   );
@@ -189,10 +190,7 @@ export function register(app: Express): void {
         const features = TIER_FEATURES[tier];
 
         if (!features.recipeGeneration) {
-          res.status(403).json({
-            error: "PREMIUM_REQUIRED",
-            message: "Recipe generation requires a premium subscription",
-          });
+          sendError(res, 403, "Recipe generation requires a premium subscription", "PREMIUM_REQUIRED");
           return;
         }
 
@@ -203,19 +201,14 @@ export function register(app: Express): void {
         );
 
         if (generationsToday >= features.dailyRecipeGenerations) {
-          res.status(429).json({
-            error: "DAILY_LIMIT_REACHED",
-            message: "Daily recipe generation limit reached",
-            generationsToday,
-            dailyLimit: features.dailyRecipeGenerations,
-          });
+          sendError(res, 429, "Daily recipe generation limit reached", "DAILY_LIMIT_REACHED");
           return;
         }
 
         // Validate input
         const parsed = recipeGenerationSchema.safeParse(req.body);
         if (!parsed.success) {
-          res.status(400).json({ error: formatZodError(parsed.error) });
+          sendError(res, 400, formatZodError(parsed.error));
           return;
         }
 
@@ -262,11 +255,11 @@ export function register(app: Express): void {
         res.status(201).json(recipe);
       } catch (error) {
         if (error instanceof ZodError) {
-          res.status(400).json({ error: formatZodError(error) });
+          sendError(res, 400, formatZodError(error));
           return;
         }
         console.error("Recipe generation error:", error);
-        res.status(500).json({ error: "Failed to generate recipe" });
+        sendError(res, 500, "Failed to generate recipe");
       }
     },
   );
@@ -279,13 +272,13 @@ export function register(app: Express): void {
       try {
         const recipeId = parsePositiveIntParam(req.params.id as string);
         if (!recipeId) {
-          res.status(400).json({ error: "Invalid recipe ID" });
+          sendError(res, 400, "Invalid recipe ID");
           return;
         }
 
         const parsed = recipeShareSchema.safeParse(req.body);
         if (!parsed.success) {
-          res.status(400).json({ error: formatZodError(parsed.error) });
+          sendError(res, 400, formatZodError(parsed.error));
           return;
         }
 
@@ -296,16 +289,14 @@ export function register(app: Express): void {
         );
 
         if (!recipe) {
-          res
-            .status(404)
-            .json({ error: "Recipe not found or not owned by you" });
+          sendError(res, 404, "Recipe not found or not owned by you");
           return;
         }
 
         res.json(recipe);
       } catch (error) {
         console.error("Recipe share error:", error);
-        res.status(500).json({ error: "Failed to update recipe sharing" });
+        sendError(res, 500, "Failed to update recipe sharing");
       }
     },
   );
@@ -320,7 +311,7 @@ export function register(app: Express): void {
         res.json(recipes);
       } catch (error) {
         console.error("Get user recipes error:", error);
-        res.status(500).json({ error: "Failed to fetch your recipes" });
+        sendError(res, 500, "Failed to fetch your recipes");
       }
     },
   );
@@ -333,20 +324,20 @@ export function register(app: Express): void {
       try {
         const recipeId = parsePositiveIntParam(req.params.id as string);
         if (!recipeId) {
-          res.status(400).json({ error: "Invalid recipe ID" });
+          sendError(res, 400, "Invalid recipe ID");
           return;
         }
 
         const recipe = await storage.getCommunityRecipe(recipeId);
 
         if (!recipe) {
-          res.status(404).json({ error: "Recipe not found" });
+          sendError(res, 404, "Recipe not found");
           return;
         }
 
         // Only show public recipes or recipes owned by the user
         if (!recipe.isPublic && recipe.authorId !== req.userId) {
-          res.status(404).json({ error: "Recipe not found" });
+          sendError(res, 404, "Recipe not found");
           return;
         }
 
@@ -354,7 +345,7 @@ export function register(app: Express): void {
         res.json(safeRecipe);
       } catch (error) {
         console.error("Get recipe error:", error);
-        res.status(500).json({ error: "Failed to fetch recipe" });
+        sendError(res, 500, "Failed to fetch recipe");
       }
     },
   );
@@ -367,7 +358,7 @@ export function register(app: Express): void {
       try {
         const recipeId = parsePositiveIntParam(req.params.id as string);
         if (!recipeId) {
-          res.status(400).json({ error: "Invalid recipe ID" });
+          sendError(res, 400, "Invalid recipe ID");
           return;
         }
 
@@ -377,16 +368,14 @@ export function register(app: Express): void {
         );
 
         if (!deleted) {
-          res
-            .status(404)
-            .json({ error: "Recipe not found or not owned by you" });
+          sendError(res, 404, "Recipe not found or not owned by you");
           return;
         }
 
         res.status(204).send();
       } catch (error) {
         console.error("Delete recipe error:", error);
-        res.status(500).json({ error: "Failed to delete recipe" });
+        sendError(res, 500, "Failed to delete recipe");
       }
     },
   );
@@ -404,7 +393,7 @@ export function register(app: Express): void {
       try {
         const parsed = catalogSearchSchema.safeParse(req.query);
         if (!parsed.success) {
-          res.status(400).json({ error: formatZodError(parsed.error) });
+          sendError(res, 400, formatZodError(parsed.error));
           return;
         }
 
@@ -412,13 +401,11 @@ export function register(app: Express): void {
         res.json(results);
       } catch (error) {
         if (error instanceof CatalogQuotaError) {
-          res
-            .status(402)
-            .json({ error: "CATALOG_QUOTA_EXCEEDED", message: error.message });
+          sendError(res, 402, error.message, "CATALOG_QUOTA_EXCEEDED");
           return;
         }
         console.error("Catalog search error:", error);
-        res.status(500).json({ error: "Failed to search recipes" });
+        sendError(res, 500, "Failed to search recipes");
       }
     },
   );
@@ -432,26 +419,24 @@ export function register(app: Express): void {
       try {
         const id = parsePositiveIntParam(req.params.id as string);
         if (!id) {
-          res.status(400).json({ error: "Invalid catalog ID" });
+          sendError(res, 400, "Invalid catalog ID");
           return;
         }
 
         const detail = await getCatalogRecipeDetail(id);
         if (!detail) {
-          res.status(404).json({ error: "Recipe not found in catalog" });
+          sendError(res, 404, "Recipe not found in catalog");
           return;
         }
 
         res.json(detail);
       } catch (error) {
         if (error instanceof CatalogQuotaError) {
-          res
-            .status(402)
-            .json({ error: "CATALOG_QUOTA_EXCEEDED", message: error.message });
+          sendError(res, 402, error.message, "CATALOG_QUOTA_EXCEEDED");
           return;
         }
         console.error("Catalog detail error:", error);
-        res.status(500).json({ error: "Failed to fetch recipe detail" });
+        sendError(res, 500, "Failed to fetch recipe detail");
       }
     },
   );
@@ -465,7 +450,7 @@ export function register(app: Express): void {
       try {
         const id = parsePositiveIntParam(req.params.id as string);
         if (!id) {
-          res.status(400).json({ error: "Invalid catalog ID" });
+          sendError(res, 400, "Invalid catalog ID");
           return;
         }
 
@@ -482,7 +467,7 @@ export function register(app: Express): void {
         // Fetch from Spoonacular
         const detail = await getCatalogRecipeDetail(id);
         if (!detail) {
-          res.status(404).json({ error: "Recipe not found in catalog" });
+          sendError(res, 404, "Recipe not found in catalog");
           return;
         }
 
@@ -496,13 +481,11 @@ export function register(app: Express): void {
         res.status(201).json(saved);
       } catch (error) {
         if (error instanceof CatalogQuotaError) {
-          res
-            .status(402)
-            .json({ error: "CATALOG_QUOTA_EXCEEDED", message: error.message });
+          sendError(res, 402, error.message, "CATALOG_QUOTA_EXCEEDED");
           return;
         }
         console.error("Catalog save error:", error);
-        res.status(500).json({ error: "Failed to save catalog recipe" });
+        sendError(res, 500, "Failed to save catalog recipe");
       }
     },
   );
@@ -516,7 +499,7 @@ export function register(app: Express): void {
       try {
         const parsed = importUrlSchema.safeParse(req.body);
         if (!parsed.success) {
-          res.status(400).json({ error: formatZodError(parsed.error) });
+          sendError(res, 400, formatZodError(parsed.error));
           return;
         }
 
@@ -530,10 +513,7 @@ export function register(app: Express): void {
             TIMEOUT: "The request timed out while fetching the URL",
             RESPONSE_TOO_LARGE: "The page is too large to import (max 5 MB)",
           };
-          res.status(422).json({
-            error: result.error,
-            message: messages[result.error] || "Import failed",
-          });
+          sendError(res, 422, messages[result.error] || "Import failed", result.error);
           return;
         }
 
@@ -571,7 +551,7 @@ export function register(app: Express): void {
         res.status(201).json(recipe);
       } catch (error) {
         console.error("URL import error:", error);
-        res.status(500).json({ error: "Failed to import recipe" });
+        sendError(res, 500, "Failed to import recipe");
       }
     },
   );

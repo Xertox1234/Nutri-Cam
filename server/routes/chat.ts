@@ -3,6 +3,7 @@ import { z } from "zod";
 import { storage } from "../storage";
 import { requireAuth } from "../middleware/auth";
 import { chatRateLimit, formatZodError, parsePositiveIntParam } from "./_helpers";
+import { sendError } from "../lib/api-errors";
 import {
   generateCoachResponse,
   type CoachContext,
@@ -34,7 +35,7 @@ export function register(app: Express): void {
       const schema = z.object({ title: z.string().max(200).optional() });
       const parsed = schema.safeParse(req.body);
       if (!parsed.success)
-        return res.status(400).json({ error: formatZodError(parsed.error) });
+        return sendError(res, 400, formatZodError(parsed.error));
 
       const conversation = await storage.createChatConversation(
         req.userId!,
@@ -52,11 +53,11 @@ export function register(app: Express): void {
     async (req: Request, res: Response) => {
       const id = parsePositiveIntParam(req.params.id as string);
       if (!id)
-        return res.status(400).json({ error: "Invalid conversation ID" });
+        return sendError(res, 400, "Invalid conversation ID");
 
       const conversation = await storage.getChatConversation(id, req.userId!);
       if (!conversation)
-        return res.status(404).json({ error: "Conversation not found" });
+        return sendError(res, 404, "Conversation not found");
 
       const messages = await storage.getChatMessages(id, 100);
       res.json(messages);
@@ -71,20 +72,20 @@ export function register(app: Express): void {
     async (req: Request, res: Response) => {
       const id = parsePositiveIntParam(req.params.id as string);
       if (!id)
-        return res.status(400).json({ error: "Invalid conversation ID" });
+        return sendError(res, 400, "Invalid conversation ID");
 
       const conversation = await storage.getChatConversation(id, req.userId!);
       if (!conversation)
-        return res.status(404).json({ error: "Conversation not found" });
+        return sendError(res, 404, "Conversation not found");
 
       const schema = z.object({ content: z.string().min(1).max(2000) });
       const parsed = schema.safeParse(req.body);
       if (!parsed.success)
-        return res.status(400).json({ error: formatZodError(parsed.error) });
+        return sendError(res, 400, formatZodError(parsed.error));
 
       // Check daily message limit
       const user = await storage.getUser(req.userId!);
-      if (!user) return res.status(401).json({ error: "Unauthorized" });
+      if (!user) return sendError(res, 401, "Unauthorized");
 
       const subscription = await storage.getSubscriptionStatus(req.userId!);
       const tier = subscription?.tier || "free";
@@ -96,11 +97,12 @@ export function register(app: Express): void {
         new Date(),
       );
       if (dailyCount >= features.dailyCoachMessages) {
-        return res.status(429).json({
-          error: "Daily chat message limit reached",
-          code: "DAILY_LIMIT_REACHED",
-          limit: features.dailyCoachMessages,
-        });
+        return sendError(
+          res,
+          429,
+          "Daily chat message limit reached",
+          "DAILY_LIMIT_REACHED",
+        );
       }
 
       // Save user message
@@ -203,11 +205,10 @@ export function register(app: Express): void {
     async (req: Request, res: Response) => {
       const id = parsePositiveIntParam(req.params.id as string);
       if (!id)
-        return res.status(400).json({ error: "Invalid conversation ID" });
+        return sendError(res, 400, "Invalid conversation ID");
 
       const deleted = await storage.deleteChatConversation(id, req.userId!);
-      if (!deleted)
-        return res.status(404).json({ error: "Conversation not found" });
+      if (!deleted) return sendError(res, 404, "Conversation not found");
       res.json({ success: true });
     },
   );

@@ -1,6 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { requireAuth } from "../middleware/auth";
 import { storage } from "../storage";
+import { sendError } from "../lib/api-errors";
 import { analyzeMenuPhoto } from "../services/menu-analysis";
 import { checkPremiumFeature, menuRateLimit, parsePositiveIntParam } from "./_helpers";
 import multer from "multer";
@@ -36,7 +37,7 @@ export function register(app: Express): void {
         if (!features) return;
 
         if (!req.file) {
-          return res.status(400).json({ error: "No photo provided" });
+          return sendError(res, 400, "No photo provided");
         }
 
         const imageBase64 = req.file.buffer.toString("base64");
@@ -53,7 +54,7 @@ export function register(app: Express): void {
         res.json({ ...result, id: saved.id });
       } catch (error) {
         console.error("Menu scan error:", error);
-        res.status(500).json({ error: "Failed to analyze menu" });
+        sendError(res, 500, "Failed to analyze menu");
       }
     },
   );
@@ -77,7 +78,7 @@ export function register(app: Express): void {
         res.json(scans);
       } catch (error) {
         console.error("Get menu history error:", error);
-        res.status(500).json({ error: "Failed to get menu history" });
+        sendError(res, 500, "Failed to get menu history");
       }
     },
   );
@@ -89,15 +90,15 @@ export function register(app: Express): void {
     async (req: Request, res: Response) => {
       try {
         const id = parsePositiveIntParam(req.params.id as string);
-        if (!id) return res.status(400).json({ error: "Invalid scan ID" });
+        if (!id) return sendError(res, 400, "Invalid scan ID");
 
         const deleted = await storage.deleteMenuScan(id, req.userId!);
         if (!deleted)
-          return res.status(404).json({ error: "Menu scan not found" });
+          return sendError(res, 404, "Menu scan not found");
         res.json({ success: true });
       } catch (error) {
         console.error("Delete menu scan error:", error);
-        res.status(500).json({ error: "Failed to delete menu scan" });
+        sendError(res, 500, "Failed to delete menu scan");
       }
     },
   );

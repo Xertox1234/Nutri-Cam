@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 import { z } from "zod";
 import { storage } from "../storage";
 import { requireAuth } from "../middleware/auth";
+import { sendError } from "../lib/api-errors";
 import {
   pantryRateLimit,
   checkPremiumFeature,
@@ -52,7 +53,7 @@ export function register(app: Express): void {
         res.json(items);
       } catch (error) {
         console.error("Get pantry items error:", error);
-        res.status(500).json({ error: "Failed to fetch pantry items" });
+        sendError(res, 500, "Failed to fetch pantry items");
       }
     },
   );
@@ -74,7 +75,7 @@ export function register(app: Express): void {
 
         const parsed = pantryItemSchema.safeParse(req.body);
         if (!parsed.success) {
-          res.status(400).json({ error: formatZodError(parsed.error) });
+          sendError(res, 400, formatZodError(parsed.error));
           return;
         }
 
@@ -89,7 +90,7 @@ export function register(app: Express): void {
         res.status(201).json(item);
       } catch (error) {
         console.error("Create pantry item error:", error);
-        res.status(500).json({ error: "Failed to create pantry item" });
+        sendError(res, 500, "Failed to create pantry item");
       }
     },
   );
@@ -111,13 +112,13 @@ export function register(app: Express): void {
 
         const id = parsePositiveIntParam(req.params.id as string);
         if (!id) {
-          res.status(400).json({ error: "Invalid pantry item ID" });
+          sendError(res, 400, "Invalid pantry item ID");
           return;
         }
 
         const parsed = pantryItemUpdateSchema.safeParse(req.body);
         if (!parsed.success) {
-          res.status(400).json({ error: formatZodError(parsed.error) });
+          sendError(res, 400, formatZodError(parsed.error));
           return;
         }
 
@@ -127,13 +128,13 @@ export function register(app: Express): void {
           parsed.data,
         );
         if (!updated) {
-          res.status(404).json({ error: "Pantry item not found" });
+          sendError(res, 404, "Pantry item not found");
           return;
         }
         res.json(updated);
       } catch (error) {
         console.error("Update pantry item error:", error);
-        res.status(500).json({ error: "Failed to update pantry item" });
+        sendError(res, 500, "Failed to update pantry item");
       }
     },
   );
@@ -155,19 +156,19 @@ export function register(app: Express): void {
 
         const id = parsePositiveIntParam(req.params.id as string);
         if (!id) {
-          res.status(400).json({ error: "Invalid pantry item ID" });
+          sendError(res, 400, "Invalid pantry item ID");
           return;
         }
 
         const deleted = await storage.deletePantryItem(id, req.userId!);
         if (!deleted) {
-          res.status(404).json({ error: "Pantry item not found" });
+          sendError(res, 404, "Pantry item not found");
           return;
         }
         res.status(204).send();
       } catch (error) {
         console.error("Delete pantry item error:", error);
-        res.status(500).json({ error: "Failed to delete pantry item" });
+        sendError(res, 500, "Failed to delete pantry item");
       }
     },
   );
@@ -191,7 +192,7 @@ export function register(app: Express): void {
         res.json(items);
       } catch (error) {
         console.error("Get expiring pantry items error:", error);
-        res.status(500).json({ error: "Failed to fetch expiring items" });
+        sendError(res, 500, "Failed to fetch expiring items");
       }
     },
   );
