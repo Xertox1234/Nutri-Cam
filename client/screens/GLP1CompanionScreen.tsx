@@ -206,7 +206,7 @@ export default function GLP1CompanionScreen() {
 
         {insights?.commonSideEffects &&
           insights.commonSideEffects.length > 0 && (
-            <View style={[styles.section, { marginTop: Spacing.md }]}>
+            <View style={{ marginTop: Spacing.md }}>
               <Text
                 style={[
                   styles.sectionTitle,
@@ -238,7 +238,7 @@ export default function GLP1CompanionScreen() {
 
         <HighProteinSuggestions />
 
-        <View style={[styles.section, { marginTop: Spacing.md }]}>
+        <View style={{ marginTop: Spacing.md }}>
           <Text
             style={[
               styles.sectionTitle,
@@ -577,7 +577,6 @@ const styles = StyleSheet.create({
   insightCard: { width: "48%", alignItems: "center" },
   insightValue: { fontSize: 24, fontWeight: "700" },
   insightLabel: { fontSize: 12, marginTop: 2 },
-  section: {},
   sectionTitle: { marginBottom: 8 },
   sideEffectRow: { flexDirection: "row", justifyContent: "space-between" },
   sideEffectName: { fontSize: 14 },

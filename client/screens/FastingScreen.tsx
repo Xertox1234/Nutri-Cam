@@ -308,7 +308,6 @@ export default function FastingScreen() {
                 accessibilityRole="button"
                 style={({ pressed }) => [
                   styles.actionButton,
-                  styles.endButton,
                   {
                     backgroundColor: theme.error,
                     opacity: pressed || endFast.isPending ? 0.6 : 1,
@@ -688,7 +687,6 @@ const styles = StyleSheet.create({
     marginTop: Spacing.xl,
     alignSelf: "stretch",
   },
-  endButton: {},
   actionButtonText: {
     fontSize: 16,
     fontFamily: FontFamily.semiBold,

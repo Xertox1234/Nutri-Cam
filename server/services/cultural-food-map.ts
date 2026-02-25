@@ -537,20 +537,4 @@ export function getCuisineForFood(foodName: string): string | undefined {
   return entry?.cuisine;
 }
 
-/**
- * Get typical serving size for a cultural food.
- */
-export function getTypicalServing(foodName: string): string | undefined {
-  const entry = lookupCulturalFood(foodName);
-  return entry?.typicalServing;
-}
-
-/**
- * Get all supported cuisines for display.
- */
-export function getSupportedCuisines(): string[] {
-  const cuisines = new Set(CULTURAL_FOOD_MAP.map((e) => e.cuisine));
-  return Array.from(cuisines).sort();
-}
-
 export { CULTURAL_FOOD_MAP, type CulturalFoodEntry };
