@@ -1,5 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { micronutrientRateLimit, checkPremiumFeature, parsePositiveIntParam } from "./_helpers";
+import { sendError } from "../lib/api-errors";
 import { requireAuth } from "../middleware/auth";
 import {
   lookupMicronutrientsWithCache,
@@ -26,12 +27,12 @@ export function register(app: Express): void {
         if (!features) return;
 
         const itemId = parsePositiveIntParam(req.params.id as string);
-        if (!itemId) return res.status(400).json({ error: "Invalid item ID" });
+        if (!itemId) return sendError(res, 400, "Invalid item ID");
 
         const item = await storage.getScannedItem(itemId);
-        if (!item) return res.status(404).json({ error: "Item not found" });
+        if (!item) return sendError(res, 404, "Item not found");
         if (item.userId !== req.userId)
-          return res.status(404).json({ error: "Item not found" });
+          return sendError(res, 404, "Item not found");
 
         const micronutrients = await lookupMicronutrientsWithCache(
           item.productName,
@@ -39,7 +40,7 @@ export function register(app: Express): void {
         res.json({ itemId, productName: item.productName, micronutrients });
       } catch (error) {
         console.error("Get item micronutrients error:", error);
-        res.status(500).json({ error: "Failed to get micronutrients" });
+        sendError(res, 500, "Failed to get micronutrients");
       }
     },
   );
@@ -89,7 +90,7 @@ export function register(app: Express): void {
         });
       } catch (error) {
         console.error("Get daily micronutrients error:", error);
-        res.status(500).json({ error: "Failed to get daily micronutrients" });
+        sendError(res, 500, "Failed to get daily micronutrients");
       }
     },
   );

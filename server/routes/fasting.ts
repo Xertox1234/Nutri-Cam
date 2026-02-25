@@ -1,6 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { z } from "zod";
 import { fastingRateLimit, formatZodError } from "./_helpers";
+import { sendError } from "../lib/api-errors";
 import { storage } from "../storage";
 import { requireAuth } from "../middleware/auth";
 import { calculateFastingStats } from "../services/fasting-stats";
@@ -17,7 +18,7 @@ export function register(app: Express): void {
         res.json(schedule || null);
       } catch (error) {
         console.error("Get fasting schedule error:", error);
-        res.status(500).json({ error: "Failed to get fasting schedule" });
+        sendError(res, 500, "Failed to get fasting schedule");
       }
     },
   );
@@ -45,7 +46,7 @@ export function register(app: Express): void {
         });
         const parsed = schema.safeParse(req.body);
         if (!parsed.success)
-          return res.status(400).json({ error: formatZodError(parsed.error) });
+          return sendError(res, 400, formatZodError(parsed.error));
 
         const result = await storage.upsertFastingSchedule(
           req.userId!,
@@ -54,7 +55,7 @@ export function register(app: Express): void {
         res.json(result);
       } catch (error) {
         console.error("Update fasting schedule error:", error);
-        res.status(500).json({ error: "Failed to update fasting schedule" });
+        sendError(res, 500, "Failed to update fasting schedule");
       }
     },
   );
@@ -69,9 +70,7 @@ export function register(app: Express): void {
         // Check no active fast
         const active = await storage.getActiveFastingLog(req.userId!);
         if (active)
-          return res
-            .status(409)
-            .json({ error: "A fast is already in progress" });
+          return sendError(res, 409, "A fast is already in progress");
 
         const schedule = await storage.getFastingSchedule(req.userId!);
         const targetHours = schedule?.fastingHours || 16;
@@ -83,7 +82,7 @@ export function register(app: Express): void {
         res.status(201).json(log);
       } catch (error) {
         console.error("Start fast error:", error);
-        res.status(500).json({ error: "Failed to start fast" });
+        sendError(res, 500, "Failed to start fast");
       }
     },
   );
@@ -100,7 +99,7 @@ export function register(app: Express): void {
 
         const active = await storage.getActiveFastingLog(req.userId!);
         if (!active)
-          return res.status(404).json({ error: "No active fast found" });
+          return sendError(res, 404, "No active fast found");
 
         const now = new Date();
         const startedAt = new Date(active.startedAt);
@@ -121,7 +120,7 @@ export function register(app: Express): void {
         res.json(updated);
       } catch (error) {
         console.error("End fast error:", error);
-        res.status(500).json({ error: "Failed to end fast" });
+        sendError(res, 500, "Failed to end fast");
       }
     },
   );
@@ -137,7 +136,7 @@ export function register(app: Express): void {
         res.json(active || null);
       } catch (error) {
         console.error("Get current fast error:", error);
-        res.status(500).json({ error: "Failed to get current fast" });
+        sendError(res, 500, "Failed to get current fast");
       }
     },
   );
@@ -156,7 +155,7 @@ export function register(app: Express): void {
         res.json({ logs, stats });
       } catch (error) {
         console.error("Get fasting history error:", error);
-        res.status(500).json({ error: "Failed to get fasting history" });
+        sendError(res, 500, "Failed to get fasting history");
       }
     },
   );
