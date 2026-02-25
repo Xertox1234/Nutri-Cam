@@ -28,15 +28,7 @@ import {
 } from "@/hooks/useWeightLogs";
 import { usePremiumContext } from "@/context/PremiumContext";
 import { Spacing, BorderRadius, FontFamily } from "@/constants/theme";
-
-function formatDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  return d.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
-}
+import { formatDateMedium as formatDate } from "@/lib/format";
 
 function formatWeight(weight: string): string {
   return `${parseFloat(weight).toFixed(1)} kg`;

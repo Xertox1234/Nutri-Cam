@@ -29,13 +29,7 @@ import {
 } from "@/hooks/useGroceryList";
 import type { GroceryListsScreenNavigationProp } from "@/types/navigation";
 import type { GroceryList } from "@shared/schema";
-
-function formatDateRange(start: string, end: string): string {
-  const s = new Date(start + "T00:00:00");
-  const e = new Date(end + "T00:00:00");
-  const opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
-  return `${s.toLocaleDateString("en-US", opts)} - ${e.toLocaleDateString("en-US", opts)}`;
-}
+import { formatDateRange } from "@/lib/format";
 
 export default function GroceryListsScreen() {
   const navigation = useNavigation<GroceryListsScreenNavigationProp>();

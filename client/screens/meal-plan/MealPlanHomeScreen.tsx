@@ -41,6 +41,7 @@ import type { MealPlanHomeScreenNavigationProp } from "@/types/navigation";
 import type { DailySummaryResponse } from "@/types/api";
 import type { MealPlanItemWithRelations } from "@shared/types/meal-plan";
 import type { MealSuggestion } from "@shared/types/meal-suggestions";
+import { formatDateISO as formatDate } from "@/lib/format";
 
 const MEAL_TYPES = ["breakfast", "lunch", "dinner", "snack"] as const;
 type MealType = (typeof MEAL_TYPES)[number];
@@ -56,10 +57,6 @@ const MEAL_LABELS: Record<MealType, string> = {
   dinner: "Dinner",
   snack: "Snack",
 };
-
-function formatDate(date: Date): string {
-  return date.toISOString().split("T")[0];
-}
 
 function addDays(date: Date, days: number): Date {
   const result = new Date(date);
