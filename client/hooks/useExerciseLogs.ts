@@ -38,17 +38,6 @@ export function useExerciseLogs(options?: { from?: string; to?: string }) {
   });
 }
 
-export function useExerciseSummary(date?: string) {
-  const params = date ? `?date=${date}` : "";
-  return useQuery<{
-    totalCaloriesBurned: number;
-    totalMinutes: number;
-    exerciseCount: number;
-  }>({
-    queryKey: [`/api/exercises/summary${params}`],
-  });
-}
-
 export function useLogExercise() {
   const queryClient = useQueryClient();
   return useMutation({
