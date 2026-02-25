@@ -62,11 +62,10 @@ export function estimateTDEE(
 /**
  * Returns the calorie adjustment for a given goal.
  */
-export function getGoalAdjustment(
-  goal: string,
-): number {
+export function getGoalAdjustment(goal: string): number {
   if (goal === "lose_weight") return WEIGHT_LOSS_DEFICIT;
-  if (goal === "gain_weight" || goal === "build_muscle") return WEIGHT_GAIN_SURPLUS;
+  if (goal === "gain_weight" || goal === "build_muscle")
+    return WEIGHT_GAIN_SURPLUS;
   return 0;
 }
 
@@ -92,7 +91,9 @@ export function recomputeMacros(
 
   if (totalCurrentMacroCalories === 0) {
     return {
-      protein: Math.round((newCalories * PROTEIN_RATIO) / KCAL_PER_GRAM_PROTEIN),
+      protein: Math.round(
+        (newCalories * PROTEIN_RATIO) / KCAL_PER_GRAM_PROTEIN,
+      ),
       carbs: Math.round((newCalories * CARBS_RATIO) / KCAL_PER_GRAM_CARBS),
       fat: Math.round((newCalories * FAT_RATIO) / KCAL_PER_GRAM_FAT),
     };

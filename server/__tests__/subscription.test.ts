@@ -299,7 +299,7 @@ describe("Upgrade handler logic", () => {
   });
 
   it("handles null expiresAt in upgrade response", () => {
-    const expiresAt = null;
+    const expiresAt = null as Date | null;
     const response = {
       success: true as const,
       tier: "premium" as const,

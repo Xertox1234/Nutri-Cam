@@ -1,5 +1,7 @@
 import { syncHealthKitData } from "../healthkit-sync";
 
+import { storage } from "../../storage";
+
 vi.mock("../../storage", () => ({
   storage: {
     getWeightLogs: vi.fn(),
@@ -8,8 +10,6 @@ vi.mock("../../storage", () => ({
     createExerciseLog: vi.fn(),
   },
 }));
-
-import { storage } from "../../storage";
 
 const mockStorage = vi.mocked(storage);
 

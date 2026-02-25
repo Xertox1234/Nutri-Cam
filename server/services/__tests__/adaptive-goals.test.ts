@@ -19,6 +19,8 @@ import {
   KCAL_PER_GRAM_FAT,
 } from "../adaptive-goals";
 
+import { storage } from "../../storage";
+
 vi.mock("../../storage", () => ({
   storage: {
     getUser: vi.fn(),
@@ -26,8 +28,6 @@ vi.mock("../../storage", () => ({
     getUserProfile: vi.fn(),
   },
 }));
-
-import { storage } from "../../storage";
 
 describe("Adaptive Goals", () => {
   describe("named constants", () => {
@@ -198,9 +198,15 @@ describe("Adaptive Goals", () => {
       const result = recomputeMacros(current, 2000);
 
       // Should use default ratios: 30% protein, 40% carbs, 30% fat
-      expect(result.protein).toBe(Math.round((2000 * PROTEIN_RATIO) / KCAL_PER_GRAM_PROTEIN)); // 150
-      expect(result.carbs).toBe(Math.round((2000 * CARBS_RATIO) / KCAL_PER_GRAM_CARBS)); // 200
-      expect(result.fat).toBe(Math.round((2000 * FAT_RATIO) / KCAL_PER_GRAM_FAT)); // 67
+      expect(result.protein).toBe(
+        Math.round((2000 * PROTEIN_RATIO) / KCAL_PER_GRAM_PROTEIN),
+      ); // 150
+      expect(result.carbs).toBe(
+        Math.round((2000 * CARBS_RATIO) / KCAL_PER_GRAM_CARBS),
+      ); // 200
+      expect(result.fat).toBe(
+        Math.round((2000 * FAT_RATIO) / KCAL_PER_GRAM_FAT),
+      ); // 67
 
       // Verify no NaN values
       expect(Number.isNaN(result.protein)).toBe(false);
@@ -248,14 +254,7 @@ describe("Adaptive Goals", () => {
     });
 
     it("returns undereating when gaining weight but lost", () => {
-      const result = determineReason(
-        "gain_weight",
-        -1.0,
-        -0.5,
-        14,
-        2500,
-        2800,
-      );
+      const result = determineReason("gain_weight", -1.0, -0.5, 14, 2500, 2800);
 
       expect(result.reason).toBe("undereating");
       expect(result.explanation).toContain("1.0 kg");
@@ -272,27 +271,13 @@ describe("Adaptive Goals", () => {
 
     it("returns scheduled for lose_weight with significant loss rate", () => {
       // Losing weight at a good rate (not stalled, not gaining)
-      const result = determineReason(
-        "lose_weight",
-        -2.0,
-        -1.0,
-        14,
-        2300,
-        1800,
-      );
+      const result = determineReason("lose_weight", -2.0, -1.0, 14, 2300, 1800);
 
       expect(result.reason).toBe("scheduled");
     });
 
     it("returns scheduled for gain_weight with positive change", () => {
-      const result = determineReason(
-        "gain_weight",
-        1.0,
-        0.5,
-        14,
-        1800,
-        2100,
-      );
+      const result = determineReason("gain_weight", 1.0, 0.5, 14, 1800, 2100);
 
       expect(result.reason).toBe("scheduled");
     });
@@ -316,30 +301,38 @@ describe("Adaptive Goals", () => {
     }
 
     it("returns null when user not found", async () => {
-      vi.mocked(storage.getUser).mockResolvedValue(null);
+      vi.mocked(storage.getUser).mockResolvedValue(null as any);
       const result = await computeAdaptiveGoals("1");
       expect(result).toBeNull();
     });
 
     it("returns null when fewer than 4 weight logs", async () => {
-      vi.mocked(storage.getUser).mockResolvedValue({ id: "1", dailyCalorieGoal: 2000 });
+      vi.mocked(storage.getUser).mockResolvedValue({
+        id: "1",
+        dailyCalorieGoal: 2000,
+      } as any);
       vi.mocked(storage.getWeightLogs).mockResolvedValue([
         { id: 1, userId: "1", weight: "80", loggedAt: "2025-01-01T12:00:00" },
         { id: 2, userId: "1", weight: "79.5", loggedAt: "2025-01-08T12:00:00" },
-      ]);
+      ] as any);
 
       const result = await computeAdaptiveGoals("1");
       expect(result).toBeNull();
     });
 
     it("returns null when data span is less than 14 days", async () => {
-      vi.mocked(storage.getUser).mockResolvedValue({ id: "1", dailyCalorieGoal: 2000 });
-      vi.mocked(storage.getWeightLogs).mockResolvedValue(makeWeightLogs([
-        { weight: "80", loggedAt: "2025-01-01T12:00:00" },
-        { weight: "79.8", loggedAt: "2025-01-03T12:00:00" },
-        { weight: "79.6", loggedAt: "2025-01-05T12:00:00" },
-        { weight: "79.4", loggedAt: "2025-01-07T12:00:00" },
-      ]));
+      vi.mocked(storage.getUser).mockResolvedValue({
+        id: "1",
+        dailyCalorieGoal: 2000,
+      } as any);
+      vi.mocked(storage.getWeightLogs).mockResolvedValue(
+        makeWeightLogs([
+          { weight: "80", loggedAt: "2025-01-01T12:00:00" },
+          { weight: "79.8", loggedAt: "2025-01-03T12:00:00" },
+          { weight: "79.6", loggedAt: "2025-01-05T12:00:00" },
+          { weight: "79.4", loggedAt: "2025-01-07T12:00:00" },
+        ]) as any,
+      );
 
       const result = await computeAdaptiveGoals("1");
       expect(result).toBeNull();
@@ -353,14 +346,18 @@ describe("Adaptive Goals", () => {
         dailyProteinGoal: 150,
         dailyCarbsGoal: 250,
         dailyFatGoal: 67,
-      });
-      vi.mocked(storage.getWeightLogs).mockResolvedValue(makeWeightLogs([
-        { weight: "80.0", loggedAt: "2025-01-01T12:00:00" },
-        { weight: "80.0", loggedAt: "2025-01-08T12:00:00" },
-        { weight: "80.0", loggedAt: "2025-01-15T12:00:00" },
-        { weight: "80.0", loggedAt: "2025-01-22T12:00:00" },
-      ]));
-      vi.mocked(storage.getUserProfile).mockResolvedValue({ primaryGoal: "maintain" });
+      } as any);
+      vi.mocked(storage.getWeightLogs).mockResolvedValue(
+        makeWeightLogs([
+          { weight: "80.0", loggedAt: "2025-01-01T12:00:00" },
+          { weight: "80.0", loggedAt: "2025-01-08T12:00:00" },
+          { weight: "80.0", loggedAt: "2025-01-15T12:00:00" },
+          { weight: "80.0", loggedAt: "2025-01-22T12:00:00" },
+        ]) as any,
+      );
+      vi.mocked(storage.getUserProfile).mockResolvedValue({
+        primaryGoal: "maintain",
+      } as any);
 
       const result = await computeAdaptiveGoals("1");
       // TDEE = 2000 (no weight change), goal adjust for maintain = 0
@@ -376,15 +373,19 @@ describe("Adaptive Goals", () => {
         dailyProteinGoal: 150,
         dailyCarbsGoal: 250,
         dailyFatGoal: 67,
-      });
+      } as any);
       // Gained 2kg over 28 days
-      vi.mocked(storage.getWeightLogs).mockResolvedValue(makeWeightLogs([
-        { weight: "80", loggedAt: "2025-01-01T12:00:00" },
-        { weight: "80.5", loggedAt: "2025-01-08T12:00:00" },
-        { weight: "81", loggedAt: "2025-01-15T12:00:00" },
-        { weight: "82", loggedAt: "2025-01-29T12:00:00" },
-      ]));
-      vi.mocked(storage.getUserProfile).mockResolvedValue({ primaryGoal: "lose_weight" });
+      vi.mocked(storage.getWeightLogs).mockResolvedValue(
+        makeWeightLogs([
+          { weight: "80", loggedAt: "2025-01-01T12:00:00" },
+          { weight: "80.5", loggedAt: "2025-01-08T12:00:00" },
+          { weight: "81", loggedAt: "2025-01-15T12:00:00" },
+          { weight: "82", loggedAt: "2025-01-29T12:00:00" },
+        ]) as any,
+      );
+      vi.mocked(storage.getUserProfile).mockResolvedValue({
+        primaryGoal: "lose_weight",
+      } as any);
 
       const result = await computeAdaptiveGoals("1");
       expect(result).not.toBeNull();
@@ -402,15 +403,19 @@ describe("Adaptive Goals", () => {
         dailyProteinGoal: 150,
         dailyCarbsGoal: 250,
         dailyFatGoal: 67,
-      });
+      } as any);
       // Lost 2kg over 28 days while trying to gain
-      vi.mocked(storage.getWeightLogs).mockResolvedValue(makeWeightLogs([
-        { weight: "70", loggedAt: "2025-01-01T12:00:00" },
-        { weight: "69.5", loggedAt: "2025-01-08T12:00:00" },
-        { weight: "69", loggedAt: "2025-01-15T12:00:00" },
-        { weight: "68", loggedAt: "2025-01-29T12:00:00" },
-      ]));
-      vi.mocked(storage.getUserProfile).mockResolvedValue({ primaryGoal: "gain_weight" });
+      vi.mocked(storage.getWeightLogs).mockResolvedValue(
+        makeWeightLogs([
+          { weight: "70", loggedAt: "2025-01-01T12:00:00" },
+          { weight: "69.5", loggedAt: "2025-01-08T12:00:00" },
+          { weight: "69", loggedAt: "2025-01-15T12:00:00" },
+          { weight: "68", loggedAt: "2025-01-29T12:00:00" },
+        ]) as any,
+      );
+      vi.mocked(storage.getUserProfile).mockResolvedValue({
+        primaryGoal: "gain_weight",
+      } as any);
 
       const result = await computeAdaptiveGoals("1");
       expect(result).not.toBeNull();
@@ -424,15 +429,19 @@ describe("Adaptive Goals", () => {
         dailyProteinGoal: null,
         dailyCarbsGoal: null,
         dailyFatGoal: null,
-      });
+      } as any);
       // Significant weight gain to trigger recommendation
-      vi.mocked(storage.getWeightLogs).mockResolvedValue(makeWeightLogs([
-        { weight: "80", loggedAt: "2025-01-01T12:00:00" },
-        { weight: "81", loggedAt: "2025-01-08T12:00:00" },
-        { weight: "82", loggedAt: "2025-01-15T12:00:00" },
-        { weight: "84", loggedAt: "2025-01-29T12:00:00" },
-      ]));
-      vi.mocked(storage.getUserProfile).mockResolvedValue({ primaryGoal: "lose_weight" });
+      vi.mocked(storage.getWeightLogs).mockResolvedValue(
+        makeWeightLogs([
+          { weight: "80", loggedAt: "2025-01-01T12:00:00" },
+          { weight: "81", loggedAt: "2025-01-08T12:00:00" },
+          { weight: "82", loggedAt: "2025-01-15T12:00:00" },
+          { weight: "84", loggedAt: "2025-01-29T12:00:00" },
+        ]) as any,
+      );
+      vi.mocked(storage.getUserProfile).mockResolvedValue({
+        primaryGoal: "lose_weight",
+      } as any);
 
       const result = await computeAdaptiveGoals("1");
       // Should use defaults (2000 cal) and compute without error
@@ -447,15 +456,17 @@ describe("Adaptive Goals", () => {
         dailyProteinGoal: 150,
         dailyCarbsGoal: 250,
         dailyFatGoal: 67,
-      });
+      } as any);
       // Large weight gain over 28 days → TDEE lower → deviation > 10%
-      vi.mocked(storage.getWeightLogs).mockResolvedValue(makeWeightLogs([
-        { weight: "80", loggedAt: "2025-01-01T12:00:00" },
-        { weight: "81", loggedAt: "2025-01-08T12:00:00" },
-        { weight: "82", loggedAt: "2025-01-15T12:00:00" },
-        { weight: "84", loggedAt: "2025-01-29T12:00:00" },
-      ]));
-      vi.mocked(storage.getUserProfile).mockResolvedValue(null);
+      vi.mocked(storage.getWeightLogs).mockResolvedValue(
+        makeWeightLogs([
+          { weight: "80", loggedAt: "2025-01-01T12:00:00" },
+          { weight: "81", loggedAt: "2025-01-08T12:00:00" },
+          { weight: "82", loggedAt: "2025-01-15T12:00:00" },
+          { weight: "84", loggedAt: "2025-01-29T12:00:00" },
+        ]) as any,
+      );
+      vi.mocked(storage.getUserProfile).mockResolvedValue(null as any);
 
       const result = await computeAdaptiveGoals("1");
       // With maintain goal, adjustment = 0, but TDEE estimate should differ

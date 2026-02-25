@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import express from "express";
 import request from "supertest";
 
+import { storage } from "../../storage";
+import { analyzeGlp1Insights } from "../../services/glp1-insights";
+import { register } from "../medication";
+
 vi.mock("../../storage", () => ({
   storage: {
     getSubscriptionStatus: vi.fn(),
@@ -48,10 +52,6 @@ vi.mock("express-rate-limit", () => ({
     ) =>
       next(),
 }));
-
-import { storage } from "../../storage";
-import { analyzeGlp1Insights } from "../../services/glp1-insights";
-import { register } from "../medication";
 
 function createApp() {
   const app = express();

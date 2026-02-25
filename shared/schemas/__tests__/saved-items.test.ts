@@ -1,7 +1,4 @@
-import {
-  createSavedItemSchema,
-  savedItemTypeSchema,
-} from "../saved-items";
+import { createSavedItemSchema, savedItemTypeSchema } from "../saved-items";
 
 describe("Saved Items Schemas", () => {
   describe("savedItemTypeSchema", () => {

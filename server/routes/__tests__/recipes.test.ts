@@ -2,6 +2,15 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import express from "express";
 import request from "supertest";
 
+import { storage } from "../../storage";
+import { generateFullRecipe } from "../../services/recipe-generation";
+import {
+  searchCatalogRecipes,
+  getCatalogRecipeDetail,
+} from "../../services/recipe-catalog";
+import { importRecipeFromUrl } from "../../services/recipe-import";
+import { register } from "../recipes";
+
 vi.mock("../../storage", () => ({
   storage: {
     getSubscriptionStatus: vi.fn(),
@@ -53,22 +62,23 @@ vi.mock("../../middleware/auth", () => ({
 }));
 
 vi.mock("express-rate-limit", () => ({
-  rateLimit: () =>
-    (_req: express.Request, _res: express.Response, next: express.NextFunction) =>
+  rateLimit:
+    () =>
+    (
+      _req: express.Request,
+      _res: express.Response,
+      next: express.NextFunction,
+    ) =>
       next(),
-  default: () =>
-    (_req: express.Request, _res: express.Response, next: express.NextFunction) =>
+  default:
+    () =>
+    (
+      _req: express.Request,
+      _res: express.Response,
+      next: express.NextFunction,
+    ) =>
       next(),
 }));
-
-import { storage } from "../../storage";
-import { generateFullRecipe } from "../../services/recipe-generation";
-import {
-  searchCatalogRecipes,
-  getCatalogRecipeDetail,
-} from "../../services/recipe-catalog";
-import { importRecipeFromUrl } from "../../services/recipe-import";
-import { register } from "../recipes";
 
 function createApp() {
   const app = express();
@@ -94,7 +104,9 @@ describe("Recipes Routes", () => {
 
   describe("GET /api/recipes/featured", () => {
     it("returns featured recipes without authorId", async () => {
-      vi.mocked(storage.getFeaturedRecipes).mockResolvedValue([mockRecipe] as never);
+      vi.mocked(storage.getFeaturedRecipes).mockResolvedValue([
+        mockRecipe,
+      ] as never);
 
       const res = await request(app)
         .get("/api/recipes/featured")
@@ -125,7 +137,9 @@ describe("Recipes Routes", () => {
 
   describe("GET /api/recipes/community", () => {
     it("returns community recipes", async () => {
-      vi.mocked(storage.getCommunityRecipes).mockResolvedValue([mockRecipe] as never);
+      vi.mocked(storage.getCommunityRecipes).mockResolvedValue([
+        mockRecipe,
+      ] as never);
 
       const res = await request(app)
         .get("/api/recipes/community?productName=pasta")
@@ -149,7 +163,9 @@ describe("Recipes Routes", () => {
       vi.mocked(storage.getSubscriptionStatus).mockResolvedValue({
         tier: "premium",
       } as never);
-      vi.mocked(storage.getDailyRecipeGenerationCount).mockResolvedValue(2 as never);
+      vi.mocked(storage.getDailyRecipeGenerationCount).mockResolvedValue(
+        2 as never,
+      );
 
       const res = await request(app)
         .get("/api/recipes/generation-status")
@@ -166,7 +182,9 @@ describe("Recipes Routes", () => {
       vi.mocked(storage.getSubscriptionStatus).mockResolvedValue({
         tier: "premium",
       } as never);
-      vi.mocked(storage.getDailyRecipeGenerationCount).mockResolvedValue(0 as never);
+      vi.mocked(storage.getDailyRecipeGenerationCount).mockResolvedValue(
+        0 as never,
+      );
       vi.mocked(storage.getUserProfile).mockResolvedValue(null as never);
       vi.mocked(generateFullRecipe).mockResolvedValue({
         title: "Pasta Bowl",
@@ -210,7 +228,9 @@ describe("Recipes Routes", () => {
       vi.mocked(storage.getSubscriptionStatus).mockResolvedValue({
         tier: "premium",
       } as never);
-      vi.mocked(storage.getDailyRecipeGenerationCount).mockResolvedValue(100 as never);
+      vi.mocked(storage.getDailyRecipeGenerationCount).mockResolvedValue(
+        100 as never,
+      );
 
       const res = await request(app)
         .post("/api/recipes/generate")
@@ -224,7 +244,9 @@ describe("Recipes Routes", () => {
       vi.mocked(storage.getSubscriptionStatus).mockResolvedValue({
         tier: "premium",
       } as never);
-      vi.mocked(storage.getDailyRecipeGenerationCount).mockResolvedValue(0 as never);
+      vi.mocked(storage.getDailyRecipeGenerationCount).mockResolvedValue(
+        0 as never,
+      );
 
       const res = await request(app)
         .post("/api/recipes/generate")
@@ -251,7 +273,9 @@ describe("Recipes Routes", () => {
     });
 
     it("returns 404 for unowned recipe", async () => {
-      vi.mocked(storage.updateRecipePublicStatus).mockResolvedValue(null as never);
+      vi.mocked(storage.updateRecipePublicStatus).mockResolvedValue(
+        null as never,
+      );
 
       const res = await request(app)
         .post("/api/recipes/1/share")
@@ -264,7 +288,9 @@ describe("Recipes Routes", () => {
 
   describe("GET /api/recipes/mine", () => {
     it("returns user's recipes", async () => {
-      vi.mocked(storage.getUserRecipes).mockResolvedValue([mockRecipe] as never);
+      vi.mocked(storage.getUserRecipes).mockResolvedValue([
+        mockRecipe,
+      ] as never);
 
       const res = await request(app)
         .get("/api/recipes/mine")
@@ -277,7 +303,9 @@ describe("Recipes Routes", () => {
 
   describe("GET /api/recipes/:id", () => {
     it("returns a public recipe", async () => {
-      vi.mocked(storage.getCommunityRecipe).mockResolvedValue(mockRecipe as never);
+      vi.mocked(storage.getCommunityRecipe).mockResolvedValue(
+        mockRecipe as never,
+      );
 
       const res = await request(app)
         .get("/api/recipes/1")
@@ -327,7 +355,9 @@ describe("Recipes Routes", () => {
     });
 
     it("returns 404 for unowned recipe", async () => {
-      vi.mocked(storage.deleteCommunityRecipe).mockResolvedValue(false as never);
+      vi.mocked(storage.deleteCommunityRecipe).mockResolvedValue(
+        false as never,
+      );
 
       const res = await request(app)
         .delete("/api/recipes/999")
@@ -387,7 +417,9 @@ describe("Recipes Routes", () => {
 
   describe("POST /api/meal-plan/catalog/:id/save", () => {
     it("saves a catalog recipe", async () => {
-      vi.mocked(storage.findMealPlanRecipeByExternalId).mockResolvedValue(null as never);
+      vi.mocked(storage.findMealPlanRecipeByExternalId).mockResolvedValue(
+        null as never,
+      );
       vi.mocked(getCatalogRecipeDetail).mockResolvedValue({
         recipe: { title: "Chicken", userId: null },
         ingredients: [],

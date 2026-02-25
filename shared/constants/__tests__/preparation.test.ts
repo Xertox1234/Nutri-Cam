@@ -6,8 +6,6 @@ import {
   PREPARATION_OPTIONS,
   INTENT_CONFIG,
   preparationMethodSchema,
-  type PhotoIntent,
-  type FoodCategory,
 } from "../preparation";
 
 describe("Preparation Constants", () => {

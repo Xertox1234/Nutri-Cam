@@ -69,8 +69,7 @@ export function register(app: Express): void {
       try {
         // Check no active fast
         const active = await storage.getActiveFastingLog(req.userId!);
-        if (active)
-          return sendError(res, 409, "A fast is already in progress");
+        if (active) return sendError(res, 409, "A fast is already in progress");
 
         const schedule = await storage.getFastingSchedule(req.userId!);
         const targetHours = schedule?.fastingHours || 16;
@@ -98,8 +97,7 @@ export function register(app: Express): void {
         const parsed = schema.safeParse(req.body);
 
         const active = await storage.getActiveFastingLog(req.userId!);
-        if (!active)
-          return sendError(res, 404, "No active fast found");
+        if (!active) return sendError(res, 404, "No active fast found");
 
         const now = new Date();
         const startedAt = new Date(active.startedAt);

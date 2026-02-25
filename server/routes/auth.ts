@@ -2,7 +2,11 @@ import type { Express, Request, Response } from "express";
 import bcrypt from "bcrypt";
 import { ZodError } from "zod";
 import { storage } from "../storage";
-import { requireAuth, generateToken, invalidateTokenVersionCache } from "../middleware/auth";
+import {
+  requireAuth,
+  generateToken,
+  invalidateTokenVersionCache,
+} from "../middleware/auth";
 import { sendError } from "../lib/api-errors";
 import { detectImageMimeType } from "../lib/image-mime";
 import {

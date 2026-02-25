@@ -1,5 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 
+import { calculateTotals, type FoodItem } from "../photo-upload";
+
 /**
  * We only test the pure `calculateTotals` function here.
  * The other exports (uploadPhoto, confirmPhoto) depend on expo-file-system
@@ -24,8 +26,6 @@ vi.mock("../image-compression", () => ({
   compressImage: vi.fn(),
   cleanupImage: vi.fn(),
 }));
-
-import { calculateTotals, type FoodItem } from "../photo-upload";
 
 describe("calculateTotals", () => {
   const baseNutrition = {

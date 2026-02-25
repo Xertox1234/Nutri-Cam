@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   findNutrient,
   mapToMealPlanRecipe,
@@ -370,7 +370,8 @@ describe("Recipe Catalog", () => {
         number: 5,
       });
 
-      const fetchCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+      const fetchCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock
+        .calls[0];
       const url = fetchCall[0] as string;
       expect(url).toContain("cuisine=Italian");
       expect(url).toContain("diet=vegetarian");
@@ -402,9 +403,7 @@ describe("Recipe Catalog", () => {
         title: "Cached Recipe",
         servings: 4,
         nutrition: {
-          nutrients: [
-            { name: "Calories", amount: 300, unit: "kcal" },
-          ],
+          nutrients: [{ name: "Calories", amount: 300, unit: "kcal" }],
         },
       };
 

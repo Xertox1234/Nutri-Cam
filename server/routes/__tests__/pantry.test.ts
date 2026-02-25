@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import express from "express";
 import request from "supertest";
 
+import { storage } from "../../storage";
+import { register } from "../pantry";
+
 vi.mock("../../storage", () => ({
   storage: {
     getSubscriptionStatus: vi.fn(),
@@ -25,16 +28,23 @@ vi.mock("../../middleware/auth", () => ({
 }));
 
 vi.mock("express-rate-limit", () => ({
-  rateLimit: () =>
-    (_req: express.Request, _res: express.Response, next: express.NextFunction) =>
+  rateLimit:
+    () =>
+    (
+      _req: express.Request,
+      _res: express.Response,
+      next: express.NextFunction,
+    ) =>
       next(),
-  default: () =>
-    (_req: express.Request, _res: express.Response, next: express.NextFunction) =>
+  default:
+    () =>
+    (
+      _req: express.Request,
+      _res: express.Response,
+      next: express.NextFunction,
+    ) =>
       next(),
 }));
-
-import { storage } from "../../storage";
-import { register } from "../pantry";
 
 function createApp() {
   const app = express();
@@ -220,7 +230,9 @@ describe("Pantry Routes", () => {
   describe("GET /api/pantry/expiring", () => {
     it("returns expiring items", async () => {
       mockPremium();
-      vi.mocked(storage.getExpiringPantryItems).mockResolvedValue([mockItem] as never);
+      vi.mocked(storage.getExpiringPantryItems).mockResolvedValue([
+        mockItem,
+      ] as never);
 
       const res = await request(app)
         .get("/api/pantry/expiring")

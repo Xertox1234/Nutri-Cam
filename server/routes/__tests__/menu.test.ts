@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import express from "express";
 import request from "supertest";
 
+import { storage } from "../../storage";
+import { analyzeMenuPhoto } from "../../services/menu-analysis";
+import { register } from "../menu";
+
 vi.mock("../../storage", () => ({
   storage: {
     getSubscriptionStatus: vi.fn(),
@@ -68,10 +72,6 @@ vi.mock("multer", () => {
   multerMock.memoryStorage = () => ({});
   return { default: multerMock };
 });
-
-import { storage } from "../../storage";
-import { analyzeMenuPhoto } from "../../services/menu-analysis";
-import { register } from "../menu";
 
 function createApp() {
   const app = express();

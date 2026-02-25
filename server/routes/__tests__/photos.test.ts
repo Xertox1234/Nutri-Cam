@@ -2,6 +2,15 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import express from "express";
 import request from "supertest";
 
+import { storage } from "../../storage";
+import {
+  analyzePhoto,
+  needsFollowUp,
+  getFollowUpQuestions,
+} from "../../services/photo-analysis";
+import { batchNutritionLookup } from "../../services/nutrition-lookup";
+import { register } from "../photos";
+
 vi.mock("../../storage", () => ({
   storage: {
     getSubscriptionStatus: vi.fn(),
@@ -38,18 +47,33 @@ vi.mock("../../middleware/auth", () => ({
 }));
 
 vi.mock("express-rate-limit", () => ({
-  rateLimit: () =>
-    (_req: express.Request, _res: express.Response, next: express.NextFunction) =>
+  rateLimit:
+    () =>
+    (
+      _req: express.Request,
+      _res: express.Response,
+      next: express.NextFunction,
+    ) =>
       next(),
-  default: () =>
-    (_req: express.Request, _res: express.Response, next: express.NextFunction) =>
+  default:
+    () =>
+    (
+      _req: express.Request,
+      _res: express.Response,
+      next: express.NextFunction,
+    ) =>
       next(),
 }));
 
 vi.mock("multer", () => {
   const multerMock = () => ({
-    single: () =>
-      (req: express.Request, _res: express.Response, next: express.NextFunction) => {
+    single:
+      () =>
+      (
+        req: express.Request,
+        _res: express.Response,
+        next: express.NextFunction,
+      ) => {
         req.file = {
           buffer: Buffer.from("fake-image"),
           mimetype: "image/jpeg",
@@ -62,11 +86,6 @@ vi.mock("multer", () => {
   multerMock.memoryStorage = () => ({});
   return { default: multerMock };
 });
-
-import { storage } from "../../storage";
-import { analyzePhoto, needsFollowUp, getFollowUpQuestions } from "../../services/photo-analysis";
-import { batchNutritionLookup } from "../../services/nutrition-lookup";
-import { register } from "../photos";
 
 function createApp() {
   const app = express();
@@ -94,7 +113,12 @@ describe("Photos Routes", () => {
         overallConfidence: 0.9,
       } as never);
       vi.mocked(batchNutritionLookup).mockResolvedValue(
-        new Map([["1 medium Apple", { calories: 95, protein: 0.5, carbs: 25, fat: 0.3 }]]) as never,
+        new Map([
+          [
+            "1 medium Apple",
+            { calories: 95, protein: 0.5, carbs: 25, fat: 0.3 },
+          ],
+        ]) as never,
       );
       vi.mocked(needsFollowUp).mockReturnValue(false);
       vi.mocked(getFollowUpQuestions).mockReturnValue([]);

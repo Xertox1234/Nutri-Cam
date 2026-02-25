@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import express from "express";
 import request from "supertest";
 
+import { storage } from "../../storage";
+import { register } from "../fasting";
+
 vi.mock("../../storage", () => ({
   storage: {
     getFastingSchedule: vi.fn(),
@@ -25,11 +28,21 @@ vi.mock("../../middleware/auth", () => ({
 }));
 
 vi.mock("express-rate-limit", () => ({
-  rateLimit: () =>
-    (_req: express.Request, _res: express.Response, next: express.NextFunction) =>
+  rateLimit:
+    () =>
+    (
+      _req: express.Request,
+      _res: express.Response,
+      next: express.NextFunction,
+    ) =>
       next(),
-  default: () =>
-    (_req: express.Request, _res: express.Response, next: express.NextFunction) =>
+  default:
+    () =>
+    (
+      _req: express.Request,
+      _res: express.Response,
+      next: express.NextFunction,
+    ) =>
       next(),
 }));
 
@@ -42,9 +55,6 @@ vi.mock("../../services/fasting-stats", () => ({
     currentStreakDays: 1,
   }),
 }));
-
-import { storage } from "../../storage";
-import { register } from "../fasting";
 
 function createApp() {
   const app = express();
@@ -84,7 +94,9 @@ describe("Fasting Routes", () => {
 
   describe("GET /api/fasting/schedule", () => {
     it("returns fasting schedule", async () => {
-      vi.mocked(storage.getFastingSchedule).mockResolvedValue(mockSchedule as never);
+      vi.mocked(storage.getFastingSchedule).mockResolvedValue(
+        mockSchedule as never,
+      );
 
       const res = await request(app)
         .get("/api/fasting/schedule")
@@ -109,7 +121,9 @@ describe("Fasting Routes", () => {
 
   describe("PUT /api/fasting/schedule", () => {
     it("creates/updates fasting schedule", async () => {
-      vi.mocked(storage.upsertFastingSchedule).mockResolvedValue(mockSchedule as never);
+      vi.mocked(storage.upsertFastingSchedule).mockResolvedValue(
+        mockSchedule as never,
+      );
 
       const res = await request(app)
         .put("/api/fasting/schedule")
@@ -156,8 +170,12 @@ describe("Fasting Routes", () => {
   describe("POST /api/fasting/start", () => {
     it("starts a new fast", async () => {
       vi.mocked(storage.getActiveFastingLog).mockResolvedValue(null as never);
-      vi.mocked(storage.getFastingSchedule).mockResolvedValue(mockSchedule as never);
-      vi.mocked(storage.createFastingLog).mockResolvedValue(mockFastingLog as never);
+      vi.mocked(storage.getFastingSchedule).mockResolvedValue(
+        mockSchedule as never,
+      );
+      vi.mocked(storage.createFastingLog).mockResolvedValue(
+        mockFastingLog as never,
+      );
 
       const res = await request(app)
         .post("/api/fasting/start")
@@ -171,7 +189,9 @@ describe("Fasting Routes", () => {
     });
 
     it("returns 409 if a fast is already active", async () => {
-      vi.mocked(storage.getActiveFastingLog).mockResolvedValue(mockFastingLog as never);
+      vi.mocked(storage.getActiveFastingLog).mockResolvedValue(
+        mockFastingLog as never,
+      );
 
       const res = await request(app)
         .post("/api/fasting/start")
@@ -184,7 +204,9 @@ describe("Fasting Routes", () => {
     it("defaults to 16 hours if no schedule", async () => {
       vi.mocked(storage.getActiveFastingLog).mockResolvedValue(null as never);
       vi.mocked(storage.getFastingSchedule).mockResolvedValue(null as never);
-      vi.mocked(storage.createFastingLog).mockResolvedValue(mockFastingLog as never);
+      vi.mocked(storage.createFastingLog).mockResolvedValue(
+        mockFastingLog as never,
+      );
 
       await request(app)
         .post("/api/fasting/start")
@@ -203,7 +225,9 @@ describe("Fasting Routes", () => {
         ...mockFastingLog,
         startedAt: new Date(Date.now() - 17 * 60 * 60000), // 17 hours ago
       };
-      vi.mocked(storage.getActiveFastingLog).mockResolvedValue(activeFast as never);
+      vi.mocked(storage.getActiveFastingLog).mockResolvedValue(
+        activeFast as never,
+      );
       vi.mocked(storage.endFastingLog).mockResolvedValue({
         ...activeFast,
         completed: true,
@@ -233,7 +257,9 @@ describe("Fasting Routes", () => {
         ...mockFastingLog,
         startedAt: new Date(Date.now() - 8 * 60 * 60000),
       };
-      vi.mocked(storage.getActiveFastingLog).mockResolvedValue(activeFast as never);
+      vi.mocked(storage.getActiveFastingLog).mockResolvedValue(
+        activeFast as never,
+      );
       vi.mocked(storage.endFastingLog).mockResolvedValue(activeFast as never);
 
       const res = await request(app)
@@ -249,7 +275,9 @@ describe("Fasting Routes", () => {
 
   describe("GET /api/fasting/current", () => {
     it("returns active fast", async () => {
-      vi.mocked(storage.getActiveFastingLog).mockResolvedValue(mockFastingLog as never);
+      vi.mocked(storage.getActiveFastingLog).mockResolvedValue(
+        mockFastingLog as never,
+      );
 
       const res = await request(app)
         .get("/api/fasting/current")
@@ -279,7 +307,9 @@ describe("Fasting Routes", () => {
         actualMinutes: 960,
         completed: true,
       };
-      vi.mocked(storage.getFastingLogs).mockResolvedValue([completedLog] as never);
+      vi.mocked(storage.getFastingLogs).mockResolvedValue([
+        completedLog,
+      ] as never);
 
       const res = await request(app)
         .get("/api/fasting/history")

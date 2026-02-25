@@ -12,9 +12,7 @@ describe("AuthContext", () => {
       const context = null; // Simulates being outside provider
       const useAuthContext = () => {
         if (!context) {
-          throw new Error(
-            "useAuthContext must be used within an AuthProvider",
-          );
+          throw new Error("useAuthContext must be used within an AuthProvider");
         }
         return context;
       };

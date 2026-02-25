@@ -1,5 +1,7 @@
 import { analyzeGlp1Insights } from "../glp1-insights";
 
+import { storage } from "../../storage";
+
 // Mock the storage module
 vi.mock("../../storage", () => ({
   storage: {
@@ -8,8 +10,6 @@ vi.mock("../../storage", () => ({
     getWeightLogs: vi.fn(),
   },
 }));
-
-import { storage } from "../../storage";
 
 const mockStorage = vi.mocked(storage);
 

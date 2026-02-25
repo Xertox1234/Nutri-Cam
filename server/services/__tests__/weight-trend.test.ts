@@ -89,10 +89,7 @@ describe("Weight Trend", () => {
     });
 
     it("returns null 7-day avg when no entries in last 7 days", () => {
-      const logs = [
-        makeWeightEntry(74.0, 10),
-        makeWeightEntry(75.0, 15),
-      ];
+      const logs = [makeWeightEntry(74.0, 10), makeWeightEntry(75.0, 15)];
 
       const result = calculateWeightTrend(logs);
 
@@ -121,10 +118,7 @@ describe("Weight Trend", () => {
     });
 
     it("returns null weekly rate when no data in previous week", () => {
-      const logs = [
-        makeWeightEntry(74.0, 1),
-        makeWeightEntry(74.5, 3),
-      ];
+      const logs = [makeWeightEntry(74.0, 1), makeWeightEntry(74.5, 3)];
 
       const result = calculateWeightTrend(logs);
 
@@ -171,10 +165,7 @@ describe("Weight Trend", () => {
     });
 
     it("returns null projected date when no goal weight provided", () => {
-      const logs = [
-        makeWeightEntry(74.0, 1),
-        makeWeightEntry(75.0, 8),
-      ];
+      const logs = [makeWeightEntry(74.0, 1), makeWeightEntry(75.0, 8)];
 
       const result = calculateWeightTrend(logs);
 
@@ -182,9 +173,7 @@ describe("Weight Trend", () => {
     });
 
     it("returns null projected date when rate of change is null", () => {
-      const logs = [
-        makeWeightEntry(74.0, 1),
-      ];
+      const logs = [makeWeightEntry(74.0, 1)];
 
       const result = calculateWeightTrend(logs, 70.0);
 

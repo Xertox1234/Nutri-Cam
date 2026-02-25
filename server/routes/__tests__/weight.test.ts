@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import express from "express";
 import request from "supertest";
 
+import { storage } from "../../storage";
+import { register } from "../weight";
+
 vi.mock("../../storage", () => ({
   storage: {
     getUser: vi.fn(),
@@ -52,9 +55,6 @@ vi.mock("../../services/weight-trend", () => ({
     projectedDate: "2024-06-01",
   }),
 }));
-
-import { storage } from "../../storage";
-import { register } from "../weight";
 
 function createApp() {
   const app = express();

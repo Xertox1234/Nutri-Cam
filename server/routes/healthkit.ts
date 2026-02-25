@@ -3,11 +3,7 @@ import { z, ZodError } from "zod";
 import { requireAuth } from "../middleware/auth";
 import { storage } from "../storage";
 import { sendError } from "../lib/api-errors";
-import {
-  formatZodError,
-  checkPremiumFeature,
-  crudRateLimit,
-} from "./_helpers";
+import { formatZodError, checkPremiumFeature, crudRateLimit } from "./_helpers";
 import { syncHealthKitData } from "../services/healthkit-sync";
 
 const syncDataSchema = z.object({

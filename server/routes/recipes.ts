@@ -193,7 +193,12 @@ export function register(app: Express): void {
         );
 
         if (generationsToday >= features.dailyRecipeGenerations) {
-          sendError(res, 429, "Daily recipe generation limit reached", "DAILY_LIMIT_REACHED");
+          sendError(
+            res,
+            429,
+            "Daily recipe generation limit reached",
+            "DAILY_LIMIT_REACHED",
+          );
           return;
         }
 
@@ -505,7 +510,12 @@ export function register(app: Express): void {
             TIMEOUT: "The request timed out while fetching the URL",
             RESPONSE_TOO_LARGE: "The page is too large to import (max 5 MB)",
           };
-          sendError(res, 422, messages[result.error] || "Import failed", result.error);
+          sendError(
+            res,
+            422,
+            messages[result.error] || "Import failed",
+            result.error,
+          );
           return;
         }
 

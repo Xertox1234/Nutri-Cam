@@ -38,12 +38,12 @@ describe("Auth Types", () => {
 
     it("returns false when sub is not a string", () => {
       const payload = { sub: 123, tokenVersion: 0 };
-      expect(isAccessTokenPayload(payload)).toBe(false);
+      expect(isAccessTokenPayload(payload as any)).toBe(false);
     });
 
     it("returns false when sub is null", () => {
       const payload = { sub: null, tokenVersion: 0 };
-      expect(isAccessTokenPayload(payload)).toBe(false);
+      expect(isAccessTokenPayload(payload as any)).toBe(false);
     });
 
     it("returns false for empty object", () => {

@@ -2,6 +2,15 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import express from "express";
 import request from "supertest";
 
+import { storage } from "../../storage";
+import {
+  lookupMicronutrientsWithCache,
+  batchLookupMicronutrients,
+  aggregateMicronutrients,
+  getDailyValueReference,
+} from "../../services/micronutrient-lookup";
+import { register } from "../micronutrients";
+
 vi.mock("../../storage", () => ({
   storage: {
     getSubscriptionStatus: vi.fn(),
@@ -23,11 +32,21 @@ vi.mock("../../middleware/auth", () => ({
 }));
 
 vi.mock("express-rate-limit", () => ({
-  rateLimit: () =>
-    (_req: express.Request, _res: express.Response, next: express.NextFunction) =>
+  rateLimit:
+    () =>
+    (
+      _req: express.Request,
+      _res: express.Response,
+      next: express.NextFunction,
+    ) =>
       next(),
-  default: () =>
-    (_req: express.Request, _res: express.Response, next: express.NextFunction) =>
+  default:
+    () =>
+    (
+      _req: express.Request,
+      _res: express.Response,
+      next: express.NextFunction,
+    ) =>
       next(),
 }));
 
@@ -37,15 +56,6 @@ vi.mock("../../services/micronutrient-lookup", () => ({
   aggregateMicronutrients: vi.fn(),
   getDailyValueReference: vi.fn(),
 }));
-
-import { storage } from "../../storage";
-import {
-  lookupMicronutrientsWithCache,
-  batchLookupMicronutrients,
-  aggregateMicronutrients,
-  getDailyValueReference,
-} from "../../services/micronutrient-lookup";
-import { register } from "../micronutrients";
 
 function createApp() {
   const app = express();
@@ -77,7 +87,12 @@ describe("Micronutrients Routes", () => {
         productName: "Apple",
       } as never);
       const mockMicros = [
-        { nutrientName: "Vitamin C", amount: 8, unit: "mg", percentDailyValue: 9 },
+        {
+          nutrientName: "Vitamin C",
+          amount: 8,
+          unit: "mg",
+          percentDailyValue: 9,
+        },
       ];
       vi.mocked(lookupMicronutrientsWithCache).mockResolvedValue(mockMicros);
 
@@ -150,11 +165,30 @@ describe("Micronutrients Routes", () => {
         { id: 2, productName: "Banana" },
       ] as never);
       vi.mocked(batchLookupMicronutrients).mockResolvedValue([
-        [{ nutrientName: "Vitamin C", amount: 10, unit: "mg", percentDailyValue: 11 }],
-        [{ nutrientName: "Vitamin C", amount: 5, unit: "mg", percentDailyValue: 6 }],
+        [
+          {
+            nutrientName: "Vitamin C",
+            amount: 10,
+            unit: "mg",
+            percentDailyValue: 11,
+          },
+        ],
+        [
+          {
+            nutrientName: "Vitamin C",
+            amount: 5,
+            unit: "mg",
+            percentDailyValue: 6,
+          },
+        ],
       ]);
       vi.mocked(aggregateMicronutrients).mockReturnValue([
-        { nutrientName: "Vitamin C", amount: 15, unit: "mg", percentDailyValue: 17 },
+        {
+          nutrientName: "Vitamin C",
+          amount: 15,
+          unit: "mg",
+          percentDailyValue: 17,
+        },
       ]);
 
       const res = await request(app)

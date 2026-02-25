@@ -5,6 +5,8 @@ import {
   generateFullRecipe,
 } from "../recipe-generation";
 
+import { openai, dalleClient } from "../../lib/openai";
+
 // Mock the openai module
 vi.mock("../../lib/openai", () => ({
   openai: {
@@ -20,8 +22,6 @@ vi.mock("../../lib/openai", () => ({
     },
   },
 }));
-
-import { openai, dalleClient } from "../../lib/openai";
 
 const mockCreate = vi.mocked(openai.chat.completions.create);
 const mockImageGenerate = vi.mocked(dalleClient.images.generate);

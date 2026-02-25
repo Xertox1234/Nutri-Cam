@@ -9,14 +9,17 @@ describe("PremiumContext", () => {
   describe("default values", () => {
     it("should default to free tier when no subscription data", () => {
       const subscriptionData: SubscriptionStatus | undefined = undefined;
-      const tier = subscriptionData?.tier ?? "free";
+      const tier =
+        (subscriptionData as SubscriptionStatus | undefined)?.tier ?? "free";
 
       expect(tier).toBe("free");
     });
 
     it("should default to free features when no subscription data", () => {
       const subscriptionData: SubscriptionStatus | undefined = undefined;
-      const features = subscriptionData?.features ?? TIER_FEATURES.free;
+      const features =
+        (subscriptionData as SubscriptionStatus | undefined)?.features ??
+        TIER_FEATURES.free;
 
       expect(features).toEqual(TIER_FEATURES.free);
       expect(features.maxDailyScans).toBe(3);
@@ -25,16 +28,20 @@ describe("PremiumContext", () => {
 
     it("should default to 0 scan count when no data", () => {
       const scanCountData: { count: number } | undefined = undefined;
-      const dailyScanCount = scanCountData?.count ?? 0;
+      const dailyScanCount =
+        (scanCountData as { count: number } | undefined)?.count ?? 0;
 
       expect(dailyScanCount).toBe(0);
     });
 
     it("should default isPremium to false when no subscription", () => {
       const subscriptionData: SubscriptionStatus | undefined = undefined;
-      const tier = subscriptionData?.tier ?? "free";
+      const tier =
+        (subscriptionData as SubscriptionStatus | undefined)?.tier ?? "free";
       const isPremium =
-        tier === "premium" && (subscriptionData?.isActive ?? false);
+        tier === "premium" &&
+        ((subscriptionData as SubscriptionStatus | undefined)?.isActive ??
+          false);
 
       expect(isPremium).toBe(false);
     });
