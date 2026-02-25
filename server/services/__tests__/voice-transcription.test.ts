@@ -1,5 +1,7 @@
 import { transcribeAudio } from "../voice-transcription";
 
+import { openai } from "../../lib/openai";
+
 // Mock the openai module
 vi.mock("../../lib/openai", () => ({
   openai: {
@@ -15,8 +17,6 @@ vi.mock("../../lib/openai", () => ({
 vi.mock("openai", () => ({
   toFile: vi.fn().mockResolvedValue({ name: "audio.m4a" }),
 }));
-
-import { openai } from "../../lib/openai";
 
 const mockTranscribe = vi.mocked(openai.audio.transcriptions.create);
 

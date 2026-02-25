@@ -1,5 +1,8 @@
 import { analyzeMenuPhoto, MenuAnalysisResult } from "../menu-analysis";
 
+import { openai } from "../../lib/openai";
+import { storage } from "../../storage";
+
 vi.mock("../../lib/openai", () => ({
   openai: {
     chat: {
@@ -16,9 +19,6 @@ vi.mock("../../storage", () => ({
     getUserProfile: vi.fn(),
   },
 }));
-
-import { openai } from "../../lib/openai";
-import { storage } from "../../storage";
 
 const mockCreate = vi.mocked(openai.chat.completions.create);
 const mockGetUser = vi.mocked(storage.getUser);
@@ -69,8 +69,8 @@ function mockOpenAIResponse(data: MenuAnalysisResult) {
 describe("Menu Analysis", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetUser.mockResolvedValue(null);
-    mockGetUserProfile.mockResolvedValue(null);
+    mockGetUser.mockResolvedValue(null as any);
+    mockGetUserProfile.mockResolvedValue(null as any);
   });
 
   describe("analyzeMenuPhoto", () => {
@@ -183,8 +183,8 @@ describe("Menu Analysis", () => {
     });
 
     it("works without user context (no user found)", async () => {
-      mockGetUser.mockResolvedValue(null);
-      mockGetUserProfile.mockResolvedValue(null);
+      mockGetUser.mockResolvedValue(null as any);
+      mockGetUserProfile.mockResolvedValue(null as any);
 
       mockOpenAIResponse(makeMenuResponse());
 
@@ -212,9 +212,9 @@ describe("Menu Analysis", () => {
         choices: [{ message: { content: null } }],
       } as any);
 
-      await expect(
-        analyzeMenuPhoto("img", "user-1"),
-      ).rejects.toThrow("No response from menu analysis");
+      await expect(analyzeMenuPhoto("img", "user-1")).rejects.toThrow(
+        "No response from menu analysis",
+      );
     });
 
     it("throws on invalid JSON from OpenAI", async () => {
@@ -222,9 +222,7 @@ describe("Menu Analysis", () => {
         choices: [{ message: { content: "not json at all" } }],
       } as any);
 
-      await expect(
-        analyzeMenuPhoto("img", "user-1"),
-      ).rejects.toThrow();
+      await expect(analyzeMenuPhoto("img", "user-1")).rejects.toThrow();
     });
 
     it("throws on schema validation failure", async () => {
@@ -240,9 +238,7 @@ describe("Menu Analysis", () => {
         ],
       } as any);
 
-      await expect(
-        analyzeMenuPhoto("img", "user-1"),
-      ).rejects.toThrow();
+      await expect(analyzeMenuPhoto("img", "user-1")).rejects.toThrow();
     });
 
     it("handles items without recommendation (defaults to 'okay' sorting)", async () => {
@@ -280,7 +276,7 @@ describe("Menu Analysis", () => {
 
     it("fetches both user and profile in parallel", async () => {
       mockGetUser.mockResolvedValue({ id: "user-1" } as any);
-      mockGetUserProfile.mockResolvedValue(null);
+      mockGetUserProfile.mockResolvedValue(null as any);
       mockOpenAIResponse(makeMenuResponse());
 
       await analyzeMenuPhoto("img", "user-1");

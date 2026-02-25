@@ -18,7 +18,7 @@ function makeFastingLog(overrides: {
     actualDurationMinutes: overrides.actualDurationMinutes ?? null,
     completed: overrides.completed ?? false,
     note: overrides.note ?? null,
-  };
+  } as any;
 }
 
 describe("Fasting Stats", () => {

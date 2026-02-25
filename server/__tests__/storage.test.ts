@@ -420,7 +420,7 @@ describe("IDOR Protection", () => {
   });
 
   it("handles null item (not found)", () => {
-    const item = null;
+    const item = null as { userId: string } | null;
     const requestingUserId = "user-123";
 
     const notFoundOrUnauthorized = !item || item.userId !== requestingUserId;

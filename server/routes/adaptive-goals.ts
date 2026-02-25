@@ -2,11 +2,7 @@ import type { Express, Request, Response } from "express";
 import { requireAuth } from "../middleware/auth";
 import { storage } from "../storage";
 import { sendError } from "../lib/api-errors";
-import {
-  checkPremiumFeature,
-  parseQueryInt,
-  crudRateLimit,
-} from "./_helpers";
+import { checkPremiumFeature, parseQueryInt, crudRateLimit } from "./_helpers";
 import { computeAdaptiveGoals } from "../services/adaptive-goals";
 
 export function register(app: Express): void {

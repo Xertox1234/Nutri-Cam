@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import express from "express";
 import request from "supertest";
 
+import { storage } from "../../storage";
+import { register } from "../exercises";
+
 vi.mock("../../storage", () => ({
   storage: {
     getExerciseDailySummary: vi.fn(),
@@ -45,9 +48,6 @@ vi.mock("express-rate-limit", () => ({
     ) =>
       next(),
 }));
-
-import { storage } from "../../storage";
-import { register } from "../exercises";
 
 function createApp() {
   const app = express();

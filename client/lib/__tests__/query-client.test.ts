@@ -208,7 +208,8 @@ describe("UnauthorizedBehavior", () => {
     const behavior: UnauthorizedBehavior = "throw";
     const status = 401;
 
-    const shouldReturnNull = behavior === "returnNull" && status === 401;
+    const shouldReturnNull =
+      (behavior as string) === "returnNull" && status === 401;
     expect(shouldReturnNull).toBe(false);
   });
 
@@ -216,7 +217,8 @@ describe("UnauthorizedBehavior", () => {
     const behavior: UnauthorizedBehavior = "returnNull";
     const status = 200;
 
-    const shouldReturnNull = behavior === "returnNull" && status === 401;
+    const shouldReturnNull =
+      behavior === "returnNull" && (status as number) === 401;
     expect(shouldReturnNull).toBe(false);
   });
 });

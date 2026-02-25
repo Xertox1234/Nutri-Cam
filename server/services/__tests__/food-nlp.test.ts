@@ -1,5 +1,8 @@
 import { parseNaturalLanguageFood } from "../food-nlp";
 
+import { openai } from "../../lib/openai";
+import { lookupNutrition } from "../nutrition-lookup";
+
 // Mock OpenAI
 vi.mock("../../lib/openai", () => ({
   openai: {
@@ -25,9 +28,6 @@ vi.mock("../../lib/ai-safety", () => ({
   }),
   SYSTEM_PROMPT_BOUNDARY: "---BOUNDARY---",
 }));
-
-import { openai } from "../../lib/openai";
-import { lookupNutrition } from "../nutrition-lookup";
 
 const mockCreate = vi.mocked(openai.chat.completions.create);
 const mockLookup = vi.mocked(lookupNutrition);

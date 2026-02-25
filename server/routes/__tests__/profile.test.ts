@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import express from "express";
 import request from "supertest";
 
+import { storage } from "../../storage";
+import { register } from "../profile";
+
 vi.mock("../../storage", () => ({
   storage: {
     getUserProfile: vi.fn(),
@@ -22,11 +25,21 @@ vi.mock("../../middleware/auth", () => ({
 }));
 
 vi.mock("express-rate-limit", () => ({
-  rateLimit: () =>
-    (_req: express.Request, _res: express.Response, next: express.NextFunction) =>
+  rateLimit:
+    () =>
+    (
+      _req: express.Request,
+      _res: express.Response,
+      next: express.NextFunction,
+    ) =>
       next(),
-  default: () =>
-    (_req: express.Request, _res: express.Response, next: express.NextFunction) =>
+  default:
+    () =>
+    (
+      _req: express.Request,
+      _res: express.Response,
+      next: express.NextFunction,
+    ) =>
       next(),
 }));
 
@@ -36,9 +49,6 @@ vi.mock("../../db", () => ({
     transaction: vi.fn(),
   },
 }));
-
-import { storage } from "../../storage";
-import { register } from "../profile";
 
 function createApp() {
   const app = express();
@@ -109,7 +119,9 @@ describe("Profile Routes", () => {
     });
 
     it("invalidates suggestion cache when cache-affecting fields change", async () => {
-      vi.mocked(storage.updateUserProfile).mockResolvedValue(mockProfile as never);
+      vi.mocked(storage.updateUserProfile).mockResolvedValue(
+        mockProfile as never,
+      );
 
       await request(app)
         .put("/api/user/dietary-profile")
@@ -119,11 +131,15 @@ describe("Profile Routes", () => {
       // Fire-and-forget — but the call is synchronous
       // Need to wait a tick for the microtask to resolve
       await new Promise((r) => setTimeout(r, 10));
-      expect(storage.invalidateSuggestionCacheForUser).toHaveBeenCalledWith("1");
+      expect(storage.invalidateSuggestionCacheForUser).toHaveBeenCalledWith(
+        "1",
+      );
     });
 
     it("does not invalidate cache for non-affecting fields", async () => {
-      vi.mocked(storage.updateUserProfile).mockResolvedValue(mockProfile as never);
+      vi.mocked(storage.updateUserProfile).mockResolvedValue(
+        mockProfile as never,
+      );
 
       await request(app)
         .put("/api/user/dietary-profile")

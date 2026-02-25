@@ -49,7 +49,10 @@ export function register(app: Express): void {
           "Pantry tracking",
         );
         if (!features) return;
-        const limit = parseQueryInt(req.query.limit, { default: 200, max: 200 });
+        const limit = parseQueryInt(req.query.limit, {
+          default: 200,
+          max: 200,
+        });
         const items = await storage.getPantryItems(req.userId!, limit);
         res.json(items);
       } catch (error) {

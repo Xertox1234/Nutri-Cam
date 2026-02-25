@@ -3,7 +3,6 @@ import { apiRequest } from "@/lib/query-client";
 import type {
   ApiExerciseLog,
   ApiExerciseLibraryEntry,
-  ExerciseSummary,
 } from "@shared/types/exercise";
 
 export type {

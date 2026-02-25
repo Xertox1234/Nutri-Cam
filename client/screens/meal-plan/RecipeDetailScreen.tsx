@@ -1,6 +1,5 @@
 import React, { useMemo } from "react";
 import { StyleSheet, View, ScrollView, ActivityIndicator } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useRoute } from "@react-navigation/native";
@@ -48,7 +47,6 @@ export default function RecipeDetailScreen() {
   const route = useRoute<RecipeDetailRouteProp>();
   const { recipeId } = route.params;
   const headerHeight = useHeaderHeight();
-  const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
   const { theme } = useTheme();
 

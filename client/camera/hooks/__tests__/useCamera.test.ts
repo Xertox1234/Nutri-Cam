@@ -1,6 +1,6 @@
 // Mock React hooks
 const mockUseRef = vi.fn();
-const mockUseCallback = vi.fn((fn: Function) => fn);
+const mockUseCallback = vi.fn((fn: Function) => fn) as any;
 const mockUseState = vi.fn();
 const mockUseEffect = vi.fn();
 
@@ -202,7 +202,11 @@ describe("useCamera debouncing logic", () => {
     it("should clear all scanning state", () => {
       const isScanningRef = { current: true };
       const lastScannedRef = { current: "123456789" };
-      const scanTimeoutRef = { current: setTimeout(() => {}, 1000) };
+      const scanTimeoutRef = {
+        current: setTimeout(() => {}, 1000) as ReturnType<
+          typeof setTimeout
+        > | null,
+      };
       const setIsScanning = vi.fn();
       const setLastScannedData = vi.fn();
 
@@ -214,7 +218,7 @@ describe("useCamera debouncing logic", () => {
         isScanningRef.current = false;
         setIsScanning(false);
         setLastScannedData(null);
-        lastScannedRef.current = null;
+        lastScannedRef.current = null as any;
       };
 
       resetScanning();
@@ -339,7 +343,7 @@ describe("useCamera callback handling", () => {
     };
     const setIsScanning = vi.fn();
     const setLastScannedData = vi.fn();
-    const onBarcodeScanned = undefined;
+    const onBarcodeScanned: undefined | ((r: any) => void) = undefined;
     const debounceMs = 2000;
 
     const handleBarcodeScanned = (result: { data: string; type: string }) => {
@@ -355,7 +359,7 @@ describe("useCamera callback handling", () => {
         clearTimeout(scanTimeoutRef.current);
       }
 
-      onBarcodeScanned?.(result);
+      (onBarcodeScanned as any)?.(result);
 
       scanTimeoutRef.current = setTimeout(() => {
         isScanningRef.current = false;

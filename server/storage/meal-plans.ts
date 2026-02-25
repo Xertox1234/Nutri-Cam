@@ -354,7 +354,10 @@ export async function createGroceryList(
   return created;
 }
 
-export async function getGroceryLists(userId: string, limit = 100): Promise<GroceryList[]> {
+export async function getGroceryLists(
+  userId: string,
+  limit = 100,
+): Promise<GroceryList[]> {
   return db
     .select()
     .from(groceryLists)
@@ -459,7 +462,10 @@ export async function updateGroceryListItemPantryFlag(
 // PANTRY ITEMS
 // ============================================================================
 
-export async function getPantryItems(userId: string, limit = 200): Promise<PantryItem[]> {
+export async function getPantryItems(
+  userId: string,
+  limit = 200,
+): Promise<PantryItem[]> {
   return db
     .select()
     .from(pantryItems)

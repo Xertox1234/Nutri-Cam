@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import express from "express";
 import request from "supertest";
 
+import { storage } from "../../storage";
+import { openai } from "../../lib/openai";
+import { register } from "../suggestions";
+
 vi.mock("../../storage", () => ({
   storage: {
     getScannedItem: vi.fn(),
@@ -37,17 +41,23 @@ vi.mock("../../middleware/auth", () => ({
 }));
 
 vi.mock("express-rate-limit", () => ({
-  rateLimit: () =>
-    (_req: express.Request, _res: express.Response, next: express.NextFunction) =>
+  rateLimit:
+    () =>
+    (
+      _req: express.Request,
+      _res: express.Response,
+      next: express.NextFunction,
+    ) =>
       next(),
-  default: () =>
-    (_req: express.Request, _res: express.Response, next: express.NextFunction) =>
+  default:
+    () =>
+    (
+      _req: express.Request,
+      _res: express.Response,
+      next: express.NextFunction,
+    ) =>
       next(),
 }));
-
-import { storage } from "../../storage";
-import { openai } from "../../lib/openai";
-import { register } from "../suggestions";
 
 function createApp() {
   const app = express();
@@ -79,7 +89,9 @@ describe("Suggestions Routes", () => {
         id: 10,
         suggestions: [{ type: "recipe", title: "Yogurt Bowl" }],
       } as never);
-      vi.mocked(storage.incrementSuggestionCacheHit).mockResolvedValue({} as never);
+      vi.mocked(storage.incrementSuggestionCacheHit).mockResolvedValue(
+        {} as never,
+      );
 
       const res = await request(app)
         .post("/api/items/1/suggestions")
@@ -157,7 +169,9 @@ describe("Suggestions Routes", () => {
         id: 5,
         instructions: "Step 1: Mix yogurt...",
       } as never);
-      vi.mocked(storage.incrementInstructionCacheHit).mockResolvedValue({} as never);
+      vi.mocked(storage.incrementInstructionCacheHit).mockResolvedValue(
+        {} as never,
+      );
 
       const res = await request(app)
         .post("/api/items/1/suggestions/0/instructions")

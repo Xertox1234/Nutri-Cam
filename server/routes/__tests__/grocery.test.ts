@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import express from "express";
 import request from "supertest";
 
+import { storage } from "../../storage";
+import { generateGroceryItems } from "../../services/grocery-generation";
+import { register } from "../grocery";
+
 vi.mock("../../storage", () => ({
   storage: {
     getSubscriptionStatus: vi.fn(),
@@ -39,17 +43,23 @@ vi.mock("../../middleware/auth", () => ({
 }));
 
 vi.mock("express-rate-limit", () => ({
-  rateLimit: () =>
-    (_req: express.Request, _res: express.Response, next: express.NextFunction) =>
+  rateLimit:
+    () =>
+    (
+      _req: express.Request,
+      _res: express.Response,
+      next: express.NextFunction,
+    ) =>
       next(),
-  default: () =>
-    (_req: express.Request, _res: express.Response, next: express.NextFunction) =>
+  default:
+    () =>
+    (
+      _req: express.Request,
+      _res: express.Response,
+      next: express.NextFunction,
+    ) =>
       next(),
 }));
-
-import { storage } from "../../storage";
-import { generateGroceryItems } from "../../services/grocery-generation";
-import { register } from "../grocery";
 
 function createApp() {
   const app = express();
@@ -80,7 +90,9 @@ describe("Grocery Routes", () => {
         subscriptionTier: "premium",
       } as never);
       vi.mocked(storage.getGroceryLists).mockResolvedValue([] as never);
-      vi.mocked(storage.getMealPlanIngredientsForDateRange).mockResolvedValue([] as never);
+      vi.mocked(storage.getMealPlanIngredientsForDateRange).mockResolvedValue(
+        [] as never,
+      );
       vi.mocked(generateGroceryItems).mockReturnValue([
         { name: "Milk", quantity: 1, unit: "gallon", category: "dairy" },
       ] as never);
@@ -166,7 +178,9 @@ describe("Grocery Routes", () => {
     });
 
     it("returns 404 for unknown list", async () => {
-      vi.mocked(storage.getGroceryListWithItems).mockResolvedValue(null as never);
+      vi.mocked(storage.getGroceryListWithItems).mockResolvedValue(
+        null as never,
+      );
 
       const res = await request(app)
         .get("/api/meal-plan/grocery-lists/999")
@@ -196,7 +210,9 @@ describe("Grocery Routes", () => {
     });
 
     it("returns 404 when list not found", async () => {
-      vi.mocked(storage.getGroceryListWithItems).mockResolvedValue(null as never);
+      vi.mocked(storage.getGroceryListWithItems).mockResolvedValue(
+        null as never,
+      );
 
       const res = await request(app)
         .put("/api/meal-plan/grocery-lists/999/items/1")
@@ -241,7 +257,9 @@ describe("Grocery Routes", () => {
     });
 
     it("returns 404 for unknown list", async () => {
-      vi.mocked(storage.getGroceryListWithItems).mockResolvedValue(null as never);
+      vi.mocked(storage.getGroceryListWithItems).mockResolvedValue(
+        null as never,
+      );
 
       const res = await request(app)
         .post("/api/meal-plan/grocery-lists/999/items")
@@ -306,13 +324,23 @@ describe("Grocery Routes", () => {
       } as never);
       vi.mocked(storage.getGroceryListWithItems).mockResolvedValue({
         ...mockList,
-        items: [{ id: 1, name: "Milk", quantity: "1", unit: "gallon", category: "dairy" }],
+        items: [
+          {
+            id: 1,
+            name: "Milk",
+            quantity: "1",
+            unit: "gallon",
+            category: "dairy",
+          },
+        ],
       } as never);
       vi.mocked(storage.createPantryItem).mockResolvedValue({
         id: 1,
         name: "Milk",
       } as never);
-      vi.mocked(storage.updateGroceryListItemPantryFlag).mockResolvedValue({} as never);
+      vi.mocked(storage.updateGroceryListItemPantryFlag).mockResolvedValue(
+        {} as never,
+      );
 
       const res = await request(app)
         .post("/api/meal-plan/grocery-lists/1/items/1/add-to-pantry")

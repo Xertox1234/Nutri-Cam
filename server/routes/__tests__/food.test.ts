@@ -2,6 +2,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import express from "express";
 import request from "supertest";
 
+import { register } from "../food";
+import { parseNaturalLanguageFood } from "../../services/food-nlp";
+import { transcribeAudio } from "../../services/voice-transcription";
+import { storage } from "../../storage";
+
 vi.mock("../../storage", () => ({
   storage: {
     getSubscriptionStatus: vi.fn(),
@@ -20,11 +25,21 @@ vi.mock("../../middleware/auth", () => ({
 }));
 
 vi.mock("express-rate-limit", () => ({
-  rateLimit: () =>
-    (_req: express.Request, _res: express.Response, next: express.NextFunction) =>
+  rateLimit:
+    () =>
+    (
+      _req: express.Request,
+      _res: express.Response,
+      next: express.NextFunction,
+    ) =>
       next(),
-  default: () =>
-    (_req: express.Request, _res: express.Response, next: express.NextFunction) =>
+  default:
+    () =>
+    (
+      _req: express.Request,
+      _res: express.Response,
+      next: express.NextFunction,
+    ) =>
       next(),
 }));
 
@@ -36,11 +51,6 @@ vi.mock("../../services/voice-transcription", () => ({
   transcribeAudio: vi.fn(),
 }));
 
-import { register } from "../food";
-import { parseNaturalLanguageFood } from "../../services/food-nlp";
-import { transcribeAudio } from "../../services/voice-transcription";
-import { storage } from "../../storage";
-
 function createApp() {
   const app = express();
   app.use(express.json());
@@ -49,8 +59,22 @@ function createApp() {
 }
 
 const mockParsedItems = [
-  { name: "chicken breast", quantity: "200g", calories: 330, protein: 62, carbs: 0, fat: 7 },
-  { name: "brown rice", quantity: "1 cup", calories: 216, protein: 5, carbs: 45, fat: 2 },
+  {
+    name: "chicken breast",
+    quantity: "200g",
+    calories: 330,
+    protein: 62,
+    carbs: 0,
+    fat: 7,
+  },
+  {
+    name: "brown rice",
+    quantity: "1 cup",
+    calories: 216,
+    protein: 5,
+    carbs: 45,
+    fat: 2,
+  },
 ];
 
 describe("Food Routes", () => {
@@ -62,7 +86,9 @@ describe("Food Routes", () => {
 
   describe("POST /api/food/parse-text", () => {
     it("parses natural language food text", async () => {
-      vi.mocked(parseNaturalLanguageFood).mockResolvedValue(mockParsedItems as never);
+      vi.mocked(parseNaturalLanguageFood).mockResolvedValue(
+        mockParsedItems as never,
+      );
 
       const res = await request(app)
         .post("/api/food/parse-text")
@@ -102,7 +128,9 @@ describe("Food Routes", () => {
     });
 
     it("returns 500 when service fails", async () => {
-      vi.mocked(parseNaturalLanguageFood).mockRejectedValue(new Error("API error"));
+      vi.mocked(parseNaturalLanguageFood).mockRejectedValue(
+        new Error("API error"),
+      );
 
       const res = await request(app)
         .post("/api/food/parse-text")
@@ -148,7 +176,9 @@ describe("Food Routes", () => {
         tier: "premium",
       } as never);
       vi.mocked(transcribeAudio).mockResolvedValue("chicken breast and rice");
-      vi.mocked(parseNaturalLanguageFood).mockResolvedValue(mockParsedItems as never);
+      vi.mocked(parseNaturalLanguageFood).mockResolvedValue(
+        mockParsedItems as never,
+      );
 
       const res = await request(app)
         .post("/api/food/transcribe")

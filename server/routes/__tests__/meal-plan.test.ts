@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import express from "express";
 import request from "supertest";
 
+import { storage } from "../../storage";
+import { register } from "../meal-plan";
+
 vi.mock("../../storage", () => ({
   storage: {
     getSubscriptionStatus: vi.fn(),
@@ -33,16 +36,23 @@ vi.mock("../../middleware/auth", () => ({
 }));
 
 vi.mock("express-rate-limit", () => ({
-  rateLimit: () =>
-    (_req: express.Request, _res: express.Response, next: express.NextFunction) =>
+  rateLimit:
+    () =>
+    (
+      _req: express.Request,
+      _res: express.Response,
+      next: express.NextFunction,
+    ) =>
       next(),
-  default: () =>
-    (_req: express.Request, _res: express.Response, next: express.NextFunction) =>
+  default:
+    () =>
+    (
+      _req: express.Request,
+      _res: express.Response,
+      next: express.NextFunction,
+    ) =>
       next(),
 }));
-
-import { storage } from "../../storage";
-import { register } from "../meal-plan";
 
 function createApp() {
   const app = express();
@@ -74,7 +84,9 @@ describe("Meal Plan Routes", () => {
 
   describe("GET /api/meal-plan/recipes", () => {
     it("returns user recipes", async () => {
-      vi.mocked(storage.getUserMealPlanRecipes).mockResolvedValue([mockRecipe] as never);
+      vi.mocked(storage.getUserMealPlanRecipes).mockResolvedValue([
+        mockRecipe,
+      ] as never);
 
       const res = await request(app)
         .get("/api/meal-plan/recipes")
@@ -123,7 +135,9 @@ describe("Meal Plan Routes", () => {
 
   describe("POST /api/meal-plan/recipes", () => {
     it("creates a recipe", async () => {
-      vi.mocked(storage.createMealPlanRecipe).mockResolvedValue(mockRecipe as never);
+      vi.mocked(storage.createMealPlanRecipe).mockResolvedValue(
+        mockRecipe as never,
+      );
 
       const res = await request(app)
         .post("/api/meal-plan/recipes")
@@ -230,7 +244,9 @@ describe("Meal Plan Routes", () => {
 
   describe("POST /api/meal-plan/items", () => {
     it("adds recipe to meal plan", async () => {
-      vi.mocked(storage.getMealPlanRecipe).mockResolvedValue(mockRecipe as never);
+      vi.mocked(storage.getMealPlanRecipe).mockResolvedValue(
+        mockRecipe as never,
+      );
       vi.mocked(storage.addMealPlanItem).mockResolvedValue({ id: 1 } as never);
 
       const res = await request(app)
@@ -308,7 +324,9 @@ describe("Meal Plan Routes", () => {
         mealType: "dinner",
         servings: "1",
       } as never);
-      vi.mocked(storage.getConfirmedMealPlanItemIds).mockResolvedValue([] as never);
+      vi.mocked(storage.getConfirmedMealPlanItemIds).mockResolvedValue(
+        [] as never,
+      );
       vi.mocked(storage.createDailyLog).mockResolvedValue({ id: 1 } as never);
 
       const res = await request(app)
@@ -325,7 +343,9 @@ describe("Meal Plan Routes", () => {
         userId: "1",
         plannedDate: "2025-01-01",
       } as never);
-      vi.mocked(storage.getConfirmedMealPlanItemIds).mockResolvedValue([1] as never);
+      vi.mocked(storage.getConfirmedMealPlanItemIds).mockResolvedValue([
+        1,
+      ] as never);
 
       const res = await request(app)
         .post("/api/meal-plan/items/1/confirm")

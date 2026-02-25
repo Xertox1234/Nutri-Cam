@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import express from "express";
 import request from "supertest";
 
+import { storage } from "../../storage";
+import { register } from "../saved-items";
+
 vi.mock("../../storage", () => ({
   storage: {
     getSavedItems: vi.fn(),
@@ -23,16 +26,23 @@ vi.mock("../../middleware/auth", () => ({
 }));
 
 vi.mock("express-rate-limit", () => ({
-  rateLimit: () =>
-    (_req: express.Request, _res: express.Response, next: express.NextFunction) =>
+  rateLimit:
+    () =>
+    (
+      _req: express.Request,
+      _res: express.Response,
+      next: express.NextFunction,
+    ) =>
       next(),
-  default: () =>
-    (_req: express.Request, _res: express.Response, next: express.NextFunction) =>
+  default:
+    () =>
+    (
+      _req: express.Request,
+      _res: express.Response,
+      next: express.NextFunction,
+    ) =>
       next(),
 }));
-
-import { storage } from "../../storage";
-import { register } from "../saved-items";
 
 function createApp() {
   const app = express();
@@ -64,7 +74,9 @@ describe("Saved Items Routes", () => {
 
   describe("GET /api/saved-items", () => {
     it("returns saved items list", async () => {
-      vi.mocked(storage.getSavedItems).mockResolvedValue([mockSavedItem] as never);
+      vi.mocked(storage.getSavedItems).mockResolvedValue([
+        mockSavedItem,
+      ] as never);
 
       const res = await request(app)
         .get("/api/saved-items")
@@ -101,7 +113,9 @@ describe("Saved Items Routes", () => {
 
   describe("POST /api/saved-items", () => {
     it("creates a saved item", async () => {
-      vi.mocked(storage.createSavedItem).mockResolvedValue(mockSavedItem as never);
+      vi.mocked(storage.createSavedItem).mockResolvedValue(
+        mockSavedItem as never,
+      );
 
       const res = await request(app)
         .post("/api/saved-items")

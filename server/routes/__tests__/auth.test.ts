@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import express from "express";
 import request from "supertest";
 
+import { storage } from "../../storage";
+import { register } from "../auth";
+
 // Mock storage before importing routes
 vi.mock("../../storage", () => ({
   storage: {
@@ -28,16 +31,23 @@ vi.mock("../../middleware/auth", () => ({
 
 // Disable rate limiting in tests
 vi.mock("express-rate-limit", () => ({
-  rateLimit: () =>
-    (_req: express.Request, _res: express.Response, next: express.NextFunction) =>
+  rateLimit:
+    () =>
+    (
+      _req: express.Request,
+      _res: express.Response,
+      next: express.NextFunction,
+    ) =>
       next(),
-  default: () =>
-    (_req: express.Request, _res: express.Response, next: express.NextFunction) =>
+  default:
+    () =>
+    (
+      _req: express.Request,
+      _res: express.Response,
+      next: express.NextFunction,
+    ) =>
       next(),
 }));
-
-import { storage } from "../../storage";
-import { register } from "../auth";
 
 function createApp() {
   const app = express();
@@ -67,7 +77,7 @@ describe("Auth Routes", () => {
 
   describe("POST /api/auth/register", () => {
     it("creates a new user and returns token", async () => {
-      vi.mocked(storage.getUserByUsername).mockResolvedValue(null);
+      vi.mocked(storage.getUserByUsername).mockResolvedValue(null as any);
       vi.mocked(storage.createUser).mockResolvedValue(mockUser as never);
 
       const res = await request(app).post("/api/auth/register").send({
@@ -154,7 +164,7 @@ describe("Auth Routes", () => {
     });
 
     it("returns 401 for non-existent user", async () => {
-      vi.mocked(storage.getUserByUsername).mockResolvedValue(null);
+      vi.mocked(storage.getUserByUsername).mockResolvedValue(null as any);
 
       const res = await request(app).post("/api/auth/login").send({
         username: "noone",

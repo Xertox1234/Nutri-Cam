@@ -8,14 +8,14 @@ import {
   type MicronutrientData,
 } from "../micronutrient-lookup";
 
+import { storage } from "../../storage";
+
 vi.mock("../../storage", () => ({
   storage: {
     getMicronutrientCache: vi.fn(),
     setMicronutrientCache: vi.fn(),
   },
 }));
-
-import { storage } from "../../storage";
 
 describe("Micronutrient Lookup", () => {
   describe("TRACKED_NUTRIENTS", () => {
@@ -37,7 +37,7 @@ describe("Micronutrient Lookup", () => {
     });
 
     it("has positive daily values for all nutrients", () => {
-      for (const [name, config] of Object.entries(TRACKED_NUTRIENTS)) {
+      for (const [, config] of Object.entries(TRACKED_NUTRIENTS)) {
         expect(config.dailyValue).toBeGreaterThan(0);
         expect(config.id).toBeGreaterThan(0);
         expect(config.unit).toBeTruthy();
@@ -67,7 +67,7 @@ describe("Micronutrient Lookup", () => {
 
     it("returns unit and dailyValue for each nutrient", () => {
       const ref = getDailyValueReference();
-      for (const [name, data] of Object.entries(ref)) {
+      for (const [, data] of Object.entries(ref)) {
         expect(data).toHaveProperty("unit");
         expect(data).toHaveProperty("dailyValue");
         expect(typeof data.unit).toBe("string");
@@ -255,7 +255,12 @@ describe("Micronutrient Lookup", () => {
 
     it("returns cached data when available", async () => {
       const cachedData: MicronutrientData[] = [
-        { nutrientName: "Vitamin C", amount: 90, unit: "mg", percentDailyValue: 100 },
+        {
+          nutrientName: "Vitamin C",
+          amount: 90,
+          unit: "mg",
+          percentDailyValue: 100,
+        },
       ];
       vi.mocked(storage.getMicronutrientCache).mockResolvedValue(cachedData);
 
@@ -265,8 +270,10 @@ describe("Micronutrient Lookup", () => {
     });
 
     it("fetches from USDA on cache miss and caches result", async () => {
-      vi.mocked(storage.getMicronutrientCache).mockResolvedValue(null);
-      vi.mocked(storage.setMicronutrientCache).mockResolvedValue(undefined as any);
+      vi.mocked(storage.getMicronutrientCache).mockResolvedValue(null as any);
+      vi.mocked(storage.setMicronutrientCache).mockResolvedValue(
+        undefined as any,
+      );
 
       const usdaResponse = {
         foods: [
@@ -274,9 +281,24 @@ describe("Micronutrient Lookup", () => {
             fdcId: 12345,
             description: "Orange, raw",
             foodNutrients: [
-              { nutrientId: 1162, nutrientName: "Vitamin C", value: 53.2, unitName: "mg" },
-              { nutrientId: 1087, nutrientName: "Calcium", value: 40, unitName: "mg" },
-              { nutrientId: 9999, nutrientName: "Untracked", value: 5, unitName: "mg" },
+              {
+                nutrientId: 1162,
+                nutrientName: "Vitamin C",
+                value: 53.2,
+                unitName: "mg",
+              },
+              {
+                nutrientId: 1087,
+                nutrientName: "Calcium",
+                value: 40,
+                unitName: "mg",
+              },
+              {
+                nutrientId: 9999,
+                nutrientName: "Untracked",
+                value: 5,
+                unitName: "mg",
+              },
             ],
           },
         ],
@@ -294,7 +316,7 @@ describe("Micronutrient Lookup", () => {
     });
 
     it("returns empty array on USDA API failure", async () => {
-      vi.mocked(storage.getMicronutrientCache).mockResolvedValue(null);
+      vi.mocked(storage.getMicronutrientCache).mockResolvedValue(null as any);
 
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: false,
@@ -306,7 +328,7 @@ describe("Micronutrient Lookup", () => {
     });
 
     it("returns empty array when USDA returns no foods", async () => {
-      vi.mocked(storage.getMicronutrientCache).mockResolvedValue(null);
+      vi.mocked(storage.getMicronutrientCache).mockResolvedValue(null as any);
 
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
@@ -318,7 +340,7 @@ describe("Micronutrient Lookup", () => {
     });
 
     it("does not cache empty results", async () => {
-      vi.mocked(storage.getMicronutrientCache).mockResolvedValue(null);
+      vi.mocked(storage.getMicronutrientCache).mockResolvedValue(null as any);
 
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
@@ -330,7 +352,7 @@ describe("Micronutrient Lookup", () => {
     });
 
     it("handles fetch error gracefully", async () => {
-      vi.mocked(storage.getMicronutrientCache).mockResolvedValue(null);
+      vi.mocked(storage.getMicronutrientCache).mockResolvedValue(null as any);
       globalThis.fetch = vi.fn().mockRejectedValue(new Error("Network error"));
 
       const result = await lookupMicronutrientsWithCache("error food");
@@ -339,7 +361,6 @@ describe("Micronutrient Lookup", () => {
   });
 
   describe("batchLookupMicronutrients", () => {
-
     beforeEach(() => {
       vi.mocked(storage.getMicronutrientCache).mockReset();
     });
@@ -349,7 +370,12 @@ describe("Micronutrient Lookup", () => {
         { nutrientName: "Iron", amount: 5, unit: "mg", percentDailyValue: 28 },
       ];
       const cachedB: MicronutrientData[] = [
-        { nutrientName: "Calcium", amount: 200, unit: "mg", percentDailyValue: 15 },
+        {
+          nutrientName: "Calcium",
+          amount: 200,
+          unit: "mg",
+          percentDailyValue: 15,
+        },
       ];
       vi.mocked(storage.getMicronutrientCache)
         .mockResolvedValueOnce(cachedA)

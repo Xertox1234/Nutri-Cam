@@ -62,9 +62,7 @@ vi.mock("../middleware/auth", async () => {
       next();
     } catch (err) {
       if (err instanceof jwtModule.default.TokenExpiredError) {
-        res
-          .status(401)
-          .json({ error: "Token expired", code: "TOKEN_EXPIRED" });
+        res.status(401).json({ error: "Token expired", code: "TOKEN_EXPIRED" });
         return;
       }
       res.status(401).json({ error: "Invalid token", code: "TOKEN_INVALID" });
@@ -193,10 +191,7 @@ describe("Auth Middleware", () => {
 
     it("calls next and sets userId when token is valid and tokenVersion matches", async () => {
       const userId = "user-123";
-      const validToken = jwt.sign(
-        { sub: userId, tokenVersion: 0 },
-        JWT_SECRET,
-      );
+      const validToken = jwt.sign({ sub: userId, tokenVersion: 0 }, JWT_SECRET);
       mockRequest.headers = { authorization: `Bearer ${validToken}` };
       mockGetUser.mockResolvedValue({ id: userId, tokenVersion: 0 });
 
@@ -214,10 +209,7 @@ describe("Auth Middleware", () => {
     it("returns 401 with TOKEN_REVOKED when tokenVersion does not match", async () => {
       const userId = "user-123";
       // Token has tokenVersion 0 but user has tokenVersion 1 (was incremented on logout)
-      const validToken = jwt.sign(
-        { sub: userId, tokenVersion: 0 },
-        JWT_SECRET,
-      );
+      const validToken = jwt.sign({ sub: userId, tokenVersion: 0 }, JWT_SECRET);
       mockRequest.headers = { authorization: `Bearer ${validToken}` };
       mockGetUser.mockResolvedValue({ id: userId, tokenVersion: 1 });
 

@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import express from "express";
 import request from "supertest";
 
+import { storage } from "../../storage";
+import { syncHealthKitData } from "../../services/healthkit-sync";
+import { register } from "../healthkit";
+
 vi.mock("../../storage", () => ({
   storage: {
     getSubscriptionStatus: vi.fn(),
@@ -22,21 +26,27 @@ vi.mock("../../middleware/auth", () => ({
 }));
 
 vi.mock("express-rate-limit", () => ({
-  rateLimit: () =>
-    (_req: express.Request, _res: express.Response, next: express.NextFunction) =>
+  rateLimit:
+    () =>
+    (
+      _req: express.Request,
+      _res: express.Response,
+      next: express.NextFunction,
+    ) =>
       next(),
-  default: () =>
-    (_req: express.Request, _res: express.Response, next: express.NextFunction) =>
+  default:
+    () =>
+    (
+      _req: express.Request,
+      _res: express.Response,
+      next: express.NextFunction,
+    ) =>
       next(),
 }));
 
 vi.mock("../../services/healthkit-sync", () => ({
   syncHealthKitData: vi.fn(),
 }));
-
-import { storage } from "../../storage";
-import { syncHealthKitData } from "../../services/healthkit-sync";
-import { register } from "../healthkit";
 
 function createApp() {
   const app = express();
@@ -110,7 +120,9 @@ describe("HealthKit Routes", () => {
       const settings = [
         { dataType: "weight", enabled: true, syncDirection: "read" },
       ];
-      vi.mocked(storage.getHealthKitSyncSettings).mockResolvedValue(settings as never);
+      vi.mocked(storage.getHealthKitSyncSettings).mockResolvedValue(
+        settings as never,
+      );
 
       const res = await request(app)
         .get("/api/healthkit/settings")
