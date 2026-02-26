@@ -40,6 +40,11 @@ describe("getAppetiteLabel", () => {
     expect(getAppetiteLabel(6)).toBe("");
     expect(getAppetiteLabel(-1)).toBe("");
   });
+
+  it("returns empty string for fractional values", () => {
+    expect(getAppetiteLabel(1.5)).toBe("");
+    expect(getAppetiteLabel(3.7)).toBe("");
+  });
 });
 
 describe("getAppetiteEmoji", () => {
@@ -56,5 +61,9 @@ describe("getAppetiteEmoji", () => {
   it("returns empty string for out-of-range values", () => {
     expect(getAppetiteEmoji(0)).toBe("");
     expect(getAppetiteEmoji(6)).toBe("");
+  });
+
+  it("returns empty string for fractional values", () => {
+    expect(getAppetiteEmoji(2.5)).toBe("");
   });
 });

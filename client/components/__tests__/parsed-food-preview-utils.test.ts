@@ -21,6 +21,11 @@ describe("formatNutrientValue", () => {
   it("returns ? for null", () => {
     expect(formatNutrientValue(null)).toBe("?");
   });
+
+  it("handles negative values", () => {
+    expect(formatNutrientValue(-5.6)).toBe("-6");
+    expect(formatNutrientValue(-0.4)).toBe("0");
+  });
 });
 
 describe("formatMacroLine", () => {

@@ -74,7 +74,7 @@ function MacroRow({
           fontFamily: FontFamily.medium,
         }}
       >
-        {formatDiffLabel(diff, isIncrease)}
+        {formatDiffLabel(diff)}
       </ThemedText>
     </View>
   );
@@ -194,7 +194,7 @@ export const AdaptiveGoalCard = React.memo(function AdaptiveGoalCard({
                 textAlign: "center",
               }}
             >
-              {formatDiffLabel(calorieDiff, isCalorieIncrease)} kcal
+              {formatDiffLabel(calorieDiff)} kcal
             </ThemedText>
           </View>
         </View>

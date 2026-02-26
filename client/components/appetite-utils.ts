@@ -20,12 +20,12 @@ export const APPETITE_LEVELS: AppetiteLevel[] = [
 
 /** Get appetite label by numeric level (1-5). Returns empty string for invalid values. */
 export function getAppetiteLabel(level: number | null): string {
-  if (level == null || level < 1 || level > 5) return "";
+  if (level == null || level < 1 || level > 5 || level % 1 !== 0) return "";
   return APPETITE_LEVELS[level - 1].label;
 }
 
 /** Get appetite emoji by numeric level (1-5). Returns empty string for invalid values. */
 export function getAppetiteEmoji(level: number | null): string {
-  if (level == null || level < 1 || level > 5) return "";
+  if (level == null || level < 1 || level > 5 || level % 1 !== 0) return "";
   return APPETITE_LEVELS[level - 1].emoji;
 }
