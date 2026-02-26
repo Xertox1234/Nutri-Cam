@@ -19,6 +19,12 @@ import { Card } from "@/components/Card";
 import { useTheme } from "@/hooks/useTheme";
 import { useHaptics } from "@/hooks/useHaptics";
 import { Spacing, BorderRadius, withOpacity } from "@/constants/theme";
+import {
+  DIET_OPTIONS,
+  TIME_OPTIONS,
+  SERVING_OPTIONS,
+  formatIngredientsContext,
+} from "./recipe-generation-utils";
 import { apiRequest } from "@/lib/query-client";
 import type { CommunityRecipe } from "@shared/schema";
 
@@ -31,27 +37,6 @@ interface RecipeGenerationModalProps {
   /** Foods detected from photo scan - used as ingredients for recipe */
   foods?: { name: string; quantity: string }[];
 }
-
-const DIET_OPTIONS = [
-  "Vegetarian",
-  "Vegan",
-  "Gluten-Free",
-  "Low-Carb",
-  "Keto",
-  "Dairy-Free",
-  "Kid-Friendly",
-  "Quick & Easy",
-];
-
-const TIME_OPTIONS = [
-  { label: "15 min", value: "15 minutes" },
-  { label: "30 min", value: "30 minutes" },
-  { label: "45 min", value: "45 minutes" },
-  { label: "1 hour", value: "1 hour" },
-  { label: "Any", value: undefined },
-];
-
-const SERVING_OPTIONS = [1, 2, 4, 6, 8];
 
 export function RecipeGenerationModal({
   visible,
@@ -81,9 +66,7 @@ export function RecipeGenerationModal({
     mutationFn: async () => {
       // If foods are provided from photo scan, format as ingredient list
       const ingredientsContext =
-        foods && foods.length > 0
-          ? foods.map((f) => `${f.name} (${f.quantity})`).join(", ")
-          : undefined;
+        foods && foods.length > 0 ? formatIngredientsContext(foods) : undefined;
 
       const response = await apiRequest("POST", "/api/recipes/generate", {
         productName: ingredientsContext || productName,
@@ -617,7 +600,7 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#FFFFFF", // hardcoded: toggle thumb requires static white in StyleSheet.create
   },
   errorBanner: {
     flexDirection: "row",
