@@ -82,7 +82,10 @@ export function SavedItemCard({ item, onPress }: SavedItemCardProps) {
     >
       <View style={styles.header}>
         <View
-          style={[styles.typeIcon, { backgroundColor: iconColor + "20" }]}
+          style={[
+            styles.typeIcon,
+            { backgroundColor: withOpacity(iconColor, 0.12) },
+          ]}
           accessibilityLabel={isRecipe ? "Recipe" : "Activity"}
         >
           <Feather name={iconName} size={16} color={iconColor} />

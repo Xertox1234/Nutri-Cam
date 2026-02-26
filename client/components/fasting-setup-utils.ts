@@ -35,5 +35,5 @@ export function resolveFastingSchedule(
 
 /** Check if fasting hours are within the valid range (1-23). */
 export function isValidFastingHours(hours: number): boolean {
-  return hours >= 1 && hours <= 23;
+  return Number.isInteger(hours) && hours >= 1 && hours <= 23;
 }

@@ -6,6 +6,7 @@
 /** Format a date string as relative time: "just now", "3h ago", "2d ago". */
 export function formatTimeAgo(dateString: string): string {
   const diff = Date.now() - new Date(dateString).getTime();
+  if (diff < 0) return "just now";
   const hours = Math.floor(diff / (1000 * 60 * 60));
   if (hours < 1) return "just now";
   if (hours === 1) return "1h ago";
