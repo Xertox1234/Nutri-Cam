@@ -41,4 +41,10 @@ describe("formatTimeAgo", () => {
     vi.setSystemTime(new Date("2024-06-15T11:00:00Z"));
     expect(formatTimeAgo("2024-06-14T12:00:00Z")).toBe("23h ago");
   });
+
+  it("returns 'just now' for future dates", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2024-06-15T12:00:00Z"));
+    expect(formatTimeAgo("2024-06-15T14:00:00Z")).toBe("just now");
+  });
 });

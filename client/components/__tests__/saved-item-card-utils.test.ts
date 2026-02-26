@@ -65,4 +65,15 @@ describe("buildShareContent", () => {
     expect(content).not.toContain("Instructions:");
     expect(content).not.toContain("Suggested for:");
   });
+
+  it("handles empty string fields as truthy (includes them)", () => {
+    const content = buildShareContent({
+      title: "Item",
+      description: "",
+      instructions: "",
+      sourceProductName: "",
+    });
+    // Empty strings are falsy, so they should be omitted like null
+    expect(content).toBe("Item\n");
+  });
 });

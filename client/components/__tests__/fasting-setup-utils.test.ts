@@ -94,4 +94,9 @@ describe("isValidFastingHours", () => {
   it("returns false for negative values", () => {
     expect(isValidFastingHours(-1)).toBe(false);
   });
+
+  it("returns false for non-integer values", () => {
+    expect(isValidFastingHours(16.5)).toBe(false);
+    expect(isValidFastingHours(0.5)).toBe(false);
+  });
 });
