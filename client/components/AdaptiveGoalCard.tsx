@@ -19,6 +19,11 @@ import {
   FontFamily,
   withOpacity,
 } from "@/constants/theme";
+import {
+  calculateDiff,
+  formatDiffLabel,
+  formatWeightTrend,
+} from "./adaptive-goal-card-utils";
 
 interface AdaptiveGoalCardProps {
   recommendation: AdaptiveGoalRecommendation;
@@ -38,8 +43,7 @@ function MacroRow({
   color: string;
 }) {
   const { theme } = useTheme();
-  const diff = next - previous;
-  const isIncrease = diff > 0;
+  const { diff, isIncrease } = calculateDiff(previous, next);
 
   return (
     <View style={styles.macroRow}>
@@ -70,8 +74,7 @@ function MacroRow({
           fontFamily: FontFamily.medium,
         }}
       >
-        {isIncrease ? "+" : ""}
-        {diff}
+        {formatDiffLabel(diff, isIncrease)}
       </ThemedText>
     </View>
   );
@@ -98,9 +101,10 @@ export const AdaptiveGoalCard = React.memo(function AdaptiveGoalCard({
 
   const isLoading = acceptMutation.isPending || dismissMutation.isPending;
 
-  const calorieDiff =
-    recommendation.newCalories - recommendation.previousCalories;
-  const isCalorieIncrease = calorieDiff > 0;
+  const { diff: calorieDiff, isIncrease: isCalorieIncrease } = calculateDiff(
+    recommendation.previousCalories,
+    recommendation.newCalories,
+  );
 
   return (
     <Animated.View
@@ -190,8 +194,7 @@ export const AdaptiveGoalCard = React.memo(function AdaptiveGoalCard({
                 textAlign: "center",
               }}
             >
-              {isCalorieIncrease ? "+" : ""}
-              {calorieDiff} kcal
+              {formatDiffLabel(calorieDiff, isCalorieIncrease)} kcal
             </ThemedText>
           </View>
         </View>
@@ -227,8 +230,8 @@ export const AdaptiveGoalCard = React.memo(function AdaptiveGoalCard({
             type="caption"
             style={[styles.trendInfo, { color: theme.textSecondary }]}
           >
-            Weekly weight trend: {recommendation.weightTrendRate > 0 ? "+" : ""}
-            {recommendation.weightTrendRate} kg/week
+            Weekly weight trend:{" "}
+            {formatWeightTrend(recommendation.weightTrendRate!)}
           </ThemedText>
         )}
 

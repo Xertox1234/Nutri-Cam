@@ -5,6 +5,7 @@ import { ThemedText } from "@/components/ThemedText";
 import { Card } from "@/components/Card";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, BorderRadius, FontFamily } from "@/constants/theme";
+import { formatMacroLine } from "./parsed-food-preview-utils";
 import type { ParsedFoodItem } from "@/hooks/useFoodParse";
 
 interface ParsedFoodPreviewProps {
@@ -40,10 +41,12 @@ export const ParsedFoodPreview = React.memo(function ParsedFoodPreview({
             </ThemedText>
             {item.calories != null && (
               <ThemedText type="caption" style={{ color: theme.textSecondary }}>
-                {Math.round(item.calories)} cal | P:{" "}
-                {item.protein != null ? Math.round(item.protein) : "?"} | C:{" "}
-                {item.carbs != null ? Math.round(item.carbs) : "?"} | F:{" "}
-                {item.fat != null ? Math.round(item.fat) : "?"}
+                {formatMacroLine(
+                  item.calories,
+                  item.protein,
+                  item.carbs,
+                  item.fat,
+                )}
               </ThemedText>
             )}
           </View>
