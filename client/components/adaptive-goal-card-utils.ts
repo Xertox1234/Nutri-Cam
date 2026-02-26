@@ -3,7 +3,7 @@
  * Extracted for testability — no React or RN dependencies.
  */
 
-interface MacroDiff {
+export interface MacroDiff {
   diff: number;
   isIncrease: boolean;
 }
@@ -15,9 +15,9 @@ export function calculateDiff(previous: number, next: number): MacroDiff {
 }
 
 /** Format a signed diff label: "+5" or "-3" or "0". */
-export function formatDiffLabel(diff: number, isIncrease: boolean): string {
+export function formatDiffLabel(diff: number): string {
   if (diff === 0) return "0";
-  return `${isIncrease ? "+" : ""}${diff}`;
+  return diff > 0 ? `+${diff}` : `${diff}`;
 }
 
 /** Format weight trend rate string, e.g. "+0.5 kg/week" or "-0.2 kg/week". */

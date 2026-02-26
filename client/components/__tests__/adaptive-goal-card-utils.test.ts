@@ -27,15 +27,15 @@ describe("calculateDiff", () => {
 
 describe("formatDiffLabel", () => {
   it("formats positive diff with plus sign", () => {
-    expect(formatDiffLabel(200, true)).toBe("+200");
+    expect(formatDiffLabel(200)).toBe("+200");
   });
 
   it("formats negative diff without extra sign", () => {
-    expect(formatDiffLabel(-200, false)).toBe("-200");
+    expect(formatDiffLabel(-200)).toBe("-200");
   });
 
   it("formats zero diff", () => {
-    expect(formatDiffLabel(0, false)).toBe("0");
+    expect(formatDiffLabel(0)).toBe("0");
   });
 });
 

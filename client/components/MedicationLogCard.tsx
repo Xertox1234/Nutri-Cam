@@ -2,7 +2,7 @@ import React from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "@/hooks/useTheme";
-import { Spacing } from "@/constants/theme";
+import { Spacing, withOpacity } from "@/constants/theme";
 import { getAppetiteLabel } from "./appetite-utils";
 
 interface MedicationLogCardProps {
@@ -92,7 +92,7 @@ export default function MedicationLogCard({
               style={[
                 styles.tag,
                 {
-                  backgroundColor: `${theme.error}18`,
+                  backgroundColor: withOpacity(theme.error, 0.09),
                   borderRadius: Spacing.xs,
                   paddingHorizontal: Spacing.xs,
                   paddingVertical: 2,
