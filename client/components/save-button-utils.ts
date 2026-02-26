@@ -3,7 +3,7 @@
  * Extracted for testability — no React or RN dependencies.
  */
 
-type SaveState = "idle" | "saving" | "saved" | "error";
+export type SaveState = "idle" | "saving" | "saved" | "error";
 
 /** Feather icon name for each save state. */
 export function getSaveIconName(

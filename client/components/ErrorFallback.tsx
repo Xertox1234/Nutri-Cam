@@ -190,7 +190,7 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.md,
     paddingHorizontal: Spacing["2xl"],
     minWidth: 200,
-    shadowColor: "#000", // hardcoded
+    shadowColor: "#000", // hardcoded: shadowColor requires static hex in StyleSheet.create
     shadowOffset: {
       width: 0,
       height: 2,

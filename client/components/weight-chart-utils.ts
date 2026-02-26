@@ -22,6 +22,9 @@ interface ChartPadding {
   left: number;
 }
 
+/** SVG viewBox width — must match the viewBox in WeightChart.tsx. */
+export const CHART_VIEW_WIDTH = 320;
+
 export interface ChartData {
   points: ChartPoint[];
   pathData: string;
@@ -57,7 +60,7 @@ export function calculateChartData(
   const range = maxWeight - minWeight || 1;
 
   const padding: ChartPadding = { top: 20, right: 20, bottom: 30, left: 45 };
-  const chartWidth = 320 - padding.left - padding.right;
+  const chartWidth = CHART_VIEW_WIDTH - padding.left - padding.right;
   const chartHeight = height - padding.top - padding.bottom;
 
   const points: ChartPoint[] = sorted.map((d, i) => ({

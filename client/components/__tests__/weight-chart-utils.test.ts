@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { calculateChartData } from "../weight-chart-utils";
+import { calculateChartData, CHART_VIEW_WIDTH } from "../weight-chart-utils";
 
 describe("calculateChartData", () => {
   const makeEntry = (weight: string, loggedAt: string) => ({
@@ -25,7 +25,7 @@ describe("calculateChartData", () => {
       bottom: 30,
       left: 45,
     });
-    expect(result!.chartWidth).toBe(320 - 45 - 20); // 255
+    expect(result!.chartWidth).toBe(CHART_VIEW_WIDTH - 45 - 20); // 255
     expect(result!.chartHeight).toBe(200 - 20 - 30); // 150
   });
 
@@ -43,9 +43,11 @@ describe("calculateChartData", () => {
   });
 
   it("limits to last 30 entries", () => {
-    const data = Array.from({ length: 35 }, (_, i) =>
-      makeEntry("70.0", `2024-01-${String(i + 1).padStart(2, "0")}T10:00:00Z`),
-    );
+    const data = Array.from({ length: 35 }, (_, i) => {
+      const date = new Date(2024, 0, 1);
+      date.setDate(date.getDate() + i);
+      return makeEntry("70.0", date.toISOString());
+    });
     const result = calculateChartData(data, null, 200);
 
     expect(result!.points).toHaveLength(30);
@@ -101,7 +103,9 @@ describe("calculateChartData", () => {
 
     for (const point of result!.points) {
       expect(point.x).toBeGreaterThanOrEqual(result!.padding.left);
-      expect(point.x).toBeLessThanOrEqual(320 - result!.padding.right);
+      expect(point.x).toBeLessThanOrEqual(
+        CHART_VIEW_WIDTH - result!.padding.right,
+      );
       expect(point.y).toBeGreaterThanOrEqual(result!.padding.top);
       expect(point.y).toBeLessThanOrEqual(200 - result!.padding.bottom);
     }

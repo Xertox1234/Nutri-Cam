@@ -3,10 +3,15 @@
  * Extracted for testability — no React or RN dependencies.
  */
 
-interface MicronutrientEntry {
-  nutrientName: string;
-  percentDailyValue: number;
-}
+type MicronutrientEntry = Pick<
+  {
+    nutrientName: string;
+    amount: number;
+    unit: string;
+    percentDailyValue: number;
+  },
+  "nutrientName" | "percentDailyValue"
+>;
 
 export const VITAMIN_NAMES = new Set([
   "Vitamin A",
