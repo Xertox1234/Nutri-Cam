@@ -3,7 +3,7 @@ import { View, StyleSheet } from "react-native";
 import Svg, { Path, Circle, Line, Text as SvgText } from "react-native-svg";
 import { useTheme } from "@/hooks/useTheme";
 import { ThemedText } from "@/components/ThemedText";
-import { calculateChartData } from "./weight-chart-utils";
+import { calculateChartData, CHART_VIEW_WIDTH } from "./weight-chart-utils";
 
 interface WeightChartProps {
   data: { weight: string; loggedAt: string }[];
@@ -37,7 +37,11 @@ export const WeightChart = React.memo(function WeightChart({
 
   return (
     <View style={styles.container}>
-      <Svg width="100%" height={height} viewBox={`0 0 320 ${height}`}>
+      <Svg
+        width="100%"
+        height={height}
+        viewBox={`0 0 ${CHART_VIEW_WIDTH} ${height}`}
+      >
         {/* Y-axis labels */}
         {[0, 0.25, 0.5, 0.75, 1].map((frac) => {
           const val = minWeight + (maxWeight - minWeight) * (1 - frac);
@@ -48,7 +52,7 @@ export const WeightChart = React.memo(function WeightChart({
               <Line
                 x1={padding.left}
                 y1={y}
-                x2={320 - padding.right}
+                x2={CHART_VIEW_WIDTH - padding.right}
                 y2={y}
                 stroke={theme.border}
                 strokeWidth={0.5}
@@ -72,14 +76,14 @@ export const WeightChart = React.memo(function WeightChart({
             <Line
               x1={padding.left}
               y1={goalY}
-              x2={320 - padding.right}
+              x2={CHART_VIEW_WIDTH - padding.right}
               y2={goalY}
               stroke={theme.success}
               strokeWidth={1}
               strokeDasharray="4,4"
             />
             <SvgText
-              x={320 - padding.right + 2}
+              x={CHART_VIEW_WIDTH - padding.right + 2}
               y={goalY + 4}
               fontSize={9}
               fill={theme.success}

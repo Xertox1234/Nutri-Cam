@@ -17,13 +17,12 @@ import { usePremiumContext } from "@/context/PremiumContext";
 import { BorderRadius } from "@/constants/theme";
 import type { CreateSavedItemInput } from "@shared/schemas/saved-items";
 import {
+  type SaveState,
   getSaveIconName,
   getSaveBackgroundColorKey,
   getSaveIconColorKey,
   getSaveAccessibilityLabel,
 } from "./save-button-utils";
-
-type SaveState = "idle" | "saving" | "saved" | "error";
 
 interface SaveButtonProps {
   item: CreateSavedItemInput;
