@@ -21,13 +21,11 @@ import {
   FontFamily,
   withOpacity,
 } from "@/constants/theme";
-
-const PROTOCOLS = [
-  { key: "16:8", label: "16:8", fastingHours: 16, eatingHours: 8 },
-  { key: "18:6", label: "18:6", fastingHours: 18, eatingHours: 6 },
-  { key: "20:4", label: "20:4", fastingHours: 20, eatingHours: 4 },
-  { key: "custom", label: "Custom", fastingHours: 0, eatingHours: 0 },
-] as const;
+import {
+  FASTING_PROTOCOLS,
+  resolveFastingSchedule,
+  isValidFastingHours,
+} from "./fasting-setup-utils";
 
 interface FastingSetupModalProps {
   visible: boolean;
@@ -64,17 +62,14 @@ export function FastingSetupModal({
   const [windowStart, setWindowStart] = useState(initialEatingWindowStart);
   const [windowEnd, setWindowEnd] = useState(initialEatingWindowEnd);
 
-  const selectedPreset = PROTOCOLS.find((p) => p.key === protocol);
   const isCustom = protocol === "custom";
-  const fastingHours = isCustom
-    ? parseInt(customHours, 10) || 16
-    : (selectedPreset?.fastingHours ?? 16);
-  const eatingHours = isCustom
-    ? 24 - fastingHours
-    : (selectedPreset?.eatingHours ?? 8);
+  const { fastingHours, eatingHours } = resolveFastingSchedule(
+    protocol,
+    customHours,
+  );
 
   const handleSave = useCallback(() => {
-    if (fastingHours < 1 || fastingHours > 23) return;
+    if (!isValidFastingHours(fastingHours)) return;
     haptics.impact(Haptics.ImpactFeedbackStyle.Medium);
     onSave({
       protocol,
@@ -129,7 +124,7 @@ export function FastingSetupModal({
             Protocol
           </ThemedText>
           <View style={styles.protocolGrid}>
-            {PROTOCOLS.map((p) => {
+            {FASTING_PROTOCOLS.map((p) => {
               const isSelected = protocol === p.key;
               return (
                 <Pressable
@@ -300,7 +295,7 @@ export function FastingSetupModal({
           {/* Save Button */}
           <Pressable
             onPress={handleSave}
-            disabled={isPending || fastingHours < 1 || fastingHours > 23}
+            disabled={isPending || !isValidFastingHours(fastingHours)}
             accessibilityLabel="Save fasting schedule"
             accessibilityRole="button"
             style={({ pressed }) => [
@@ -308,7 +303,7 @@ export function FastingSetupModal({
               {
                 backgroundColor: theme.link,
                 opacity:
-                  pressed || isPending || fastingHours < 1 || fastingHours > 23
+                  pressed || isPending || !isValidFastingHours(fastingHours)
                     ? 0.6
                     : 1,
               },

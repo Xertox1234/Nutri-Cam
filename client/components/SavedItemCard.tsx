@@ -16,6 +16,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { useHaptics } from "@/hooks/useHaptics";
 import { useDeleteSavedItem } from "@/hooks/useSavedItems";
 import { BorderRadius, Spacing, withOpacity } from "@/constants/theme";
+import { buildShareContent } from "./saved-item-card-utils";
 import type { SavedItem } from "@shared/schema";
 
 interface SavedItemCardProps {
@@ -59,19 +60,7 @@ export function SavedItemCard({ item, onPress }: SavedItemCardProps) {
   const handleShare = async () => {
     haptics.impact(Haptics.ImpactFeedbackStyle.Light);
 
-    let content = `${item.title}\n`;
-
-    if (item.description) {
-      content += `\n${item.description}\n`;
-    }
-
-    if (item.instructions) {
-      content += `\nInstructions:\n${item.instructions}\n`;
-    }
-
-    if (item.sourceProductName) {
-      content += `\nSuggested for: ${item.sourceProductName}`;
-    }
+    const content = buildShareContent(item);
 
     try {
       await Share.share({
