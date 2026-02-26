@@ -2,19 +2,12 @@ import React, { useState } from "react";
 import { View, Text, StyleSheet, Pressable } from "react-native";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing } from "@/constants/theme";
+import { APPETITE_LEVELS } from "./appetite-utils";
 
 interface AppetiteTrackerProps {
   value?: number;
   onChange: (level: number) => void;
 }
-
-const LEVELS = [
-  { value: 1, label: "Very Low", emoji: "\u{1F636}" },
-  { value: 2, label: "Low", emoji: "\u{1F642}" },
-  { value: 3, label: "Normal", emoji: "\u{1F60A}" },
-  { value: 4, label: "High", emoji: "\u{1F60B}" },
-  { value: 5, label: "Very High", emoji: "\u{1F924}" },
-];
 
 export default function AppetiteTracker({
   value,
@@ -39,7 +32,7 @@ export default function AppetiteTracker({
         Appetite Level
       </Text>
       <View style={styles.levels}>
-        {LEVELS.map((level) => (
+        {APPETITE_LEVELS.map((level) => (
           <Pressable
             key={level.value}
             onPress={() => handleSelect(level.value)}

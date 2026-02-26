@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing } from "@/constants/theme";
+import { getAppetiteLabel } from "./appetite-utils";
 
 interface MedicationLogCardProps {
   medicationName: string;
@@ -34,8 +35,6 @@ export default function MedicationLogCard({
     hour: "numeric",
     minute: "2-digit",
   });
-
-  const appetiteLabels = ["", "Very Low", "Low", "Normal", "High", "Very High"];
 
   return (
     <Pressable
@@ -80,7 +79,7 @@ export default function MedicationLogCard({
             Appetite:
           </Text>
           <Text style={[styles.value, { color: theme.text }]}>
-            {appetiteLabels[appetiteLevel]} ({appetiteLevel}/5)
+            {getAppetiteLabel(appetiteLevel)} ({appetiteLevel}/5)
           </Text>
         </View>
       )}
