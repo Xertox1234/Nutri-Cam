@@ -421,6 +421,82 @@ beforeEach(() => {
 
 **Why:** Allows tests to manipulate internal state (pre-fill maps, verify cleanup) without exposing implementation details in the public API. The underscore prefix convention signals this is not for production consumers.
 
+### Bounded In-Memory Store Pattern
+
+When holding per-user state in a `Map`, enforce per-user caps, a global cap, and size validation to prevent memory exhaustion:
+
+```typescript
+const MAX_SESSIONS_PER_USER = 3;
+const MAX_SESSIONS_GLOBAL = 1000;
+const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024;
+
+// Check raw buffer size — NOT base64 string length (which is ~33% larger)
+if (req.file.buffer.length > MAX_IMAGE_SIZE_BYTES) {
+  return sendError(res, 413, "Image too large", "IMAGE_TOO_LARGE");
+}
+if (sessionStore.size >= MAX_SESSIONS_GLOBAL) {
+  return sendError(res, 429, "Server busy", "SESSION_LIMIT_REACHED");
+}
+if ((userSessionCount.get(userId) ?? 0) >= MAX_SESSIONS_PER_USER) {
+  return sendError(res, 429, "Too many sessions", "USER_SESSION_LIMIT");
+}
+```
+
+**Why:** An unbounded `Map` holding base64 images (~1-4 MB each) can exhaust server memory. Always cap per-user and global counts, and validate payload size before storing.
+
+### Early Rejection Before Paid APIs
+
+Place cheap validation (size checks, cap limits, permission gates) **before** expensive external calls (OpenAI Vision, nutrition APIs, Spoonacular):
+
+```typescript
+// ✅ GOOD — reject before calling paid API
+if (intentConfig.needsSession) {
+  if (req.file.buffer.length > MAX_IMAGE_SIZE_BYTES) return sendError(...);
+  if (sessionStore.size >= MAX_SESSIONS_GLOBAL) return sendError(...);
+}
+const analysisResult = await analyzePhoto(imageBase64, intent); // expensive
+
+// ❌ BAD — wastes API credits on requests that will be rejected
+const analysisResult = await analyzePhoto(imageBase64, intent); // expensive
+if (sessionStore.size >= MAX_SESSIONS_GLOBAL) return sendError(...);
+```
+
+**Why:** Saves API credits and reduces latency for requests that would be rejected anyway. Validate everything you can locally before incurring external costs.
+
+### Controllable Mock via `vi.hoisted`
+
+Use `vi.hoisted` to create a mutable reference that a `vi.mock` factory can read, enabling per-test overrides:
+
+```typescript
+const { mockFileBuffer } = vi.hoisted(() => ({
+  mockFileBuffer: { current: Buffer.from("fake-image") },
+}));
+
+vi.mock("multer", () => {
+  const multerMock = () => ({
+    single: () => (req, _res, next) => {
+      req.file = { buffer: mockFileBuffer.current } as Express.Multer.File;
+      next();
+    },
+  });
+  multerMock.memoryStorage = () => ({});
+  return { default: multerMock };
+});
+
+// In a specific test:
+it("rejects oversized images", async () => {
+  const original = mockFileBuffer.current;
+  mockFileBuffer.current = Buffer.alloc(6 * 1024 * 1024);
+  try {
+    // ... test logic
+  } finally {
+    mockFileBuffer.current = original;
+  }
+});
+```
+
+**Why:** `vi.mock` factories are hoisted and run once, so they can't reference test-local variables. Wrapping the value in a `{ current }` ref object via `vi.hoisted` gives tests a stable reference they can mutate per-test while the mock reads the latest value.
+
 ### Multer Error Handler Pattern
 
 Add specific error handling for file upload validation to return 400 (not 500):
