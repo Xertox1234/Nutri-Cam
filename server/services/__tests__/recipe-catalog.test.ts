@@ -273,14 +273,21 @@ describe("Recipe Catalog", () => {
     }
 
     it("returns empty results when no API key is set", async () => {
-      // The statically imported version has no key set (test env)
-      const result = await searchCatalogRecipes({ query: "pasta" });
+      // Re-import the module without an API key so the top-level capture
+      // of process.env.SPOONACULAR_API_KEY is undefined.
+      vi.resetModules();
+      delete process.env.SPOONACULAR_API_KEY;
+      const mod = await import("../recipe-catalog");
+      const result = await mod.searchCatalogRecipes({ query: "pasta" });
       expect(result.results).toEqual([]);
       expect(result.totalResults).toBe(0);
     });
 
     it("returns null from getCatalogRecipeDetail when no API key", async () => {
-      const result = await getCatalogRecipeDetail(123);
+      vi.resetModules();
+      delete process.env.SPOONACULAR_API_KEY;
+      const mod = await import("../recipe-catalog");
+      const result = await mod.getCatalogRecipeDetail(123);
       expect(result).toBeNull();
     });
 
