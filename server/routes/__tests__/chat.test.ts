@@ -3,6 +3,7 @@ import express from "express";
 import request from "supertest";
 
 import { storage } from "../../storage";
+import { generateCoachResponse } from "../../services/nutrition-coach";
 import { register } from "../chat";
 
 vi.mock("../../storage", () => ({
@@ -28,35 +29,9 @@ vi.mock("../../services/nutrition-coach", () => ({
   generateCoachResponse: vi.fn(),
 }));
 
-vi.mock("../../middleware/auth", () => ({
-  requireAuth: (
-    req: express.Request,
-    _res: express.Response,
-    next: express.NextFunction,
-  ) => {
-    req.userId = "1";
-    next();
-  },
-}));
+vi.mock("../../middleware/auth");
 
-vi.mock("express-rate-limit", () => ({
-  rateLimit:
-    () =>
-    (
-      _req: express.Request,
-      _res: express.Response,
-      next: express.NextFunction,
-    ) =>
-      next(),
-  default:
-    () =>
-    (
-      _req: express.Request,
-      _res: express.Response,
-      next: express.NextFunction,
-    ) =>
-      next(),
-}));
+vi.mock("express-rate-limit");
 
 function createApp() {
   const app = express();
@@ -218,6 +193,222 @@ describe("Chat Routes", () => {
         .send({ content: "Hello" });
 
       expect(res.status).toBe(429);
+    });
+
+    function mockStreamingSetup() {
+      vi.mocked(storage.getChatConversation).mockResolvedValue({
+        id: 1,
+      } as never);
+      vi.mocked(storage.getSubscriptionStatus).mockResolvedValue({
+        tier: "premium",
+      } as never);
+      vi.mocked(storage.getUser).mockResolvedValue({
+        id: "1",
+        dailyCalorieGoal: 2000,
+        dailyProteinGoal: 100,
+        dailyCarbsGoal: 250,
+        dailyFatGoal: 65,
+      } as never);
+      vi.mocked(storage.getDailyChatMessageCount).mockResolvedValue(0 as never);
+      vi.mocked(storage.createChatMessage).mockResolvedValue({} as never);
+      vi.mocked(storage.getUserProfile).mockResolvedValue(null as never);
+      vi.mocked(storage.getDailySummary).mockResolvedValue({
+        totalCalories: "500",
+        totalProtein: "20",
+        totalCarbs: "60",
+        totalFat: "15",
+      } as never);
+      vi.mocked(storage.getExerciseDailySummary).mockResolvedValue({
+        totalCaloriesBurned: 200,
+        totalMinutes: 30,
+      } as never);
+      vi.mocked(storage.getLatestWeight).mockResolvedValue({
+        weight: "75.0",
+      } as never);
+      vi.mocked(storage.getChatMessages).mockResolvedValue([] as never);
+      vi.mocked(storage.updateChatConversationTitle).mockResolvedValue(
+        {} as never,
+      );
+    }
+
+    it("streams SSE response and saves assistant message", async () => {
+      mockStreamingSetup();
+
+      // Mock an async generator yielding chunks
+      async function* fakeStream() {
+        yield "Hello ";
+        yield "world!";
+      }
+      vi.mocked(generateCoachResponse).mockReturnValue(fakeStream() as never);
+
+      const res = await request(app)
+        .post("/api/chat/conversations/1/messages")
+        .set("Authorization", "Bearer token")
+        .send({ content: "Hello" });
+
+      expect(res.status).toBe(200);
+      expect(res.text).toContain("Hello ");
+      expect(res.text).toContain("world!");
+      expect(res.text).toContain('"done":true');
+      // Saved assistant message
+      expect(storage.createChatMessage).toHaveBeenCalledWith(
+        1,
+        "assistant",
+        "Hello world!",
+      );
+      // Title updated for first exchange (history.length === 0)
+      expect(storage.updateChatConversationTitle).toHaveBeenCalled();
+    });
+
+    it("handles streaming error and sends error SSE event", async () => {
+      mockStreamingSetup();
+
+      async function* errorStream() {
+        yield "Partial";
+        throw new Error("AI crash");
+      }
+      vi.mocked(generateCoachResponse).mockReturnValue(errorStream() as never);
+
+      const res = await request(app)
+        .post("/api/chat/conversations/1/messages")
+        .set("Authorization", "Bearer token")
+        .send({ content: "Hello" });
+
+      expect(res.status).toBe(200);
+      expect(res.text).toContain("Partial");
+      expect(res.text).toContain("Failed to generate response");
+    });
+
+    it("succeeds with null goals when user has no calorie goal", async () => {
+      mockStreamingSetup();
+      vi.mocked(storage.getUser).mockResolvedValue({
+        id: "1",
+        dailyCalorieGoal: null,
+      } as never);
+      vi.mocked(storage.getLatestWeight).mockResolvedValue(null as never);
+
+      async function* emptyStream() {
+        yield "Ok";
+      }
+      vi.mocked(generateCoachResponse).mockReturnValue(emptyStream() as never);
+
+      const res = await request(app)
+        .post("/api/chat/conversations/1/messages")
+        .set("Authorization", "Bearer token")
+        .send({ content: "Hello" });
+
+      expect(res.status).toBe(200);
+      // Verify goals are null when user has no calorie goal
+      const contextArg = vi.mocked(generateCoachResponse).mock.calls[0][1];
+      expect(contextArg.goals).toBeNull();
+    });
+
+    it("skips title update when history has more than 1 message", async () => {
+      mockStreamingSetup();
+      vi.mocked(storage.getChatMessages).mockResolvedValue([
+        { id: 1, role: "user", content: "first" },
+        { id: 2, role: "assistant", content: "reply" },
+      ] as never);
+
+      async function* fakeStream() {
+        yield "Response";
+      }
+      vi.mocked(generateCoachResponse).mockReturnValue(fakeStream() as never);
+
+      const res = await request(app)
+        .post("/api/chat/conversations/1/messages")
+        .set("Authorization", "Bearer token")
+        .send({ content: "Hello" });
+
+      expect(res.status).toBe(200);
+      expect(storage.updateChatConversationTitle).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Error paths", () => {
+    it("GET /api/chat/conversations returns 500 on storage error", async () => {
+      vi.mocked(storage.getChatConversations).mockRejectedValue(
+        new Error("DB error"),
+      );
+
+      const res = await request(app)
+        .get("/api/chat/conversations")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(500);
+    });
+
+    it("POST /api/chat/conversations returns 500 on storage error", async () => {
+      vi.mocked(storage.createChatConversation).mockRejectedValue(
+        new Error("DB error"),
+      );
+
+      const res = await request(app)
+        .post("/api/chat/conversations")
+        .set("Authorization", "Bearer token")
+        .send({ title: "Test" });
+
+      expect(res.status).toBe(500);
+    });
+
+    it("POST /api/chat/conversations returns 400 for invalid title", async () => {
+      const res = await request(app)
+        .post("/api/chat/conversations")
+        .set("Authorization", "Bearer token")
+        .send({ title: "x".repeat(201) });
+
+      expect(res.status).toBe(400);
+    });
+
+    it("GET /api/chat/conversations/:id/messages returns 500 on storage error", async () => {
+      vi.mocked(storage.getChatConversation).mockRejectedValue(
+        new Error("DB error"),
+      );
+
+      const res = await request(app)
+        .get("/api/chat/conversations/1/messages")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(500);
+    });
+
+    it("POST /api/chat/conversations/:id/messages returns 400 for invalid ID", async () => {
+      const res = await request(app)
+        .post("/api/chat/conversations/abc/messages")
+        .set("Authorization", "Bearer token")
+        .send({ content: "Hello" });
+
+      expect(res.status).toBe(400);
+    });
+
+    it("POST /api/chat/conversations/:id/messages returns 401 when user not found", async () => {
+      vi.mocked(storage.getChatConversation).mockResolvedValue({
+        id: 1,
+      } as never);
+      vi.mocked(storage.getSubscriptionStatus).mockResolvedValue({
+        tier: "premium",
+      } as never);
+      vi.mocked(storage.getUser).mockResolvedValue(null as never);
+      vi.mocked(storage.getDailyChatMessageCount).mockResolvedValue(0 as never);
+
+      const res = await request(app)
+        .post("/api/chat/conversations/1/messages")
+        .set("Authorization", "Bearer token")
+        .send({ content: "Hello" });
+
+      expect(res.status).toBe(401);
+    });
+
+    it("DELETE /api/chat/conversations/:id returns 500 on storage error", async () => {
+      vi.mocked(storage.deleteChatConversation).mockRejectedValue(
+        new Error("DB error"),
+      );
+
+      const res = await request(app)
+        .delete("/api/chat/conversations/1")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(500);
     });
   });
 

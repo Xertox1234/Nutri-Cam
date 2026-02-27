@@ -5,6 +5,7 @@ import request from "supertest";
 import { storage } from "../../storage";
 import {
   analyzePhoto,
+  refineAnalysis,
   needsFollowUp,
   getFollowUpQuestions,
 } from "../../services/photo-analysis";
@@ -37,35 +38,9 @@ vi.mock("../../db", () => ({
   },
 }));
 
-vi.mock("../../middleware/auth", () => ({
-  requireAuth: (
-    req: express.Request,
-    _res: express.Response,
-    next: express.NextFunction,
-  ) => {
-    req.userId = "1";
-    next();
-  },
-}));
+vi.mock("../../middleware/auth");
 
-vi.mock("express-rate-limit", () => ({
-  rateLimit:
-    () =>
-    (
-      _req: express.Request,
-      _res: express.Response,
-      next: express.NextFunction,
-    ) =>
-      next(),
-  default:
-    () =>
-    (
-      _req: express.Request,
-      _res: express.Response,
-      next: express.NextFunction,
-    ) =>
-      next(),
-}));
+vi.mock("express-rate-limit");
 
 vi.mock("multer", () => {
   const multerMock = () => ({
@@ -209,6 +184,41 @@ describe("Photos Routes", () => {
         .send({});
 
       expect(res.status).toBe(400);
+    });
+  });
+
+  describe("POST /api/photos/analyze/:sessionId/followup - error paths", () => {
+    it("returns 500 on service error", async () => {
+      // We need to seed a session to get past the 404 check.
+      // First create a valid session via analyze, then make refineAnalysis throw.
+      vi.mocked(storage.getDailyScanCount).mockResolvedValue(0 as never);
+      vi.mocked(storage.getSubscriptionStatus).mockResolvedValue({
+        tier: "premium",
+      } as never);
+      vi.mocked(analyzePhoto).mockResolvedValue({
+        foods: [{ name: "Apple", quantity: "1", confidence: 0.5 }],
+        overallConfidence: 0.5,
+      } as never);
+      vi.mocked(batchNutritionLookup).mockResolvedValue(new Map() as never);
+      vi.mocked(needsFollowUp).mockReturnValue(true);
+      vi.mocked(getFollowUpQuestions).mockReturnValue(["What type?"]);
+
+      const analyzeRes = await request(app)
+        .post("/api/photos/analyze")
+        .set("Authorization", "Bearer token")
+        .attach("photo", Buffer.from("fake"), "test.jpg");
+
+      const sessionId = analyzeRes.body.sessionId;
+
+      // Now make refineAnalysis throw
+      vi.mocked(refineAnalysis).mockRejectedValue(new Error("AI error"));
+
+      const res = await request(app)
+        .post(`/api/photos/analyze/${sessionId}/followup`)
+        .set("Authorization", "Bearer token")
+        .send({ question: "What type?", answer: "Granny Smith" });
+
+      expect(res.status).toBe(500);
     });
   });
 

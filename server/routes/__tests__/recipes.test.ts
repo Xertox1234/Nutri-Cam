@@ -50,35 +50,9 @@ vi.mock("../../services/recipe-import", () => ({
   importRecipeFromUrl: vi.fn(),
 }));
 
-vi.mock("../../middleware/auth", () => ({
-  requireAuth: (
-    req: express.Request,
-    _res: express.Response,
-    next: express.NextFunction,
-  ) => {
-    req.userId = "1";
-    next();
-  },
-}));
+vi.mock("../../middleware/auth");
 
-vi.mock("express-rate-limit", () => ({
-  rateLimit:
-    () =>
-    (
-      _req: express.Request,
-      _res: express.Response,
-      next: express.NextFunction,
-    ) =>
-      next(),
-  default:
-    () =>
-    (
-      _req: express.Request,
-      _res: express.Response,
-      next: express.NextFunction,
-    ) =>
-      next(),
-}));
+vi.mock("express-rate-limit");
 
 function createApp() {
   const app = express();
@@ -451,6 +425,238 @@ describe("Recipes Routes", () => {
     });
   });
 
+  describe("Error paths", () => {
+    it("GET /api/recipes/featured returns 500 on storage error", async () => {
+      vi.mocked(storage.getFeaturedRecipes).mockRejectedValue(
+        new Error("DB error"),
+      );
+
+      const res = await request(app)
+        .get("/api/recipes/featured")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(500);
+    });
+
+    it("GET /api/recipes/browse returns 500 on storage error", async () => {
+      vi.mocked(storage.getUnifiedRecipes).mockRejectedValue(
+        new Error("DB error"),
+      );
+
+      const res = await request(app)
+        .get("/api/recipes/browse")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(500);
+    });
+
+    it("GET /api/recipes/community returns 500 on storage error", async () => {
+      vi.mocked(storage.getCommunityRecipes).mockRejectedValue(
+        new Error("DB error"),
+      );
+
+      const res = await request(app)
+        .get("/api/recipes/community?productName=pasta")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(500);
+    });
+
+    it("GET /api/recipes/generation-status returns 500 on storage error", async () => {
+      vi.mocked(storage.getSubscriptionStatus).mockResolvedValue({
+        tier: "premium",
+      } as never);
+      vi.mocked(storage.getDailyRecipeGenerationCount).mockRejectedValue(
+        new Error("DB error"),
+      );
+
+      const res = await request(app)
+        .get("/api/recipes/generation-status")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(500);
+    });
+
+    it("POST /api/recipes/generate returns 500 on generation error", async () => {
+      vi.mocked(storage.getSubscriptionStatus).mockResolvedValue({
+        tier: "premium",
+      } as never);
+      vi.mocked(storage.getDailyRecipeGenerationCount).mockResolvedValue(
+        0 as never,
+      );
+      vi.mocked(storage.getUserProfile).mockResolvedValue(null as never);
+      vi.mocked(generateFullRecipe).mockRejectedValue(new Error("AI error"));
+
+      const res = await request(app)
+        .post("/api/recipes/generate")
+        .set("Authorization", "Bearer token")
+        .send({ productName: "Pasta" });
+
+      expect(res.status).toBe(500);
+    });
+
+    it("POST /api/recipes/:id/share returns 400 for invalid ID", async () => {
+      const res = await request(app)
+        .post("/api/recipes/abc/share")
+        .set("Authorization", "Bearer token")
+        .send({ isPublic: true });
+
+      expect(res.status).toBe(400);
+    });
+
+    it("POST /api/recipes/:id/share returns 400 for invalid body", async () => {
+      const res = await request(app)
+        .post("/api/recipes/1/share")
+        .set("Authorization", "Bearer token")
+        .send({});
+
+      expect(res.status).toBe(400);
+    });
+
+    it("POST /api/recipes/:id/share returns 500 on storage error", async () => {
+      vi.mocked(storage.updateRecipePublicStatus).mockRejectedValue(
+        new Error("DB error"),
+      );
+
+      const res = await request(app)
+        .post("/api/recipes/1/share")
+        .set("Authorization", "Bearer token")
+        .send({ isPublic: true });
+
+      expect(res.status).toBe(500);
+    });
+
+    it("GET /api/recipes/mine returns 500 on storage error", async () => {
+      vi.mocked(storage.getUserRecipes).mockRejectedValue(
+        new Error("DB error"),
+      );
+
+      const res = await request(app)
+        .get("/api/recipes/mine")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(500);
+    });
+
+    it("GET /api/recipes/:id returns 400 for invalid ID", async () => {
+      const res = await request(app)
+        .get("/api/recipes/abc")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(400);
+    });
+
+    it("GET /api/recipes/:id returns 404 for nonexistent recipe", async () => {
+      vi.mocked(storage.getCommunityRecipe).mockResolvedValue(null as never);
+
+      const res = await request(app)
+        .get("/api/recipes/999")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(404);
+    });
+
+    it("GET /api/recipes/:id returns 500 on storage error", async () => {
+      vi.mocked(storage.getCommunityRecipe).mockRejectedValue(
+        new Error("DB error"),
+      );
+
+      const res = await request(app)
+        .get("/api/recipes/1")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(500);
+    });
+
+    it("DELETE /api/recipes/:id returns 400 for invalid ID", async () => {
+      const res = await request(app)
+        .delete("/api/recipes/abc")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(400);
+    });
+
+    it("DELETE /api/recipes/:id returns 500 on storage error", async () => {
+      vi.mocked(storage.deleteCommunityRecipe).mockRejectedValue(
+        new Error("DB error"),
+      );
+
+      const res = await request(app)
+        .delete("/api/recipes/1")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(500);
+    });
+
+    it("GET /api/meal-plan/catalog/search returns 500 on service error", async () => {
+      vi.mocked(searchCatalogRecipes).mockRejectedValue(
+        new Error("Service error"),
+      );
+
+      const res = await request(app)
+        .get("/api/meal-plan/catalog/search?query=chicken")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(500);
+    });
+
+    it("GET /api/meal-plan/catalog/:id returns 400 for invalid ID", async () => {
+      const res = await request(app)
+        .get("/api/meal-plan/catalog/abc")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(400);
+    });
+
+    it("GET /api/meal-plan/catalog/:id returns 500 on service error", async () => {
+      vi.mocked(getCatalogRecipeDetail).mockRejectedValue(
+        new Error("Service error"),
+      );
+
+      const res = await request(app)
+        .get("/api/meal-plan/catalog/123")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(500);
+    });
+
+    it("POST /api/meal-plan/catalog/:id/save returns 400 for invalid ID", async () => {
+      const res = await request(app)
+        .post("/api/meal-plan/catalog/abc/save")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(400);
+    });
+
+    it("POST /api/meal-plan/catalog/:id/save returns 404 when not found in catalog", async () => {
+      vi.mocked(storage.findMealPlanRecipeByExternalId).mockResolvedValue(
+        null as never,
+      );
+      vi.mocked(getCatalogRecipeDetail).mockResolvedValue(null as never);
+
+      const res = await request(app)
+        .post("/api/meal-plan/catalog/999/save")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(404);
+    });
+
+    it("POST /api/meal-plan/catalog/:id/save returns 500 on service error", async () => {
+      vi.mocked(storage.findMealPlanRecipeByExternalId).mockResolvedValue(
+        null as never,
+      );
+      vi.mocked(getCatalogRecipeDetail).mockRejectedValue(
+        new Error("Service error"),
+      );
+
+      const res = await request(app)
+        .post("/api/meal-plan/catalog/123/save")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(500);
+    });
+  });
+
   describe("POST /api/meal-plan/recipes/import-url", () => {
     it("imports recipe from URL", async () => {
       vi.mocked(importRecipeFromUrl).mockResolvedValue({
@@ -507,6 +713,34 @@ describe("Recipes Routes", () => {
         .send({ url: "not-a-url" });
 
       expect(res.status).toBe(400);
+    });
+
+    it("returns 500 on import service error", async () => {
+      vi.mocked(importRecipeFromUrl).mockRejectedValue(
+        new Error("Service error"),
+      );
+
+      const res = await request(app)
+        .post("/api/meal-plan/recipes/import-url")
+        .set("Authorization", "Bearer token")
+        .send({ url: "https://example.com/recipe" });
+
+      expect(res.status).toBe(500);
+    });
+
+    it("returns 422 for unknown error code", async () => {
+      vi.mocked(importRecipeFromUrl).mockResolvedValue({
+        success: false,
+        error: "UNKNOWN_ERROR",
+      } as never);
+
+      const res = await request(app)
+        .post("/api/meal-plan/recipes/import-url")
+        .set("Authorization", "Bearer token")
+        .send({ url: "https://example.com/bad" });
+
+      expect(res.status).toBe(422);
+      expect(res.body.error).toBe("Import failed");
     });
   });
 });

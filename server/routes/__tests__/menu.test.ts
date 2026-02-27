@@ -15,35 +15,9 @@ vi.mock("../../storage", () => ({
   },
 }));
 
-vi.mock("../../middleware/auth", () => ({
-  requireAuth: (
-    req: express.Request,
-    _res: express.Response,
-    next: express.NextFunction,
-  ) => {
-    req.userId = "1";
-    next();
-  },
-}));
+vi.mock("../../middleware/auth");
 
-vi.mock("express-rate-limit", () => ({
-  rateLimit:
-    () =>
-    (
-      _req: express.Request,
-      _res: express.Response,
-      next: express.NextFunction,
-    ) =>
-      next(),
-  default:
-    () =>
-    (
-      _req: express.Request,
-      _res: express.Response,
-      next: express.NextFunction,
-    ) =>
-      next(),
-}));
+vi.mock("express-rate-limit");
 
 vi.mock("../../services/menu-analysis", () => ({
   analyzeMenuPhoto: vi.fn(),

@@ -31,35 +31,9 @@ vi.mock("../../services/pantry-deduction", () => ({
   deductPantryFromGrocery: vi.fn(),
 }));
 
-vi.mock("../../middleware/auth", () => ({
-  requireAuth: (
-    req: express.Request,
-    _res: express.Response,
-    next: express.NextFunction,
-  ) => {
-    req.userId = "1";
-    next();
-  },
-}));
+vi.mock("../../middleware/auth");
 
-vi.mock("express-rate-limit", () => ({
-  rateLimit:
-    () =>
-    (
-      _req: express.Request,
-      _res: express.Response,
-      next: express.NextFunction,
-    ) =>
-      next(),
-  default:
-    () =>
-    (
-      _req: express.Request,
-      _res: express.Response,
-      next: express.NextFunction,
-    ) =>
-      next(),
-}));
+vi.mock("express-rate-limit");
 
 function createApp() {
   const app = express();
@@ -235,6 +209,65 @@ describe("Grocery Routes", () => {
 
       expect(res.status).toBe(400);
     });
+
+    it("handles addedToPantry-only flag", async () => {
+      vi.mocked(storage.getGroceryListWithItems).mockResolvedValue({
+        ...mockList,
+        items: [],
+      } as never);
+      vi.mocked(storage.updateGroceryListItemPantryFlag).mockResolvedValue({
+        id: 1,
+        addedToPantry: true,
+      } as never);
+
+      const res = await request(app)
+        .put("/api/meal-plan/grocery-lists/1/items/1")
+        .set("Authorization", "Bearer token")
+        .send({ addedToPantry: true });
+
+      expect(res.status).toBe(200);
+    });
+
+    it("returns 404 when item not found on addedToPantry-only update", async () => {
+      vi.mocked(storage.getGroceryListWithItems).mockResolvedValue({
+        ...mockList,
+        items: [],
+      } as never);
+      vi.mocked(storage.updateGroceryListItemPantryFlag).mockResolvedValue(
+        null as never,
+      );
+
+      const res = await request(app)
+        .put("/api/meal-plan/grocery-lists/1/items/1")
+        .set("Authorization", "Bearer token")
+        .send({ addedToPantry: true });
+
+      expect(res.status).toBe(404);
+    });
+
+    it("handles isChecked + addedToPantry combo", async () => {
+      vi.mocked(storage.getGroceryListWithItems).mockResolvedValue({
+        ...mockList,
+        items: [],
+      } as never);
+      vi.mocked(storage.updateGroceryListItemChecked).mockResolvedValue({
+        id: 1,
+        isChecked: true,
+      } as never);
+      vi.mocked(storage.updateGroceryListItemPantryFlag).mockResolvedValue({
+        id: 1,
+        isChecked: true,
+        addedToPantry: true,
+      } as never);
+
+      const res = await request(app)
+        .put("/api/meal-plan/grocery-lists/1/items/1")
+        .set("Authorization", "Bearer token")
+        .send({ isChecked: true, addedToPantry: true });
+
+      expect(res.status).toBe(200);
+      expect(res.body.addedToPantry).toBe(true);
+    });
   });
 
   describe("POST /api/meal-plan/grocery-lists/:id/items", () => {
@@ -306,6 +339,160 @@ describe("Grocery Routes", () => {
     });
   });
 
+  describe("Error paths", () => {
+    it("POST /api/meal-plan/grocery-lists returns 500 on storage error", async () => {
+      vi.mocked(storage.getUser).mockRejectedValue(new Error("DB error"));
+
+      const res = await request(app)
+        .post("/api/meal-plan/grocery-lists")
+        .set("Authorization", "Bearer token")
+        .send({ startDate: "2025-01-01", endDate: "2025-01-07" });
+
+      expect(res.status).toBe(500);
+    });
+
+    it("GET /api/meal-plan/grocery-lists returns 500 on storage error", async () => {
+      vi.mocked(storage.getGroceryLists).mockRejectedValue(
+        new Error("DB error"),
+      );
+
+      const res = await request(app)
+        .get("/api/meal-plan/grocery-lists")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(500);
+    });
+
+    it("GET /api/meal-plan/grocery-lists/:id returns 400 for invalid ID", async () => {
+      const res = await request(app)
+        .get("/api/meal-plan/grocery-lists/abc")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(400);
+    });
+
+    it("GET /api/meal-plan/grocery-lists/:id returns 500 on storage error", async () => {
+      vi.mocked(storage.getGroceryListWithItems).mockRejectedValue(
+        new Error("DB error"),
+      );
+
+      const res = await request(app)
+        .get("/api/meal-plan/grocery-lists/1")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(500);
+    });
+
+    it("PUT /api/meal-plan/grocery-lists/:id/items/:itemId returns 400 for invalid IDs", async () => {
+      const res = await request(app)
+        .put("/api/meal-plan/grocery-lists/abc/items/1")
+        .set("Authorization", "Bearer token")
+        .send({ isChecked: true });
+
+      expect(res.status).toBe(400);
+    });
+
+    it("PUT /api/meal-plan/grocery-lists/:id/items/:itemId returns 500 on storage error", async () => {
+      vi.mocked(storage.getGroceryListWithItems).mockRejectedValue(
+        new Error("DB error"),
+      );
+
+      const res = await request(app)
+        .put("/api/meal-plan/grocery-lists/1/items/1")
+        .set("Authorization", "Bearer token")
+        .send({ isChecked: true });
+
+      expect(res.status).toBe(500);
+    });
+
+    it("PUT toggle returns 404 when item not found on isChecked update", async () => {
+      vi.mocked(storage.getGroceryListWithItems).mockResolvedValue({
+        ...mockList,
+        items: [],
+      } as never);
+      vi.mocked(storage.updateGroceryListItemChecked).mockResolvedValue(
+        null as never,
+      );
+
+      const res = await request(app)
+        .put("/api/meal-plan/grocery-lists/1/items/999")
+        .set("Authorization", "Bearer token")
+        .send({ isChecked: true });
+
+      expect(res.status).toBe(404);
+    });
+
+    it("POST /api/meal-plan/grocery-lists/:id/items returns 400 for invalid list ID", async () => {
+      const res = await request(app)
+        .post("/api/meal-plan/grocery-lists/abc/items")
+        .set("Authorization", "Bearer token")
+        .send({ name: "Bread" });
+
+      expect(res.status).toBe(400);
+    });
+
+    it("POST /api/meal-plan/grocery-lists/:id/items returns 500 on storage error", async () => {
+      vi.mocked(storage.getGroceryListWithItems).mockResolvedValue({
+        ...mockList,
+        items: [],
+      } as never);
+      vi.mocked(storage.addGroceryListItem).mockRejectedValue(
+        new Error("DB error"),
+      );
+
+      const res = await request(app)
+        .post("/api/meal-plan/grocery-lists/1/items")
+        .set("Authorization", "Bearer token")
+        .send({ name: "Bread" });
+
+      expect(res.status).toBe(500);
+    });
+
+    it("DELETE /api/meal-plan/grocery-lists/:id returns 400 for invalid ID", async () => {
+      const res = await request(app)
+        .delete("/api/meal-plan/grocery-lists/abc")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(400);
+    });
+
+    it("DELETE /api/meal-plan/grocery-lists/:id returns 500 on storage error", async () => {
+      vi.mocked(storage.deleteGroceryList).mockRejectedValue(
+        new Error("DB error"),
+      );
+
+      const res = await request(app)
+        .delete("/api/meal-plan/grocery-lists/1")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(500);
+    });
+
+    it("POST /api/meal-plan/grocery-lists enforces date range limit for free tier", async () => {
+      vi.mocked(storage.getUser).mockResolvedValue({
+        subscriptionTier: "free",
+      } as never);
+      vi.mocked(storage.getGroceryLists).mockResolvedValue([] as never);
+
+      const res = await request(app)
+        .post("/api/meal-plan/grocery-lists")
+        .set("Authorization", "Bearer token")
+        .send({ startDate: "2025-01-01", endDate: "2025-01-15" });
+
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe("DATE_RANGE_LIMIT");
+    });
+
+    it("POST /api/meal-plan/grocery-lists returns 400 for invalid calendar date", async () => {
+      const res = await request(app)
+        .post("/api/meal-plan/grocery-lists")
+        .set("Authorization", "Bearer token")
+        .send({ startDate: "2025-02-30", endDate: "2025-03-01" });
+
+      expect(res.status).toBe(400);
+    });
+  });
+
   describe("POST /api/meal-plan/grocery-lists/:id/items/:itemId/add-to-pantry", () => {
     it("returns 403 for free tier", async () => {
       vi.mocked(storage.getSubscriptionStatus).mockResolvedValue(null as never);
@@ -347,6 +534,68 @@ describe("Grocery Routes", () => {
         .set("Authorization", "Bearer token");
 
       expect(res.status).toBe(201);
+    });
+
+    it("returns 400 for invalid IDs", async () => {
+      vi.mocked(storage.getSubscriptionStatus).mockResolvedValue({
+        tier: "premium",
+      } as never);
+
+      const res = await request(app)
+        .post("/api/meal-plan/grocery-lists/abc/items/1/add-to-pantry")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 404 when list not found", async () => {
+      vi.mocked(storage.getSubscriptionStatus).mockResolvedValue({
+        tier: "premium",
+      } as never);
+      vi.mocked(storage.getGroceryListWithItems).mockResolvedValue(
+        null as never,
+      );
+
+      const res = await request(app)
+        .post("/api/meal-plan/grocery-lists/999/items/1/add-to-pantry")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(404);
+    });
+
+    it("returns 404 when grocery item not found in list", async () => {
+      vi.mocked(storage.getSubscriptionStatus).mockResolvedValue({
+        tier: "premium",
+      } as never);
+      vi.mocked(storage.getGroceryListWithItems).mockResolvedValue({
+        ...mockList,
+        items: [{ id: 1, name: "Milk" }],
+      } as never);
+
+      const res = await request(app)
+        .post("/api/meal-plan/grocery-lists/1/items/999/add-to-pantry")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(404);
+    });
+
+    it("returns 500 on storage error", async () => {
+      vi.mocked(storage.getSubscriptionStatus).mockResolvedValue({
+        tier: "premium",
+      } as never);
+      vi.mocked(storage.getGroceryListWithItems).mockResolvedValue({
+        ...mockList,
+        items: [{ id: 1, name: "Milk" }],
+      } as never);
+      vi.mocked(storage.createPantryItem).mockRejectedValue(
+        new Error("DB error"),
+      );
+
+      const res = await request(app)
+        .post("/api/meal-plan/grocery-lists/1/items/1/add-to-pantry")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(500);
     });
   });
 });

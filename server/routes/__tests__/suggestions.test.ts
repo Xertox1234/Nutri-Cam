@@ -29,35 +29,9 @@ vi.mock("../../lib/openai", () => ({
   },
 }));
 
-vi.mock("../../middleware/auth", () => ({
-  requireAuth: (
-    req: express.Request,
-    _res: express.Response,
-    next: express.NextFunction,
-  ) => {
-    req.userId = "1";
-    next();
-  },
-}));
+vi.mock("../../middleware/auth");
 
-vi.mock("express-rate-limit", () => ({
-  rateLimit:
-    () =>
-    (
-      _req: express.Request,
-      _res: express.Response,
-      next: express.NextFunction,
-    ) =>
-      next(),
-  default:
-    () =>
-    (
-      _req: express.Request,
-      _res: express.Response,
-      next: express.NextFunction,
-    ) =>
-      next(),
-}));
+vi.mock("express-rate-limit");
 
 function createApp() {
   const app = express();
@@ -248,6 +222,147 @@ describe("Suggestions Routes", () => {
         });
 
       expect(res.status).toBe(400);
+    });
+
+    it("returns 400 for invalid item ID", async () => {
+      const res = await request(app)
+        .post("/api/items/abc/suggestions/0/instructions")
+        .set("Authorization", "Bearer token")
+        .send({
+          suggestionTitle: "Yogurt Bowl",
+          suggestionType: "recipe",
+        });
+
+      expect(res.status).toBe(400);
+    });
+
+    it("generates craft instructions", async () => {
+      vi.mocked(storage.getScannedItem).mockResolvedValue(mockItem as never);
+      vi.mocked(storage.getInstructionCache).mockResolvedValue(null as never);
+      vi.mocked(storage.getUserProfile).mockResolvedValue(null as never);
+      vi.mocked(openai.chat.completions.create).mockResolvedValue({
+        choices: [{ message: { content: "Step 1: Gather materials..." } }],
+      } as never);
+      vi.mocked(storage.createInstructionCache).mockResolvedValue({} as never);
+
+      const res = await request(app)
+        .post("/api/items/1/suggestions/0/instructions")
+        .set("Authorization", "Bearer token")
+        .send({
+          suggestionTitle: "Yogurt Art",
+          suggestionType: "craft",
+          cacheId: 10,
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.instructions).toBeDefined();
+    });
+
+    it("generates pairing instructions", async () => {
+      vi.mocked(storage.getScannedItem).mockResolvedValue(mockItem as never);
+      vi.mocked(storage.getInstructionCache).mockResolvedValue(null as never);
+      vi.mocked(storage.getUserProfile).mockResolvedValue(null as never);
+      vi.mocked(openai.chat.completions.create).mockResolvedValue({
+        choices: [{ message: { content: "These pair well because..." } }],
+      } as never);
+
+      const res = await request(app)
+        .post("/api/items/1/suggestions/0/instructions")
+        .set("Authorization", "Bearer token")
+        .send({
+          suggestionTitle: "Yogurt and Granola",
+          suggestionType: "pairing",
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.instructions).toBeDefined();
+    });
+
+    it("skips caching when no cacheId provided", async () => {
+      vi.mocked(storage.getScannedItem).mockResolvedValue(mockItem as never);
+      vi.mocked(storage.getUserProfile).mockResolvedValue(null as never);
+      vi.mocked(openai.chat.completions.create).mockResolvedValue({
+        choices: [{ message: { content: "Step 1: Mix..." } }],
+      } as never);
+
+      const res = await request(app)
+        .post("/api/items/1/suggestions/0/instructions")
+        .set("Authorization", "Bearer token")
+        .send({
+          suggestionTitle: "Yogurt Bowl",
+          suggestionType: "recipe",
+        });
+
+      expect(res.status).toBe(200);
+      expect(storage.getInstructionCache).not.toHaveBeenCalled();
+      expect(storage.createInstructionCache).not.toHaveBeenCalled();
+    });
+
+    it("returns 500 on OpenAI error", async () => {
+      vi.mocked(storage.getScannedItem).mockResolvedValue(mockItem as never);
+      vi.mocked(storage.getUserProfile).mockResolvedValue(null as never);
+      vi.mocked(openai.chat.completions.create).mockRejectedValue(
+        new Error("API error"),
+      );
+
+      const res = await request(app)
+        .post("/api/items/1/suggestions/0/instructions")
+        .set("Authorization", "Bearer token")
+        .send({
+          suggestionTitle: "Yogurt Bowl",
+          suggestionType: "recipe",
+        });
+
+      expect(res.status).toBe(500);
+    });
+  });
+
+  describe("Suggestions with user profile", () => {
+    it("includes dietary context from user profile", async () => {
+      vi.mocked(storage.getScannedItem).mockResolvedValue(mockItem as never);
+      vi.mocked(storage.getUserProfile).mockResolvedValue({
+        allergies: [{ name: "peanuts" }],
+        dietType: "vegetarian",
+        cookingSkillLevel: "beginner",
+        cookingTimeAvailable: "30 min",
+      } as never);
+      vi.mocked(storage.getSuggestionCache).mockResolvedValue(null as never);
+      vi.mocked(openai.chat.completions.create).mockResolvedValue({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                suggestions: [{ type: "recipe", title: "Veggie Bowl" }],
+              }),
+            },
+          },
+        ],
+      } as never);
+      vi.mocked(storage.createSuggestionCache).mockResolvedValue({
+        id: 12,
+      } as never);
+
+      const res = await request(app)
+        .post("/api/items/1/suggestions")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(200);
+      expect(openai.chat.completions.create).toHaveBeenCalled();
+    });
+
+    it("returns 500 on OpenAI error for suggestions", async () => {
+      vi.mocked(storage.getScannedItem).mockResolvedValue(mockItem as never);
+      vi.mocked(storage.getUserProfile).mockResolvedValue(null as never);
+      vi.mocked(storage.getSuggestionCache).mockResolvedValue(null as never);
+      vi.mocked(openai.chat.completions.create).mockRejectedValue(
+        new Error("API error"),
+      );
+
+      const res = await request(app)
+        .post("/api/items/1/suggestions")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(500);
     });
   });
 });

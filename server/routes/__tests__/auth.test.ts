@@ -16,39 +16,9 @@ vi.mock("../../storage", () => ({
   },
 }));
 
-// Mock auth middleware — let most requests through, but keep generateToken functional
-vi.mock("../../middleware/auth", () => ({
-  requireAuth: (
-    req: express.Request,
-    _res: express.Response,
-    next: express.NextFunction,
-  ) => {
-    req.userId = "1";
-    next();
-  },
-  generateToken: vi.fn().mockReturnValue("mock-jwt-token"),
-  invalidateTokenVersionCache: vi.fn(),
-}));
+vi.mock("../../middleware/auth");
 
-// Disable rate limiting in tests
-vi.mock("express-rate-limit", () => ({
-  rateLimit:
-    () =>
-    (
-      _req: express.Request,
-      _res: express.Response,
-      next: express.NextFunction,
-    ) =>
-      next(),
-  default:
-    () =>
-    (
-      _req: express.Request,
-      _res: express.Response,
-      next: express.NextFunction,
-    ) =>
-      next(),
-}));
+vi.mock("express-rate-limit");
 
 vi.mock("../../lib/image-mime", () => ({
   detectImageMimeType: vi.fn(),
