@@ -357,39 +357,69 @@ if (!session || session.userId !== req.userId!) {
 
 ### Session Timeout Cleanup Pattern
 
-Track timeout references to prevent memory leaks from orphaned timers:
+Track timeout references and per-user counts to prevent memory leaks:
 
 ```typescript
 const sessionStore = new Map<string, AnalysisSession>();
 const sessionTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+const userSessionCount = new Map<string, number>();
 
 const SESSION_TIMEOUT = 30 * 60 * 1000; // 30 minutes
 
 /**
- * Clear session and its associated timeout.
+ * Clear session, its timeout, and decrement user count.
  * Call this whenever a session is deleted to prevent memory leaks.
  */
 function clearSession(sessionId: string): void {
+  const session = sessionStore.get(sessionId);
   const existingTimeout = sessionTimeouts.get(sessionId);
   if (existingTimeout) {
     clearTimeout(existingTimeout);
     sessionTimeouts.delete(sessionId);
   }
   sessionStore.delete(sessionId);
+  if (session) {
+    decrementUserCount(session.userId);
+  }
 }
 
 // When creating session:
 const timeoutId = setTimeout(() => {
-  sessionStore.delete(sessionId);
-  sessionTimeouts.delete(sessionId);
+  clearSession(sessionId); // Always use clearSession — never delete manually
 }, SESSION_TIMEOUT);
 sessionTimeouts.set(sessionId, timeoutId);
 
-// When session is accessed/confirmed (use clearSession):
+// When session is accessed/confirmed:
 clearSession(sessionId);
 ```
 
-**Why:** Orphaned timeouts consume memory and may reference stale data.
+**Why:** Orphaned timeouts consume memory and may reference stale data. Always route deletion through `clearSession()` so per-user counts stay consistent.
+
+### Test Internals Export Pattern
+
+Export internal module state for testing via a `_testInternals` object:
+
+```typescript
+// Prefix with underscore to signal non-public API
+export const _testInternals = {
+  analysisSessionStore,
+  userSessionCount,
+  MAX_SESSIONS_PER_USER,
+  clearSession,
+};
+```
+
+```typescript
+// In tests:
+import { _testInternals } from "../photos";
+
+beforeEach(() => {
+  _testInternals.analysisSessionStore.clear();
+  _testInternals.userSessionCount.clear();
+});
+```
+
+**Why:** Allows tests to manipulate internal state (pre-fill maps, verify cleanup) without exposing implementation details in the public API. The underscore prefix convention signals this is not for production consumers.
 
 ### Multer Error Handler Pattern
 
@@ -507,18 +537,24 @@ app.post("/api/auth/logout", requireAuth, async (req, res) => {
 
 // server/middleware/auth.ts — verify version on every request
 const payload = jwt.verify(token, jwtSecret);
-if (!isAccessTokenPayload(payload)) { /* 401 */ }
+if (!isAccessTokenPayload(payload)) {
+  /* 401 */
+}
 
 const cachedVersion = getCachedTokenVersion(payload.sub);
 if (cachedVersion !== undefined) {
   if (payload.tokenVersion !== cachedVersion) {
-    return res.status(401).json({ error: "Token has been revoked", code: "TOKEN_REVOKED" });
+    return res
+      .status(401)
+      .json({ error: "Token has been revoked", code: "TOKEN_REVOKED" });
   }
 } else {
   const user = await storage.getUser(payload.sub);
   setCachedTokenVersion(payload.sub, user.tokenVersion);
   if (payload.tokenVersion !== user.tokenVersion) {
-    return res.status(401).json({ error: "Token has been revoked", code: "TOKEN_REVOKED" });
+    return res
+      .status(401)
+      .json({ error: "Token has been revoked", code: "TOKEN_REVOKED" });
   }
 }
 ```
@@ -574,12 +610,12 @@ if (containsDangerousDietaryAdvice(result.text)) {
 
 **Components:**
 
-| Function | Purpose |
-| --- | --- |
-| `sanitizeUserInput(text)` | Strips control characters, truncates to 2000 chars, replaces known injection patterns with `[filtered]` |
-| `SYSTEM_PROMPT_BOUNDARY` | Constant appended to system prompts instructing the LLM to ignore role-change requests |
-| `validateAiResponse(response, schema)` | Validates LLM JSON output with `zod.safeParse()`, returns `null` on failure |
-| `containsDangerousDietaryAdvice(text)` | Detects extreme calorie restriction, eating disorder promotion, dangerous supplement advice |
+| Function                               | Purpose                                                                                                 |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `sanitizeUserInput(text)`              | Strips control characters, truncates to 2000 chars, replaces known injection patterns with `[filtered]` |
+| `SYSTEM_PROMPT_BOUNDARY`               | Constant appended to system prompts instructing the LLM to ignore role-change requests                  |
+| `validateAiResponse(response, schema)` | Validates LLM JSON output with `zod.safeParse()`, returns `null` on failure                             |
+| `containsDangerousDietaryAdvice(text)` | Detects extreme calorie restriction, eating disorder promotion, dangerous supplement advice             |
 
 **When to use:**
 

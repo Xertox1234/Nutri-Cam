@@ -33,6 +33,7 @@ interface AnalysisSession {
   userId: string;
   result: AnalysisResult;
   imageBase64?: string;
+  /** Timestamp used for diagnostics and future LRU eviction when migrating to Redis */
   createdAt: number;
 }
 const analysisSessionStore = new Map<string, AnalysisSession>();
@@ -104,7 +105,11 @@ const confirmPhotoSchema = z.object({
   analysisIntent: photoIntentSchema.optional(),
 });
 
-// Exported for testing only
+/**
+ * Internal state exported for testing only.
+ * Convention: prefix with underscore to signal non-public API.
+ * See docs/PATTERNS.md "Test Internals Export Pattern".
+ */
 export const _testInternals = {
   analysisSessionStore,
   userSessionCount,
@@ -160,6 +165,37 @@ export function register(app: Express): void {
           : "log";
         const intentConfig = INTENT_CONFIG[intent];
 
+        // Validate session bounds BEFORE calling paid APIs to avoid wasted credits
+        if (intentConfig.needsSession) {
+          if (req.file.buffer.length > MAX_IMAGE_SIZE_BYTES) {
+            return sendError(
+              res,
+              413,
+              "Image too large for analysis session",
+              "IMAGE_TOO_LARGE",
+            );
+          }
+
+          if (analysisSessionStore.size >= MAX_SESSIONS_GLOBAL) {
+            return sendError(
+              res,
+              429,
+              "Server is busy, please try again later",
+              "SESSION_LIMIT_REACHED",
+            );
+          }
+
+          const currentUserSessions = userSessionCount.get(req.userId!) ?? 0;
+          if (currentUserSessions >= MAX_SESSIONS_PER_USER) {
+            return sendError(
+              res,
+              429,
+              "Too many active analysis sessions. Please confirm or wait for existing sessions to expire.",
+              "USER_SESSION_LIMIT",
+            );
+          }
+        }
+
         // Convert buffer to base64
         const imageBase64 = req.file.buffer.toString("base64");
 
@@ -188,37 +224,7 @@ export function register(app: Express): void {
         // Generate session ID (needed for follow-ups and confirm)
         const sessionId = crypto.randomUUID();
         if (intentConfig.needsSession) {
-          // Validate image size before storing
-          const imageSizeBytes = Buffer.byteLength(imageBase64, "utf8");
-          if (imageSizeBytes > MAX_IMAGE_SIZE_BYTES) {
-            return sendError(
-              res,
-              413,
-              "Image too large for analysis session",
-              "IMAGE_TOO_LARGE",
-            );
-          }
-
-          // Enforce global session cap
-          if (analysisSessionStore.size >= MAX_SESSIONS_GLOBAL) {
-            return sendError(
-              res,
-              429,
-              "Server is busy, please try again later",
-              "SESSION_LIMIT_REACHED",
-            );
-          }
-
-          // Enforce per-user session cap
           const currentUserSessions = userSessionCount.get(req.userId!) ?? 0;
-          if (currentUserSessions >= MAX_SESSIONS_PER_USER) {
-            return sendError(
-              res,
-              429,
-              "Too many active analysis sessions. Please confirm or wait for existing sessions to expire.",
-              "USER_SESSION_LIMIT",
-            );
-          }
 
           analysisSessionStore.set(sessionId, {
             userId: req.userId!,
