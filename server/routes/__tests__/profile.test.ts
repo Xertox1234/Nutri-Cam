@@ -9,6 +9,7 @@ vi.mock("../../storage", () => ({
   storage: {
     getUserProfile: vi.fn(),
     updateUserProfile: vi.fn(),
+    createUserProfile: vi.fn(),
     invalidateSuggestionCacheForUser: vi.fn().mockResolvedValue(undefined),
   },
 }));
@@ -158,6 +159,119 @@ describe("Profile Routes", () => {
         .send({ dietType: "vegan" });
 
       expect(res.status).toBe(404);
+    });
+
+    it("returns 400 for invalid field values", async () => {
+      const res = await request(app)
+        .put("/api/user/dietary-profile")
+        .set("Authorization", "Bearer token")
+        .send({ dietType: 12345 });
+
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 500 when storage throws", async () => {
+      vi.mocked(storage.updateUserProfile).mockRejectedValue(
+        new Error("DB error"),
+      );
+
+      const res = await request(app)
+        .put("/api/user/dietary-profile")
+        .set("Authorization", "Bearer token")
+        .send({ dietType: "vegan" });
+
+      expect(res.status).toBe(500);
+    });
+  });
+
+  describe("GET /api/user/dietary-profile (error)", () => {
+    it("returns 500 when storage throws", async () => {
+      vi.mocked(storage.getUserProfile).mockRejectedValue(
+        new Error("DB error"),
+      );
+
+      const res = await request(app)
+        .get("/api/user/dietary-profile")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(500);
+    });
+  });
+
+  describe("POST /api/user/dietary-profile", () => {
+    it("creates profile via transaction and returns 201", async () => {
+      const { db } = await import("../../db");
+      vi.mocked(db.transaction).mockImplementation(async (cb) => {
+        // Mock the transaction callback with a fake tx
+        const fakeTx = {
+          select: () => ({
+            from: () => ({
+              where: () => Promise.resolve([]),
+            }),
+          }),
+          insert: () => ({
+            values: () => ({
+              returning: () => Promise.resolve([mockProfile]),
+            }),
+          }),
+          update: () => ({
+            set: () => ({
+              where: () => Promise.resolve(),
+            }),
+          }),
+        };
+        return cb(fakeTx as never);
+      });
+
+      const res = await request(app)
+        .post("/api/user/dietary-profile")
+        .set("Authorization", "Bearer token")
+        .send({
+          allergies: [{ name: "peanuts", severity: "mild" }],
+          healthConditions: [],
+          dietType: "omnivore",
+          foodDislikes: [],
+          primaryGoal: "maintain",
+          activityLevel: "moderate",
+          householdSize: 2,
+          cuisinePreferences: ["italian"],
+          cookingSkillLevel: "intermediate",
+          cookingTimeAvailable: "30min",
+        });
+
+      expect(res.status).toBe(201);
+    });
+
+    it("returns 400 for invalid body", async () => {
+      const res = await request(app)
+        .post("/api/user/dietary-profile")
+        .set("Authorization", "Bearer token")
+        .send({ dietType: 12345 });
+
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 500 when transaction fails", async () => {
+      const { db } = await import("../../db");
+      vi.mocked(db.transaction).mockRejectedValue(new Error("TX error"));
+
+      const res = await request(app)
+        .post("/api/user/dietary-profile")
+        .set("Authorization", "Bearer token")
+        .send({
+          allergies: [],
+          healthConditions: [],
+          dietType: "omnivore",
+          foodDislikes: [],
+          primaryGoal: "maintain",
+          activityLevel: "moderate",
+          householdSize: 1,
+          cuisinePreferences: [],
+          cookingSkillLevel: "beginner",
+          cookingTimeAvailable: "15min",
+        });
+
+      expect(res.status).toBe(500);
     });
   });
 });

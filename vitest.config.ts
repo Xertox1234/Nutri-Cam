@@ -17,6 +17,7 @@ export default defineConfig({
       reporter: ["text", "json", "html"],
       exclude: ["node_modules", "server_dist", "**/*.test.ts"],
     },
+    testTimeout: 10000,
     setupFiles: ["./test/setup.ts"],
   },
   resolve: {

@@ -15,6 +15,8 @@ vi.mock("../../storage", () => ({
   storage: {
     getSubscriptionStatus: vi.fn(),
     getDailyScanCount: vi.fn(),
+    createScannedItem: vi.fn(),
+    createDailyLog: vi.fn(),
   },
 }));
 
@@ -148,22 +150,35 @@ describe("Photos Routes", () => {
       expect(res.status).toBe(429);
     });
 
-    it("returns 400 when no photo provided", async () => {
-      // Override the multer mock for this test to not attach a file
+    it("returns 500 when analyzePhoto throws", async () => {
       vi.mocked(storage.getDailyScanCount).mockResolvedValue(0 as never);
       vi.mocked(storage.getSubscriptionStatus).mockResolvedValue({
         tier: "premium",
       } as never);
+      vi.mocked(analyzePhoto).mockRejectedValue(new Error("Vision API down"));
 
-      // The multer mock always attaches a file so we test the opposite path
-      // by checking photo analysis is called (valid path)
+      const res = await request(app)
+        .post("/api/photos/analyze")
+        .set("Authorization", "Bearer token")
+        .attach("photo", Buffer.from("fake"), "test.jpg");
+
+      expect(res.status).toBe(500);
+    });
+
+    it("returns needsFollowUp and followUpQuestions in response", async () => {
+      vi.mocked(storage.getDailyScanCount).mockResolvedValue(0 as never);
+      vi.mocked(storage.getSubscriptionStatus).mockResolvedValue({
+        tier: "premium",
+      } as never);
       vi.mocked(analyzePhoto).mockResolvedValue({
-        foods: [],
-        overallConfidence: 0.5,
+        foods: [{ name: "Apple Pie", quantity: "1 slice", confidence: 0.4 }],
+        overallConfidence: 0.4,
       } as never);
       vi.mocked(batchNutritionLookup).mockResolvedValue(new Map() as never);
-      vi.mocked(needsFollowUp).mockReturnValue(false);
-      vi.mocked(getFollowUpQuestions).mockReturnValue([]);
+      vi.mocked(needsFollowUp).mockReturnValue(true);
+      vi.mocked(getFollowUpQuestions).mockReturnValue([
+        "What type of apple pie?",
+      ]);
 
       const res = await request(app)
         .post("/api/photos/analyze")
@@ -171,6 +186,9 @@ describe("Photos Routes", () => {
         .attach("photo", Buffer.from("fake"), "test.jpg");
 
       expect(res.status).toBe(200);
+      expect(res.body.needsFollowUp).toBe(true);
+      expect(res.body.followUpQuestions).toEqual(["What type of apple pie?"]);
+      expect(res.body.overallConfidence).toBe(0.4);
     });
   });
 
@@ -202,6 +220,76 @@ describe("Photos Routes", () => {
         .send({});
 
       expect(res.status).toBe(400);
+    });
+
+    it("creates scanned item and daily log via transaction", async () => {
+      const { db } = await import("../../db");
+      const mockItem = {
+        id: 42,
+        userId: "1",
+        productName: "Apple",
+        calories: "95",
+        protein: "0",
+        carbs: "25",
+        fat: "0",
+        sourceType: "photo",
+      };
+
+      vi.mocked(db.transaction).mockImplementation(async (cb) => {
+        const fakeTx = {
+          insert: () => ({
+            values: () => ({
+              returning: () => Promise.resolve([mockItem]),
+            }),
+          }),
+        };
+        return cb(fakeTx as never);
+      });
+
+      const res = await request(app)
+        .post("/api/photos/confirm")
+        .set("Authorization", "Bearer token")
+        .send({
+          sessionId: "test-session-id",
+          foods: [
+            {
+              name: "Apple",
+              quantity: "1 medium",
+              calories: 95,
+              protein: 0,
+              carbs: 25,
+              fat: 0,
+            },
+          ],
+          mealType: "snack",
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.productName).toBe("Apple");
+    });
+
+    it("returns 500 when transaction fails", async () => {
+      const { db } = await import("../../db");
+      vi.mocked(db.transaction).mockRejectedValue(new Error("DB error"));
+
+      const res = await request(app)
+        .post("/api/photos/confirm")
+        .set("Authorization", "Bearer token")
+        .send({
+          sessionId: "test-session-id",
+          foods: [
+            {
+              name: "Apple",
+              quantity: "1",
+              calories: 95,
+              protein: 0,
+              carbs: 25,
+              fat: 0,
+            },
+          ],
+        });
+
+      expect(res.status).toBe(500);
     });
   });
 });
