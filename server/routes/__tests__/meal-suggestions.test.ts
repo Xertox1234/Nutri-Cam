@@ -29,35 +29,9 @@ vi.mock("../../utils/profile-hash", () => ({
   calculateProfileHash: vi.fn(() => "hash-123"),
 }));
 
-vi.mock("../../middleware/auth", () => ({
-  requireAuth: (
-    req: express.Request,
-    _res: express.Response,
-    next: express.NextFunction,
-  ) => {
-    req.userId = "1";
-    next();
-  },
-}));
+vi.mock("../../middleware/auth");
 
-vi.mock("express-rate-limit", () => ({
-  rateLimit:
-    () =>
-    (
-      _req: express.Request,
-      _res: express.Response,
-      next: express.NextFunction,
-    ) =>
-      next(),
-  default:
-    () =>
-    (
-      _req: express.Request,
-      _res: express.Response,
-      next: express.NextFunction,
-    ) =>
-      next(),
-}));
+vi.mock("express-rate-limit");
 
 function createApp() {
   const app = express();
@@ -188,6 +162,103 @@ describe("Meal Suggestions Routes", () => {
         .send({ date: "2025-01-01", mealType: "brunch" });
 
       expect(res.status).toBe(400);
+    });
+
+    it("returns 500 on storage error", async () => {
+      vi.mocked(storage.getSubscriptionStatus).mockResolvedValue({
+        tier: "premium",
+      } as never);
+      vi.mocked(storage.getDailyMealSuggestionCount).mockResolvedValue(
+        0 as never,
+      );
+      vi.mocked(storage.getUserProfile).mockRejectedValue(
+        new Error("DB error"),
+      );
+
+      const res = await request(app)
+        .post("/api/meal-plan/suggest")
+        .set("Authorization", "Bearer token")
+        .send({ date: "2025-01-01", mealType: "breakfast" });
+
+      expect(res.status).toBe(500);
+    });
+
+    function mockBudgetSetup(mealPlanItems: unknown[]) {
+      vi.mocked(storage.getSubscriptionStatus).mockResolvedValue({
+        tier: "premium",
+      } as never);
+      vi.mocked(storage.getDailyMealSuggestionCount).mockResolvedValue(
+        0 as never,
+      );
+      vi.mocked(storage.getUserProfile).mockResolvedValue(null as never);
+      vi.mocked(storage.getUser).mockResolvedValue({
+        dailyCalorieGoal: 2000,
+      } as never);
+      vi.mocked(storage.getMealPlanItems).mockResolvedValue(
+        mealPlanItems as never,
+      );
+      vi.mocked(storage.getMealSuggestionCache).mockResolvedValue(
+        null as never,
+      );
+      vi.mocked(storage.getDailySummary).mockResolvedValue({
+        totalCalories: "0",
+        totalProtein: "0",
+        totalCarbs: "0",
+        totalFat: "0",
+      } as never);
+      vi.mocked(generateMealSuggestions).mockResolvedValue([] as never);
+      vi.mocked(storage.createMealSuggestionCache).mockResolvedValue(
+        {} as never,
+      );
+    }
+
+    it("accounts for existing meal plan items with recipe data in budget", async () => {
+      mockBudgetSetup([
+        {
+          mealType: "breakfast",
+          servings: "2",
+          recipe: {
+            title: "Oatmeal",
+            caloriesPerServing: "300",
+            proteinPerServing: "10",
+            carbsPerServing: "50",
+            fatPerServing: "5",
+          },
+          scannedItem: null,
+        },
+      ]);
+
+      const res = await request(app)
+        .post("/api/meal-plan/suggest")
+        .set("Authorization", "Bearer token")
+        .send({ date: "2025-01-01", mealType: "lunch" });
+
+      expect(res.status).toBe(200);
+      expect(generateMealSuggestions).toHaveBeenCalled();
+    });
+
+    it("accounts for existing meal plan items with scannedItem data in budget", async () => {
+      mockBudgetSetup([
+        {
+          mealType: "snack",
+          servings: "1",
+          recipe: null,
+          scannedItem: {
+            productName: "Apple",
+            calories: "95",
+            protein: "0",
+            carbs: "25",
+            fat: "0",
+          },
+        },
+      ]);
+
+      const res = await request(app)
+        .post("/api/meal-plan/suggest")
+        .set("Authorization", "Bearer token")
+        .send({ date: "2025-01-01", mealType: "lunch" });
+
+      expect(res.status).toBe(200);
     });
   });
 });
