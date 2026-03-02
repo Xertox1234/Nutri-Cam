@@ -21,7 +21,6 @@ import {
   scannedItems,
   communityRecipes,
 } from "@shared/schema";
-import { eq } from "drizzle-orm";
 
 // Mock the db import so the storage functions use our test transaction
 vi.mock("../../db", () => ({
@@ -91,7 +90,10 @@ async function createTestMealPlanRecipe(
 }
 
 /** Create a scanned item for use with meal plan items. */
-async function createTestScannedItem(userId: string) {
+async function createTestScannedItem(
+  userId: string,
+  overrides: Partial<schema.InsertScannedItem> = {},
+) {
   const [item] = await tx
     .insert(scannedItems)
     .values({
@@ -101,6 +103,7 @@ async function createTestScannedItem(userId: string) {
       protein: "10",
       carbs: "30",
       fat: "8",
+      ...overrides,
     })
     .returning();
   return item;
@@ -576,19 +579,15 @@ describe("meal-plans storage", () => {
     });
 
     it("excludes soft-deleted scanned items from enrichment", async () => {
-      const scanned = await createTestScannedItem(testUser.id);
+      const scanned = await createTestScannedItem(testUser.id, {
+        discardedAt: new Date(),
+      });
       await addMealPlanItem({
         userId: testUser.id,
         scannedItemId: scanned.id,
         plannedDate: "2025-06-15",
         mealType: "lunch",
       });
-
-      // Soft-delete the scanned item
-      await tx
-        .update(scannedItems)
-        .set({ discardedAt: new Date() })
-        .where(eq(scannedItems.id, scanned.id));
 
       const items = await getMealPlanItems(
         testUser.id,
@@ -639,19 +638,15 @@ describe("meal-plans storage", () => {
     });
 
     it("returns null scannedItem when linked scanned item is soft-deleted", async () => {
-      const scanned = await createTestScannedItem(testUser.id);
+      const scanned = await createTestScannedItem(testUser.id, {
+        discardedAt: new Date(),
+      });
       const item = await addMealPlanItem({
         userId: testUser.id,
         scannedItemId: scanned.id,
         plannedDate: "2025-06-15",
         mealType: "lunch",
       });
-
-      // Soft-delete the scanned item
-      await tx
-        .update(scannedItems)
-        .set({ discardedAt: new Date() })
-        .where(eq(scannedItems.id, scanned.id));
 
       const found = await getMealPlanItemById(item.id, testUser.id);
       expect(found).toBeDefined();
@@ -1338,6 +1333,51 @@ describe("meal-plans storage", () => {
 
       expect(Number(summary.plannedCalories)).toBe(0);
       expect(Number(summary.plannedItemCount)).toBe(0);
+    });
+
+    it("includes nutrition from scanned-item-backed meal plan items", async () => {
+      const scanned = await createTestScannedItem(testUser.id);
+      await addMealPlanItem({
+        userId: testUser.id,
+        scannedItemId: scanned.id,
+        plannedDate: "2025-06-15",
+        mealType: "snack",
+        servings: "1",
+      });
+
+      const summary = await getPlannedNutritionSummary(
+        testUser.id,
+        new Date("2025-06-15"),
+      );
+
+      // createTestScannedItem uses: calories=250, protein=10, carbs=30, fat=8
+      expect(Number(summary.plannedCalories)).toBeCloseTo(250, 0);
+      expect(Number(summary.plannedProtein)).toBeCloseTo(10, 0);
+      expect(Number(summary.plannedCarbs)).toBeCloseTo(30, 0);
+      expect(Number(summary.plannedFat)).toBeCloseTo(8, 0);
+      expect(Number(summary.plannedItemCount)).toBe(1);
+    });
+
+    it("excludes soft-deleted scanned items from planned nutrition", async () => {
+      const scanned = await createTestScannedItem(testUser.id, {
+        discardedAt: new Date(),
+      });
+      await addMealPlanItem({
+        userId: testUser.id,
+        scannedItemId: scanned.id,
+        plannedDate: "2025-06-15",
+        mealType: "snack",
+        servings: "1",
+      });
+
+      const summary = await getPlannedNutritionSummary(
+        testUser.id,
+        new Date("2025-06-15"),
+      );
+
+      // Item still counted but contributes 0 nutrition
+      expect(Number(summary.plannedItemCount)).toBe(1);
+      expect(Number(summary.plannedCalories)).toBe(0);
     });
   });
 

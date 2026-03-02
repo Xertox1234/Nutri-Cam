@@ -35,6 +35,8 @@ import {
   or,
   ilike,
   isNull,
+  inArray,
+  notInArray,
 } from "drizzle-orm";
 import { escapeLike, getDayBounds } from "./helpers";
 
@@ -268,12 +270,7 @@ export async function getMealPlanItems(
     const recipes = await db
       .select()
       .from(mealPlanRecipes)
-      .where(
-        sql`${mealPlanRecipes.id} IN (${sql.join(
-          recipeIds.map((id) => sql`${id}`),
-          sql`, `,
-        )})`,
-      );
+      .where(inArray(mealPlanRecipes.id, recipeIds));
     for (const r of recipes) recipesMap.set(r.id, r);
   }
 
@@ -283,10 +280,7 @@ export async function getMealPlanItems(
       .from(scannedItems)
       .where(
         and(
-          sql`${scannedItems.id} IN (${sql.join(
-            scannedItemIds.map((id) => sql`${id}`),
-            sql`, `,
-          )})`,
+          inArray(scannedItems.id, scannedItemIds),
           isNull(scannedItems.discardedAt),
         ),
       );
@@ -605,36 +599,52 @@ export async function getPlannedNutritionSummary(
     eq(mealPlanItems.plannedDate, dateStr),
   ];
   if (excludeIds.length > 0) {
-    conditions.push(
-      sql`${mealPlanItems.id} NOT IN (${sql.join(
-        excludeIds.map((id) => sql`${id}`),
-        sql`, `,
-      )})`,
-    );
+    conditions.push(notInArray(mealPlanItems.id, excludeIds));
   }
 
+  // LEFT JOIN both recipes and scanned items so nutrition from either source
+  // is included. Soft-deleted scanned items are excluded via the join condition.
   const result = await db
     .select({
       plannedCalories: sql<number>`COALESCE(SUM(
-        COALESCE(CAST(${mealPlanRecipes.caloriesPerServing} AS DECIMAL), 0)
-        * CAST(${mealPlanItems.servings} AS DECIMAL)
+        COALESCE(
+          CAST(${mealPlanRecipes.caloriesPerServing} AS DECIMAL),
+          CAST(${scannedItems.calories} AS DECIMAL),
+          0
+        ) * CAST(${mealPlanItems.servings} AS DECIMAL)
       ), 0)`,
       plannedProtein: sql<number>`COALESCE(SUM(
-        COALESCE(CAST(${mealPlanRecipes.proteinPerServing} AS DECIMAL), 0)
-        * CAST(${mealPlanItems.servings} AS DECIMAL)
+        COALESCE(
+          CAST(${mealPlanRecipes.proteinPerServing} AS DECIMAL),
+          CAST(${scannedItems.protein} AS DECIMAL),
+          0
+        ) * CAST(${mealPlanItems.servings} AS DECIMAL)
       ), 0)`,
       plannedCarbs: sql<number>`COALESCE(SUM(
-        COALESCE(CAST(${mealPlanRecipes.carbsPerServing} AS DECIMAL), 0)
-        * CAST(${mealPlanItems.servings} AS DECIMAL)
+        COALESCE(
+          CAST(${mealPlanRecipes.carbsPerServing} AS DECIMAL),
+          CAST(${scannedItems.carbs} AS DECIMAL),
+          0
+        ) * CAST(${mealPlanItems.servings} AS DECIMAL)
       ), 0)`,
       plannedFat: sql<number>`COALESCE(SUM(
-        COALESCE(CAST(${mealPlanRecipes.fatPerServing} AS DECIMAL), 0)
-        * CAST(${mealPlanItems.servings} AS DECIMAL)
+        COALESCE(
+          CAST(${mealPlanRecipes.fatPerServing} AS DECIMAL),
+          CAST(${scannedItems.fat} AS DECIMAL),
+          0
+        ) * CAST(${mealPlanItems.servings} AS DECIMAL)
       ), 0)`,
       plannedItemCount: sql<number>`COUNT(${mealPlanItems.id})`,
     })
     .from(mealPlanItems)
     .leftJoin(mealPlanRecipes, eq(mealPlanItems.recipeId, mealPlanRecipes.id))
+    .leftJoin(
+      scannedItems,
+      and(
+        eq(mealPlanItems.scannedItemId, scannedItems.id),
+        isNull(scannedItems.discardedAt),
+      ),
+    )
     .where(and(...conditions));
 
   return (
@@ -679,10 +689,5 @@ export async function getMealPlanIngredientsForDateRange(
   return db
     .select()
     .from(recipeIngredients)
-    .where(
-      sql`${recipeIngredients.recipeId} IN (${sql.join(
-        recipeIds.map((id) => sql`${id}`),
-        sql`, `,
-      )})`,
-    );
+    .where(inArray(recipeIngredients.recipeId, recipeIds));
 }
