@@ -459,7 +459,7 @@ describe("cache storage", () => {
 
   describe("getDailyMealSuggestionCount", () => {
     it("counts entries created today for the user", async () => {
-      await createMealSuggestionCache(
+      const entry1 = await createMealSuggestionCache(
         "daily_1",
         testUser.id,
         [sampleMealSuggestion],
@@ -472,7 +472,12 @@ describe("cache storage", () => {
         futureDate(),
       );
 
-      const count = await getDailyMealSuggestionCount(testUser.id, new Date());
+      // Use createdAt from the DB row so the query date matches the
+      // PostgreSQL CURRENT_TIMESTAMP regardless of timezone differences.
+      const count = await getDailyMealSuggestionCount(
+        testUser.id,
+        entry1.createdAt,
+      );
       expect(count).toBe(2);
     });
 
@@ -483,14 +488,17 @@ describe("cache storage", () => {
 
     it("does not count entries from other users", async () => {
       const otherUser = await createTestUser(tx);
-      await createMealSuggestionCache(
+      const otherEntry = await createMealSuggestionCache(
         "other_daily",
         otherUser.id,
         [sampleMealSuggestion],
         futureDate(),
       );
 
-      const count = await getDailyMealSuggestionCount(testUser.id, new Date());
+      const count = await getDailyMealSuggestionCount(
+        testUser.id,
+        otherEntry.createdAt,
+      );
       expect(count).toBe(0);
     });
   });
