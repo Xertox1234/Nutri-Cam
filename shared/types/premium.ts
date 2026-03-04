@@ -66,7 +66,7 @@ export const TIER_FEATURES: Record<SubscriptionTier, PremiumFeatures> = {
     dailyNlpLogs: 5,
     healthKitSync: false,
     adaptiveGoals: false,
-    aiCoach: false,
+    aiCoach: true,
     dailyCoachMessages: 3,
     advancedFasting: false,
     glp1Companion: false,

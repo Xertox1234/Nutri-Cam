@@ -22,6 +22,7 @@ import {
   useChatConversations,
   useCreateConversation,
   useDeleteConversation,
+  type ChatConversation,
 } from "@/hooks/useChat";
 import {
   Spacing,
@@ -56,14 +57,6 @@ function formatRelativeTime(dateStr: string): string {
   });
 }
 
-interface ConversationItem {
-  id: number;
-  userId: string;
-  title: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export default function ChatListScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
@@ -86,8 +79,19 @@ export default function ChatListScreen() {
     try {
       const conversation = await createConversation.mutateAsync(undefined);
       navigation.navigate("Chat", { conversationId: conversation.id });
-    } catch {
-      Alert.alert("Error", "Could not create conversation. Please try again.");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "";
+      let userMessage: string;
+      if (msg.startsWith("401:")) {
+        userMessage = "Session expired. Please log in again.";
+      } else if (msg.startsWith("429:")) {
+        userMessage = "Too many requests. Please wait a moment.";
+      } else if (msg.includes("Network") || msg.includes("fetch")) {
+        userMessage = "Unable to reach server. Check your connection.";
+      } else {
+        userMessage = "Could not create conversation. Please try again.";
+      }
+      Alert.alert("Error", userMessage);
     }
   }, [haptics, createConversation, navigation]);
 
@@ -115,7 +119,7 @@ export default function ChatListScreen() {
   );
 
   const renderItem = useCallback(
-    ({ item, index }: { item: ConversationItem; index: number }) => (
+    ({ item, index }: { item: ChatConversation; index: number }) => (
       <Animated.View
         entering={
           reducedMotion ? undefined : FadeInDown.delay(index * 50).duration(300)
@@ -163,7 +167,12 @@ export default function ChatListScreen() {
               {formatRelativeTime(item.updatedAt)}
             </ThemedText>
           </View>
-          <Feather name="chevron-right" size={18} color={theme.textSecondary} />
+          <Feather
+            name="chevron-right"
+            size={18}
+            color={theme.textSecondary}
+            accessible={false}
+          />
         </Pressable>
       </Animated.View>
     ),

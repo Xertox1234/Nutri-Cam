@@ -3,7 +3,7 @@ import { apiRequest, getApiUrl } from "@/lib/query-client";
 import { tokenStorage } from "@/lib/token-storage";
 import { useCallback, useState } from "react";
 
-interface ChatConversation {
+export interface ChatConversation {
   id: number;
   userId: string;
   title: string;
@@ -64,12 +64,16 @@ export function useSendMessage(conversationId: number | null) {
   const queryClient = useQueryClient();
   const [streamingContent, setStreamingContent] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
+  const [streamError, setStreamError] = useState(false);
 
   const sendMessage = useCallback(
     async (content: string) => {
       if (!conversationId) return;
       setIsStreaming(true);
       setStreamingContent("");
+      setStreamError(false);
+
+      let receivedDone = false;
 
       try {
         const baseUrl = getApiUrl();
@@ -113,6 +117,7 @@ export function useSendMessage(conversationId: number | null) {
                   setStreamingContent(accumulated);
                 }
                 if (data.done) {
+                  receivedDone = true;
                   // Refresh messages
                   queryClient.invalidateQueries({
                     queryKey: [
@@ -141,6 +146,17 @@ export function useSendMessage(conversationId: number | null) {
             }
           }
         }
+
+        // Stream ended — check if it completed normally
+        if (!receivedDone && accumulated.length > 0) {
+          setStreamError(true);
+          queryClient.invalidateQueries({
+            queryKey: [`/api/chat/conversations/${conversationId}/messages`],
+          });
+          queryClient.invalidateQueries({
+            queryKey: ["/api/chat/conversations"],
+          });
+        }
       } finally {
         setIsStreaming(false);
         setStreamingContent("");
@@ -149,5 +165,5 @@ export function useSendMessage(conversationId: number | null) {
     [conversationId, queryClient],
   );
 
-  return { sendMessage, streamingContent, isStreaming };
+  return { sendMessage, streamingContent, isStreaming, streamError };
 }
