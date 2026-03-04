@@ -83,6 +83,7 @@ This document captures established patterns for the NutriScan codebase. Follow t
   - [Unsaved Changes Navigation Guard](#unsaved-changes-navigation-guard)
   - [Form State Hook with Summaries and isDirty](#form-state-hook-with-summaries-and-isdirty)
   - [Auto-Dismiss Snackbar with useRef Timer](#auto-dismiss-snackbar-with-useref-timer)
+  - [Ref Guard for One-Shot Effects](#ref-guard-for-one-shot-effects)
 - [External API Parsing Patterns](#external-api-parsing-patterns)
   - [ISO 8601 Duration Parsing](#iso-8601-duration-parsing)
   - [Intent-Driven Config Object](#intent-driven-config-object)
@@ -123,6 +124,7 @@ This document captures established patterns for the NutriScan codebase. Follow t
   - [TanStack Query CRUD Hook Module](#tanstack-query-crud-hook-module)
   - [FormData Upload Mutation](#formdata-upload-mutation)
   - [SSE Client-Side Consumption with ReadableStream](#sse-client-side-consumption-with-readablestream)
+  - [SSE Stream Drop Detection and Recovery](#sse-stream-drop-detection-and-recovery)
   - [refetchInterval for Live-Updating Queries](#refetchinterval-for-live-updating-queries)
 - [Database Safety Patterns](#database-safety-patterns)
   - [Safe JSONB Array Access with Array.isArray Guard](#safe-jsonb-array-access-with-arrayisarray-guard)
@@ -4933,6 +4935,42 @@ useEffect(() => {
 - `client/components/ChatBubble.tsx` — typing indicator dots
 - `client/components/VoiceLogButton.tsx` — recording pulse
 
+### Ref Guard for One-Shot Effects
+
+When a `useEffect` should fire a side effect exactly once per boolean transition (e.g., show a toast when an error flag becomes `true`), use a ref to prevent duplicate firings. Without the guard, the effect re-runs whenever any dependency in the array changes — even if the triggering boolean hasn't toggled.
+
+```tsx
+// client/screens/ChatScreen.tsx — one-shot toast on stream error
+const shownStreamErrorRef = useRef(false);
+
+useEffect(() => {
+  if (streamError && !shownStreamErrorRef.current) {
+    shownStreamErrorRef.current = true;
+    toast.error("Response was interrupted.");
+  }
+  if (!streamError) {
+    shownStreamErrorRef.current = false;
+  }
+}, [streamError, toast]);
+```
+
+**Why:** React's `useEffect` fires whenever any value in the dependency array changes reference. If `toast` gets a new reference (e.g., context provider re-renders) while `streamError` is still `true`, the effect body runs again — showing a duplicate toast. The ref tracks whether the side effect has already been dispatched for the current `true` cycle and resets when the flag returns to `false`.
+
+**When to use:**
+
+- Showing a toast or alert in response to a boolean error/success flag
+- Triggering a one-time analytics event when a state condition is met
+- Any `useEffect` where a side effect should fire once per `false → true` transition, not on every re-render while the value remains `true`
+
+**When NOT to use:**
+
+- Effects that should legitimately re-run on every dependency change (e.g., updating derived state)
+- Effects gated on values that naturally reset immediately (no window for duplicate fires)
+
+**References:**
+
+- `client/screens/ChatScreen.tsx` — stream error toast with `shownStreamErrorRef`
+
 ### WCAG Color Contrast
 
 Light mode color tokens must maintain at least 4.5:1 contrast ratio against white backgrounds (WCAG 2.1 AA). Current compliant values:
@@ -7445,6 +7483,78 @@ export function useSendMessage(conversationId: number | null) {
 
 - `client/hooks/useChat.ts` — `useSendMessage()`
 - Server-side: see "SSE Streaming for AI Responses" in Route Module Patterns
+
+### SSE Stream Drop Detection and Recovery
+
+When an SSE stream drops mid-response (network interruption, server crash, upstream LLM timeout), the client must detect the incomplete stream and recover gracefully. Track whether the server sent its terminal `{ done: true }` event — if the stream reader finishes without it, the response was interrupted.
+
+```typescript
+// client/hooks/useChat.ts — stream drop detection
+const [streamError, setStreamError] = useState(false);
+
+const sendMessage = useCallback(
+  async (content: string) => {
+    setStreamError(false);
+    let receivedDone = false;
+
+    try {
+      // ... fetch + stream reading loop ...
+      // Inside the data parser:
+      if (data.done) {
+        receivedDone = true;
+        queryClient.invalidateQueries({ queryKey: [messagesKey] });
+      }
+
+      // After the reader loop exits:
+      if (!receivedDone && accumulated.length > 0) {
+        setStreamError(true);
+        // Server saves partial responses — fetch them
+        queryClient.invalidateQueries({ queryKey: [messagesKey] });
+      }
+    } finally {
+      setIsStreaming(false);
+      setStreamingContent("");
+    }
+  },
+  [conversationId, queryClient],
+);
+
+return { sendMessage, streamingContent, isStreaming, streamError };
+```
+
+The consumer component uses a ref guard to show the error toast exactly once per drop (see [Ref Guard for One-Shot Effects](#ref-guard-for-one-shot-effects)):
+
+```typescript
+// client/screens/ChatScreen.tsx — stream error toast
+const shownStreamErrorRef = useRef(false);
+
+useEffect(() => {
+  if (streamError && !shownStreamErrorRef.current) {
+    shownStreamErrorRef.current = true;
+    toast.error("Response was interrupted. Partial response may be visible.");
+  }
+  if (!streamError) {
+    shownStreamErrorRef.current = false;
+  }
+}, [streamError, toast]);
+```
+
+**Key elements:**
+
+1. **`receivedDone` flag** — local variable in the send function; only set to `true` when the server's terminal `{ done: true }` event is parsed
+2. **Check after reader loop** — `if (!receivedDone && accumulated.length > 0)` catches drops that occurred after content started flowing
+3. **Query invalidation on drop** — the server persists partial AI responses; invalidating the messages query fetches them so the user sees what was received
+4. **`streamError` state** — returned from the hook so consumers can show a notification
+5. **Reset on next send** — `setStreamError(false)` at the top of `sendMessage` clears stale error state
+
+**When to use:** Any SSE consumer where the server saves partial progress and the client needs to recover incomplete responses.
+
+**When NOT to use:** Fire-and-forget streams where partial data has no value and should simply be discarded.
+
+**References:**
+
+- `client/hooks/useChat.ts` — `useSendMessage()` stream drop detection
+- `client/screens/ChatScreen.tsx` — toast notification with ref guard
 
 ### refetchInterval for Live-Updating Queries
 

@@ -12,6 +12,7 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { ThemedText } from "@/components/ThemedText";
+import { MarkdownText } from "@/components/MarkdownText";
 import { useTheme } from "@/hooks/useTheme";
 import { useAccessibility } from "@/hooks/useAccessibility";
 import { Spacing, FontFamily, BorderRadius } from "@/constants/theme";
@@ -76,10 +77,7 @@ function TypingIndicator() {
         accessibilityLabel="Coach is typing"
         accessibilityRole="text"
       >
-        <ThemedText
-          type="body"
-          style={[styles.reducedMotionDots, { color: dotColor }]}
-        >
+        <ThemedText type="body" style={{ color: dotColor }}>
           ...
         </ThemedText>
       </View>
@@ -160,15 +158,18 @@ export function ChatBubble({ role, content, isStreaming }: ChatBubbleProps) {
               ],
         ]}
       >
-        <ThemedText
-          type="body"
-          style={[
-            styles.bubbleText,
-            isUser ? { color: theme.buttonText } : { color: theme.text },
-          ]}
-        >
-          {content}
-        </ThemedText>
+        {isUser ? (
+          <ThemedText
+            type="body"
+            style={[styles.bubbleText, { color: theme.buttonText }]}
+          >
+            {content}
+          </ThemedText>
+        ) : (
+          <MarkdownText style={{ ...styles.bubbleText, color: theme.text }}>
+            {content}
+          </MarkdownText>
+        )}
       </View>
     </Animated.View>
   );
@@ -215,5 +216,4 @@ const styles = StyleSheet.create({
     height: 7,
     borderRadius: 3.5,
   },
-  reducedMotionDots: {},
 });

@@ -159,20 +159,22 @@ describe("Chat Routes", () => {
       expect(res.status).toBe(400);
     });
 
-    it("returns 403 when AI coach is not available for free tier", async () => {
+    it("returns 429 when free tier daily coach limit reached", async () => {
       vi.mocked(storage.getChatConversation).mockResolvedValue({
         id: 1,
       } as never);
+      vi.mocked(storage.getUser).mockResolvedValue({ id: "1" } as never);
       vi.mocked(storage.getSubscriptionStatus).mockResolvedValue({
         tier: "free",
       } as never);
+      vi.mocked(storage.getDailyChatMessageCount).mockResolvedValue(3 as never);
 
       const res = await request(app)
         .post("/api/chat/conversations/1/messages")
         .set("Authorization", "Bearer token")
         .send({ content: "Hello" });
 
-      expect(res.status).toBe(403);
+      expect(res.status).toBe(429);
     });
 
     it("returns 429 when daily limit reached", async () => {

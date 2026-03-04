@@ -37,6 +37,8 @@ describe("Premium Types", () => {
       expect(freeFeatures.aiMealSuggestions).toBe(false);
       expect(freeFeatures.extendedPlanRange).toBe(false);
       expect(freeFeatures.dailyAiSuggestions).toBe(0);
+      expect(freeFeatures.aiCoach).toBe(true);
+      expect(freeFeatures.dailyCoachMessages).toBe(3);
     });
 
     it("should have features for premium tier", () => {

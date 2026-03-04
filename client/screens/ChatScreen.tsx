@@ -167,7 +167,7 @@ export default function ChatScreen() {
   const conversationId = route.params?.conversationId ?? null;
 
   const { data: messages, isLoading } = useChatMessages(conversationId);
-  const { sendMessage, streamingContent, isStreaming } =
+  const { sendMessage, streamingContent, isStreaming, streamError } =
     useSendMessage(conversationId);
   const createConversation = useCreateConversation();
 
@@ -175,6 +175,7 @@ export default function ChatScreen() {
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
   const prevStreamingRef = useRef(false);
+  const shownStreamErrorRef = useRef(false);
 
   useEffect(() => {
     if (prevStreamingRef.current && !isStreaming) {
@@ -182,6 +183,16 @@ export default function ChatScreen() {
     }
     prevStreamingRef.current = isStreaming;
   }, [isStreaming]);
+
+  useEffect(() => {
+    if (streamError && !shownStreamErrorRef.current) {
+      shownStreamErrorRef.current = true;
+      toast.error("Response was interrupted. Partial response may be visible.");
+    }
+    if (!streamError) {
+      shownStreamErrorRef.current = false;
+    }
+  }, [streamError, toast]);
 
   // Build display messages: fetched messages + optimistic user message + streaming assistant
   const displayMessages = useMemo(() => {
