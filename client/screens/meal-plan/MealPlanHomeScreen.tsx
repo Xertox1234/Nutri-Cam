@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo, useState } from "react";
 import {
   AccessibilityInfo,
+  InteractionManager,
   Platform,
   StyleSheet,
   View,
@@ -60,6 +61,8 @@ import { apiRequest } from "@/lib/query-client";
 import { useCreateMealPlanRecipe } from "@/hooks/useMealPlanRecipes";
 import { useExpiringPantryItems } from "@/hooks/usePantry";
 import { QuickAddSheet } from "@/components/meal-plan/QuickAddSheet";
+import { AddItemMenuSheet } from "@/components/meal-plan/AddItemMenuSheet";
+import { SimpleEntrySheet } from "@/components/meal-plan/SimpleEntrySheet";
 import type { MealPlanHomeScreenNavigationProp } from "@/types/navigation";
 import type { DailySummaryResponse } from "@/types/api";
 import type { MealPlanItemWithRelations } from "@shared/types/meal-plan";
@@ -591,6 +594,10 @@ export default function MealPlanHomeScreen() {
   const [quickAddMealType, setQuickAddMealType] = useState<MealType | null>(
     null,
   );
+  const [addItemMenuMealType, setAddItemMenuMealType] =
+    useState<MealType | null>(null);
+  const [simpleEntryMealType, setSimpleEntryMealType] =
+    useState<MealType | null>(null);
 
   const selectedDateStr = formatDate(selectedDate);
 
@@ -764,13 +771,33 @@ export default function MealPlanHomeScreen() {
   const handleAddItem = useCallback(
     (mealType: MealType) => {
       haptics.selection();
-      setQuickAddMealType(mealType);
+      setAddItemMenuMealType(mealType);
     },
     [haptics],
   );
 
+  const handleAddItemMenuDismiss = useCallback(() => {
+    setAddItemMenuMealType(null);
+  }, []);
+
+  const handleChooseRecipe = useCallback(() => {
+    const mt = addItemMenuMealType;
+    setAddItemMenuMealType(null);
+    InteractionManager.runAfterInteractions(() => setQuickAddMealType(mt));
+  }, [addItemMenuMealType]);
+
+  const handleSimpleEntry = useCallback(() => {
+    const mt = addItemMenuMealType;
+    setAddItemMenuMealType(null);
+    InteractionManager.runAfterInteractions(() => setSimpleEntryMealType(mt));
+  }, [addItemMenuMealType]);
+
   const handleQuickAddDismiss = useCallback(() => {
     setQuickAddMealType(null);
+  }, []);
+
+  const handleSimpleEntryDismiss = useCallback(() => {
+    setSimpleEntryMealType(null);
   }, []);
 
   const handleNavigateCreate = useCallback(
@@ -1120,12 +1147,23 @@ export default function MealPlanHomeScreen() {
         visible={showUpgradeModal}
         onClose={() => setShowUpgradeModal(false)}
       />
+      <AddItemMenuSheet
+        mealType={addItemMenuMealType}
+        onChooseRecipe={handleChooseRecipe}
+        onSimpleEntry={handleSimpleEntry}
+        onDismiss={handleAddItemMenuDismiss}
+      />
       <QuickAddSheet
         mealType={quickAddMealType}
         plannedDate={selectedDateStr}
         onDismiss={handleQuickAddDismiss}
         onNavigateCreate={handleNavigateCreate}
         onNavigateImport={handleNavigateImport}
+      />
+      <SimpleEntrySheet
+        mealType={simpleEntryMealType}
+        plannedDate={selectedDateStr}
+        onDismiss={handleSimpleEntryDismiss}
       />
     </View>
   );

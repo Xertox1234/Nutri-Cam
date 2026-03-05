@@ -121,6 +121,53 @@ describe("Meal Plan Routes", () => {
       expect(res.status).toBe(201);
     });
 
+    it("creates a recipe with sourceType quick_entry", async () => {
+      vi.mocked(storage.createMealPlanRecipe).mockResolvedValue({
+        ...mockRecipe,
+        sourceType: "quick_entry",
+      } as never);
+
+      const res = await request(app)
+        .post("/api/meal-plan/recipes")
+        .set("Authorization", "Bearer token")
+        .send({
+          title: "Chicken Stir Fry",
+          sourceType: "quick_entry",
+          caloriesPerServing: "350",
+        });
+
+      expect(res.status).toBe(201);
+      expect(vi.mocked(storage.createMealPlanRecipe)).toHaveBeenCalledWith(
+        expect.objectContaining({ sourceType: "quick_entry" }),
+        undefined,
+      );
+    });
+
+    it("defaults sourceType to user_created when omitted", async () => {
+      vi.mocked(storage.createMealPlanRecipe).mockResolvedValue(
+        mockRecipe as never,
+      );
+
+      await request(app)
+        .post("/api/meal-plan/recipes")
+        .set("Authorization", "Bearer token")
+        .send({ title: "Test Recipe" });
+
+      expect(vi.mocked(storage.createMealPlanRecipe)).toHaveBeenCalledWith(
+        expect.objectContaining({ sourceType: "user_created" }),
+        undefined,
+      );
+    });
+
+    it("returns 400 for invalid sourceType", async () => {
+      const res = await request(app)
+        .post("/api/meal-plan/recipes")
+        .set("Authorization", "Bearer token")
+        .send({ title: "Test", sourceType: "invalid" });
+
+      expect(res.status).toBe(400);
+    });
+
     it("returns 400 for missing title", async () => {
       const res = await request(app)
         .post("/api/meal-plan/recipes")
