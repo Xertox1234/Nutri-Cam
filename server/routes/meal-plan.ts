@@ -46,6 +46,10 @@ const createMealPlanRecipeSchema = z.object({
     .optional()
     .nullable()
     .transform((v) => v?.toString() ?? null),
+  sourceType: z
+    .enum(["user_created", "quick_entry"])
+    .optional()
+    .default("user_created"),
   ingredients: z
     .array(
       z.object({
@@ -138,9 +142,9 @@ export function register(app: Express): void {
           return;
         }
 
-        const { ingredients, ...recipeData } = parsed.data;
+        const { ingredients, sourceType, ...recipeData } = parsed.data;
         const recipe = await storage.createMealPlanRecipe(
-          { ...recipeData, userId: req.userId!, sourceType: "user_created" },
+          { ...recipeData, userId: req.userId!, sourceType },
           ingredients?.map((ing) => ({
             ...ing,
             recipeId: 0, // Will be set by storage method
