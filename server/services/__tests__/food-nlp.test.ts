@@ -67,9 +67,9 @@ describe("Food NLP", () => {
       expect(result[0].name).toBe("egg");
       expect(result[0].quantity).toBe(2);
       expect(result[0].unit).toBe("large");
-      // Calories multiplied by quantity: 70 * 2 = 140
-      expect(result[0].calories).toBe(140);
-      expect(result[0].protein).toBe(12);
+      // Nutrition values used as-is from lookup (quantity already in search term)
+      expect(result[0].calories).toBe(70);
+      expect(result[0].protein).toBe(6);
     });
 
     it("handles multiple food items", async () => {

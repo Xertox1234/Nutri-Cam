@@ -108,16 +108,10 @@ ${SYSTEM_PROMPT_BOUNDARY}`,
       name: item.name,
       quantity: item.quantity,
       unit: item.unit,
-      calories: nutrition
-        ? parseFloat(String(nutrition.calories)) * item.quantity
-        : null,
-      protein: nutrition
-        ? parseFloat(String(nutrition.protein)) * item.quantity
-        : null,
-      carbs: nutrition
-        ? parseFloat(String(nutrition.carbs)) * item.quantity
-        : null,
-      fat: nutrition ? parseFloat(String(nutrition.fat)) * item.quantity : null,
+      calories: nutrition ? parseFloat(String(nutrition.calories)) : null,
+      protein: nutrition ? parseFloat(String(nutrition.protein)) : null,
+      carbs: nutrition ? parseFloat(String(nutrition.carbs)) : null,
+      fat: nutrition ? parseFloat(String(nutrition.fat)) : null,
       servingSize: nutrition?.servingSize || `${item.quantity} ${item.unit}`,
     };
   });
