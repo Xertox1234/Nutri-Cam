@@ -214,14 +214,15 @@ describe("SimpleEntrySheet", () => {
     fireEvent.click(screen.getByText("Add"));
 
     await waitFor(() => {
-      // 2*70 + 1*120 = 260 cal, 2*6 + 1*4 = 16 protein, etc.
+      // Sum nutrition as-is (quantity already accounted for in lookup)
+      // 70 + 120 = 190 cal, 6 + 4 = 10 protein, etc.
       expect(mockCreateRecipe).toHaveBeenCalledWith(
         expect.objectContaining({
           title: "eggs and toast",
-          caloriesPerServing: "260",
-          proteinPerServing: "16",
-          carbsPerServing: "24",
-          fatPerServing: "12",
+          caloriesPerServing: "190",
+          proteinPerServing: "10",
+          carbsPerServing: "23",
+          fatPerServing: "7",
         }),
       );
     });

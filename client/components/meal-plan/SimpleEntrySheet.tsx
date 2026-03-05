@@ -132,10 +132,10 @@ function SimpleEntrySheetInner({
       let totalCarbs = 0;
       let totalFat = 0;
       for (const item of items) {
-        totalCal += (item.calories ?? 0) * item.quantity;
-        totalProtein += (item.protein ?? 0) * item.quantity;
-        totalCarbs += (item.carbs ?? 0) * item.quantity;
-        totalFat += (item.fat ?? 0) * item.quantity;
+        totalCal += item.calories ?? 0;
+        totalProtein += item.protein ?? 0;
+        totalCarbs += item.carbs ?? 0;
+        totalFat += item.fat ?? 0;
       }
 
       // 3. Create a slim meal plan recipe
