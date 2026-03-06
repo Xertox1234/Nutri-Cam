@@ -17,6 +17,7 @@ vi.mock("../../storage", () => ({
     incrementMealSuggestionCacheHit: vi.fn(),
     getDailySummary: vi.fn(),
     createMealSuggestionCache: vi.fn(),
+    getPopularPicksByMealType: vi.fn(),
   },
 }));
 
@@ -70,6 +71,9 @@ describe("Meal Suggestions Routes", () => {
         totalCarbs: "0",
         totalFat: "0",
       } as never);
+      vi.mocked(storage.getPopularPicksByMealType).mockResolvedValue(
+        [] as never,
+      );
       const suggestions = [{ title: "Oatmeal", calories: 300 }];
       vi.mocked(generateMealSuggestions).mockResolvedValue(
         suggestions as never,
@@ -85,6 +89,7 @@ describe("Meal Suggestions Routes", () => {
 
       expect(res.status).toBe(200);
       expect(res.body.suggestions).toHaveLength(1);
+      expect(res.body.popularPicks).toEqual([]);
       expect(res.body.remainingToday).toBeDefined();
     });
 
@@ -105,6 +110,9 @@ describe("Meal Suggestions Routes", () => {
       vi.mocked(storage.incrementMealSuggestionCacheHit).mockResolvedValue(
         {} as never,
       );
+      vi.mocked(storage.getPopularPicksByMealType).mockResolvedValue(
+        [] as never,
+      );
 
       const res = await request(app)
         .post("/api/meal-plan/suggest")
@@ -113,6 +121,7 @@ describe("Meal Suggestions Routes", () => {
 
       expect(res.status).toBe(200);
       expect(res.body.suggestions[0].title).toBe("Cached Meal");
+      expect(res.body.popularPicks).toEqual([]);
       expect(generateMealSuggestions).not.toHaveBeenCalled();
     });
 
@@ -206,6 +215,9 @@ describe("Meal Suggestions Routes", () => {
         totalCarbs: "0",
         totalFat: "0",
       } as never);
+      vi.mocked(storage.getPopularPicksByMealType).mockResolvedValue(
+        [] as never,
+      );
       vi.mocked(generateMealSuggestions).mockResolvedValue([] as never);
       vi.mocked(storage.createMealSuggestionCache).mockResolvedValue(
         {} as never,
@@ -259,6 +271,76 @@ describe("Meal Suggestions Routes", () => {
         .send({ date: "2025-01-01", mealType: "lunch" });
 
       expect(res.status).toBe(200);
+    });
+
+    it("returns popular picks in response", async () => {
+      mockBudgetSetup([]);
+      vi.mocked(storage.getPopularPicksByMealType).mockResolvedValue([
+        {
+          title: "Avocado Toast",
+          description: "Simple and nutritious",
+          calories: "350",
+          protein: "12",
+          carbs: "30",
+          fat: "20",
+          prepTimeMinutes: 10,
+          difficulty: "Easy",
+          dietTags: ["vegetarian"],
+          pickCount: 5,
+        },
+      ] as never);
+
+      const res = await request(app)
+        .post("/api/meal-plan/suggest")
+        .set("Authorization", "Bearer token")
+        .send({ date: "2025-01-01", mealType: "breakfast" });
+
+      expect(res.status).toBe(200);
+      expect(res.body.popularPicks).toHaveLength(1);
+      expect(res.body.popularPicks[0].title).toBe("Avocado Toast");
+      expect(res.body.popularPicks[0].pickCount).toBe(5);
+    });
+
+    it("deduplicates popular picks that match AI suggestion titles", async () => {
+      mockBudgetSetup([]);
+      vi.mocked(generateMealSuggestions).mockResolvedValue([
+        { title: "Avocado Toast", calories: 350 },
+      ] as never);
+      vi.mocked(storage.getPopularPicksByMealType).mockResolvedValue([
+        {
+          title: "avocado toast",
+          description: null,
+          calories: "350",
+          protein: "12",
+          carbs: "30",
+          fat: "20",
+          prepTimeMinutes: 10,
+          difficulty: "Easy",
+          dietTags: [],
+          pickCount: 3,
+        },
+        {
+          title: "Granola Bowl",
+          description: "Crunchy and filling",
+          calories: "400",
+          protein: "15",
+          carbs: "50",
+          fat: "18",
+          prepTimeMinutes: 5,
+          difficulty: "Easy",
+          dietTags: [],
+          pickCount: 2,
+        },
+      ] as never);
+
+      const res = await request(app)
+        .post("/api/meal-plan/suggest")
+        .set("Authorization", "Bearer token")
+        .send({ date: "2025-01-01", mealType: "breakfast" });
+
+      expect(res.status).toBe(200);
+      expect(res.body.popularPicks).toHaveLength(1);
+      expect(res.body.popularPicks[0].title).toBe("Granola Bowl");
     });
   });
 });

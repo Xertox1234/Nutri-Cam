@@ -159,6 +159,28 @@ describe("Meal Plan Routes", () => {
       );
     });
 
+    it("creates a recipe with sourceType ai_suggestion", async () => {
+      vi.mocked(storage.createMealPlanRecipe).mockResolvedValue({
+        ...mockRecipe,
+        sourceType: "ai_suggestion",
+      } as never);
+
+      const res = await request(app)
+        .post("/api/meal-plan/recipes")
+        .set("Authorization", "Bearer token")
+        .send({
+          title: "AI Suggested Oatmeal",
+          sourceType: "ai_suggestion",
+          caloriesPerServing: "300",
+        });
+
+      expect(res.status).toBe(201);
+      expect(vi.mocked(storage.createMealPlanRecipe)).toHaveBeenCalledWith(
+        expect.objectContaining({ sourceType: "ai_suggestion" }),
+        undefined,
+      );
+    });
+
     it("returns 400 for invalid sourceType", async () => {
       const res = await request(app)
         .post("/api/meal-plan/recipes")

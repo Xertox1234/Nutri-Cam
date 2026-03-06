@@ -86,6 +86,7 @@ export const storage = {
   getMealPlanIngredientsForDateRange:
     mealPlans.getMealPlanIngredientsForDateRange,
   getFrequentRecipesForMealType: mealPlans.getFrequentRecipesForMealType,
+  getPopularPicksByMealType: mealPlans.getPopularPicksByMealType,
 
   // Activity (exercise, weight, healthkit)
   getWeightLogs: activity.getWeightLogs,

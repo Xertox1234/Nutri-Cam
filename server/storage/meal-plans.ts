@@ -31,6 +31,7 @@ import {
   gte,
   lte,
   lt,
+  ne,
   sql,
   or,
   ilike,
@@ -748,6 +749,73 @@ export async function getFrequentRecipesForMealType(
   return recipeIds
     .map((id) => recipeMap.get(id))
     .filter(Boolean) as MealPlanRecipe[];
+}
+
+// ============================================================================
+// POPULAR PICKS (AI SUGGESTIONS PICKED BY OTHER USERS)
+// ============================================================================
+
+export async function getPopularPicksByMealType(
+  userId: string,
+  mealType: string,
+  limit = 5,
+): Promise<
+  {
+    title: string;
+    description: string | null;
+    calories: string | null;
+    protein: string | null;
+    carbs: string | null;
+    fat: string | null;
+    prepTimeMinutes: number | null;
+    difficulty: string | null;
+    dietTags: string[];
+    pickCount: number;
+  }[]
+> {
+  const rows = await db
+    .select({
+      title: mealPlanRecipes.title,
+      description: mealPlanRecipes.description,
+      calories: mealPlanRecipes.caloriesPerServing,
+      protein: mealPlanRecipes.proteinPerServing,
+      carbs: mealPlanRecipes.carbsPerServing,
+      fat: mealPlanRecipes.fatPerServing,
+      prepTimeMinutes: mealPlanRecipes.prepTimeMinutes,
+      difficulty: mealPlanRecipes.difficulty,
+      dietTags: mealPlanRecipes.dietTags,
+      pickCount: sql<number>`count(distinct ${mealPlanRecipes.userId})`.as(
+        "pick_count",
+      ),
+    })
+    .from(mealPlanItems)
+    .innerJoin(mealPlanRecipes, eq(mealPlanItems.recipeId, mealPlanRecipes.id))
+    .where(
+      and(
+        eq(mealPlanItems.mealType, mealType),
+        eq(mealPlanRecipes.sourceType, "ai_suggestion"),
+        ne(mealPlanRecipes.userId, userId),
+      ),
+    )
+    .groupBy(
+      mealPlanRecipes.title,
+      mealPlanRecipes.description,
+      mealPlanRecipes.caloriesPerServing,
+      mealPlanRecipes.proteinPerServing,
+      mealPlanRecipes.carbsPerServing,
+      mealPlanRecipes.fatPerServing,
+      mealPlanRecipes.prepTimeMinutes,
+      mealPlanRecipes.difficulty,
+      mealPlanRecipes.dietTags,
+    )
+    .orderBy(sql`count(distinct ${mealPlanRecipes.userId}) DESC`)
+    .limit(limit);
+
+  return rows.map((r) => ({
+    ...r,
+    dietTags: (r.dietTags as string[] | null) ?? [],
+    pickCount: Number(r.pickCount),
+  }));
 }
 
 // ============================================================================
