@@ -753,11 +753,12 @@ export default function MealPlanHomeScreen() {
           prepTimeMinutes: suggestion.prepTimeMinutes,
           instructions: suggestion.instructions,
           dietTags: suggestion.dietTags,
+          sourceType: "ai_suggestion",
           caloriesPerServing: suggestion.calories,
           proteinPerServing: suggestion.protein,
           carbsPerServing: suggestion.carbs,
           fatPerServing: suggestion.fat,
-          ingredients: suggestion.ingredients.map((ing) => ({
+          ingredients: suggestion.ingredients?.map((ing) => ({
             name: ing.name,
             quantity: ing.quantity,
             unit: ing.unit,

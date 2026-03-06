@@ -25,7 +25,10 @@ import {
 } from "@/constants/theme";
 import { useMealSuggestions } from "@/hooks/useMealSuggestions";
 import { ApiError } from "@/lib/api-error";
-import type { MealSuggestion } from "@shared/types/meal-suggestions";
+import type {
+  MealSuggestion,
+  PopularPick,
+} from "@shared/types/meal-suggestions";
 
 interface MealSuggestionsModalProps {
   visible: boolean;
@@ -117,6 +120,126 @@ function SuggestionCard({
         ]}
         accessibilityRole="button"
         accessibilityLabel={`Pick ${suggestion.title}`}
+      >
+        <ThemedText
+          style={[styles.pickButtonText, { color: theme.buttonText }]}
+        >
+          Pick
+        </ThemedText>
+      </Pressable>
+    </View>
+  );
+}
+
+function PopularPickCard({
+  pick,
+  onSelect,
+}: {
+  pick: PopularPick;
+  onSelect: (s: MealSuggestion) => void;
+}) {
+  const { theme } = useTheme();
+  const haptics = useHaptics();
+
+  const handlePick = useCallback(() => {
+    haptics.impact(Haptics.ImpactFeedbackStyle.Medium);
+    // Convert PopularPick to MealSuggestion shape for the existing onSelectSuggestion flow
+    onSelect({
+      title: pick.title,
+      description: pick.description || "",
+      reasoning: "",
+      calories: Number(pick.calories) || 0,
+      protein: Number(pick.protein) || 0,
+      carbs: Number(pick.carbs) || 0,
+      fat: Number(pick.fat) || 0,
+      prepTimeMinutes: pick.prepTimeMinutes || 0,
+      difficulty:
+        pick.difficulty === "Easy" ||
+        pick.difficulty === "Medium" ||
+        pick.difficulty === "Hard"
+          ? pick.difficulty
+          : "Easy",
+      ingredients: [],
+      instructions: "",
+      dietTags: pick.dietTags,
+    });
+  }, [haptics, onSelect, pick]);
+
+  return (
+    <View
+      style={[
+        styles.suggestionCard,
+        { backgroundColor: withOpacity(theme.text, 0.04) },
+      ]}
+    >
+      <View style={styles.popularPickHeader}>
+        <ThemedText style={[styles.suggestionTitle, { flex: 1 }]}>
+          {pick.title}
+        </ThemedText>
+        <View
+          style={[
+            styles.pickCountBadge,
+            { backgroundColor: withOpacity(theme.link, 0.12) },
+          ]}
+        >
+          <Feather name="users" size={10} color={theme.link} />
+          <ThemedText style={[styles.pickCountText, { color: theme.link }]}>
+            {pick.pickCount}
+          </ThemedText>
+        </View>
+      </View>
+      {pick.description ? (
+        <ThemedText
+          style={[styles.suggestionDescription, { color: theme.textSecondary }]}
+          numberOfLines={2}
+        >
+          {pick.description}
+        </ThemedText>
+      ) : null}
+
+      <View style={styles.metaRow}>
+        {pick.calories ? (
+          <View style={styles.metaItem}>
+            <Feather name="zap" size={12} color={theme.calorieAccent} />
+            <ThemedText
+              style={[styles.metaText, { color: theme.textSecondary }]}
+            >
+              {pick.calories} cal
+            </ThemedText>
+          </View>
+        ) : null}
+        {pick.prepTimeMinutes ? (
+          <View style={styles.metaItem}>
+            <Feather name="clock" size={12} color={theme.textSecondary} />
+            <ThemedText
+              style={[styles.metaText, { color: theme.textSecondary }]}
+            >
+              {pick.prepTimeMinutes} min
+            </ThemedText>
+          </View>
+        ) : null}
+        {pick.difficulty ? (
+          <View style={styles.metaItem}>
+            <ThemedText
+              style={[styles.metaText, { color: theme.textSecondary }]}
+            >
+              {pick.difficulty}
+            </ThemedText>
+          </View>
+        ) : null}
+      </View>
+
+      <Pressable
+        onPress={handlePick}
+        style={({ pressed }) => [
+          styles.pickButton,
+          {
+            backgroundColor: theme.link,
+            opacity: pressed ? 0.85 : 1,
+          },
+        ]}
+        accessibilityRole="button"
+        accessibilityLabel={`Pick ${pick.title}`}
       >
         <ThemedText
           style={[styles.pickButtonText, { color: theme.buttonText }]}
@@ -282,6 +405,34 @@ export function MealSuggestionsModal({
               />
             ))}
 
+            {/* Popular Picks */}
+            {(mutation.data?.popularPicks?.length ?? 0) > 0 && (
+              <>
+                <View style={styles.sectionHeader}>
+                  <Feather
+                    name="trending-up"
+                    size={14}
+                    color={theme.textSecondary}
+                  />
+                  <ThemedText
+                    style={[
+                      styles.sectionHeaderText,
+                      { color: theme.textSecondary },
+                    ]}
+                  >
+                    Popular Picks
+                  </ThemedText>
+                </View>
+                {mutation.data!.popularPicks.map((pick, index) => (
+                  <PopularPickCard
+                    key={`popular-${pick.title}-${index}`}
+                    pick={pick}
+                    onSelect={onSelectSuggestion}
+                  />
+                ))}
+              </>
+            )}
+
             {/* Suggest More */}
             {mutation.data && !isLimitReached && (
               <View style={styles.footer}>
@@ -423,6 +574,35 @@ const styles = StyleSheet.create({
   },
   remainingText: {
     fontSize: 12,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.xs,
+    marginTop: Spacing.md,
+    marginBottom: Spacing.sm,
+  },
+  sectionHeaderText: {
+    fontSize: 13,
+    fontFamily: FontFamily.semiBold,
+  },
+  popularPickHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: Spacing.xs,
+    gap: Spacing.sm,
+  },
+  pickCountBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 2,
+    borderRadius: BorderRadius.full,
+  },
+  pickCountText: {
+    fontSize: 11,
+    fontFamily: FontFamily.semiBold,
   },
   suggestMoreButton: {
     paddingHorizontal: Spacing.lg,

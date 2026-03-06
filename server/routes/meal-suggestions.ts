@@ -9,13 +9,28 @@ import {
   generateMealSuggestions,
   buildSuggestionCacheKey,
 } from "../services/meal-suggestions";
-import type { MealSuggestion } from "@shared/types/meal-suggestions";
+import type {
+  MealSuggestion,
+  PopularPick,
+} from "@shared/types/meal-suggestions";
 import { DEFAULT_NUTRITION_GOALS } from "@shared/constants/nutrition";
 import {
   mealSuggestionRateLimit,
   formatZodError,
   checkPremiumFeature,
 } from "./_helpers";
+
+async function fetchDeduplicatedPopularPicks(
+  userId: string,
+  mealType: string,
+  suggestions: MealSuggestion[],
+): Promise<PopularPick[]> {
+  const picks = await storage.getPopularPicksByMealType(userId, mealType, 5);
+  const suggestionTitles = new Set(
+    suggestions.map((s) => s.title.toLowerCase()),
+  );
+  return picks.filter((p) => !suggestionTitles.has(p.title.toLowerCase()));
+}
 
 const suggestMealSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -105,8 +120,15 @@ export function register(app: Express): void {
         if (cached) {
           await storage.incrementMealSuggestionCacheHit(cached.id);
           const remaining = features.dailyAiSuggestions - dailyCount;
+          const cachedSuggestions = cached.suggestions as MealSuggestion[];
+          const popularPicks = await fetchDeduplicatedPopularPicks(
+            req.userId!,
+            parsed.data.mealType,
+            cachedSuggestions,
+          );
           res.json({
-            suggestions: cached.suggestions as MealSuggestion[],
+            suggestions: cachedSuggestions,
+            popularPicks,
             remainingToday: remaining,
           });
           return;
@@ -181,7 +203,16 @@ export function register(app: Express): void {
         );
 
         const remaining = features.dailyAiSuggestions - dailyCount - 1;
-        res.json({ suggestions, remainingToday: Math.max(0, remaining) });
+        const popularPicks = await fetchDeduplicatedPopularPicks(
+          req.userId!,
+          parsed.data.mealType,
+          suggestions,
+        );
+        res.json({
+          suggestions,
+          popularPicks,
+          remainingToday: Math.max(0, remaining),
+        });
       } catch (error) {
         if (error instanceof ZodError) {
           sendError(

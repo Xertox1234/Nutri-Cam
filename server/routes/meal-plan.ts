@@ -47,7 +47,7 @@ const createMealPlanRecipeSchema = z.object({
     .nullable()
     .transform((v) => v?.toString() ?? null),
   sourceType: z
-    .enum(["user_created", "quick_entry"])
+    .enum(["user_created", "quick_entry", "ai_suggestion"])
     .optional()
     .default("user_created"),
   ingredients: z
