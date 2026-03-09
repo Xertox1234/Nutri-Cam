@@ -14,6 +14,7 @@ import {
   createTestUser,
   createTestUserProfile,
   getTestTx,
+  uid,
 } from "../../../test/db-test-utils";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type * as schema from "@shared/schema";
@@ -91,12 +92,13 @@ describe("users storage", () => {
 
   describe("createUser", () => {
     it("creates and returns a new user", async () => {
+      const username = `fresh_user_${uid()}`;
       const newUser = await createUser({
-        username: "fresh_user_123",
+        username,
         password: "hashed_pw",
       });
       expect(newUser).toBeDefined();
-      expect(newUser.username).toBe("fresh_user_123");
+      expect(newUser.username).toBe(username);
       expect(newUser.password).toBe("hashed_pw");
       expect(newUser.id).toBeDefined();
       // Defaults
@@ -182,9 +184,7 @@ describe("users storage", () => {
     });
 
     it("does not update another user's profile (IDOR protection)", async () => {
-      const otherUser = await createTestUser(tx, {
-        username: "other_profile_user",
-      });
+      const otherUser = await createTestUser(tx);
       await createTestUserProfile(tx, testUser.id, { dietType: "balanced" });
       await createTestUserProfile(tx, otherUser.id, { dietType: "keto" });
 
@@ -274,17 +274,18 @@ describe("users storage", () => {
 
   describe("getTransaction", () => {
     it("returns the transaction when found", async () => {
+      const txnId = `txn_abc_${uid()}`;
       await createTransaction({
-        transactionId: "txn_abc_123",
+        transactionId: txnId,
         userId: testUser.id,
         receipt: "receipt_data_here",
         platform: "apple",
         productId: "com.nutriscan.premium.monthly",
       });
 
-      const result = await getTransaction("txn_abc_123");
+      const result = await getTransaction(txnId);
       expect(result).toBeDefined();
-      expect(result!.transactionId).toBe("txn_abc_123");
+      expect(result!.transactionId).toBe(txnId);
       expect(result!.userId).toBe(testUser.id);
       expect(result!.platform).toBe("apple");
       expect(result!.productId).toBe("com.nutriscan.premium.monthly");
@@ -299,15 +300,16 @@ describe("users storage", () => {
 
   describe("createTransaction", () => {
     it("creates and returns a new transaction with defaults", async () => {
+      const txnId = `txn_new_${uid()}`;
       const txn = await createTransaction({
-        transactionId: "txn_new_456",
+        transactionId: txnId,
         userId: testUser.id,
         receipt: "receipt_payload",
         platform: "google",
         productId: "com.nutriscan.premium.annual",
       });
       expect(txn).toBeDefined();
-      expect(txn.transactionId).toBe("txn_new_456");
+      expect(txn.transactionId).toBe(txnId);
       expect(txn.platform).toBe("google");
       expect(txn.productId).toBe("com.nutriscan.premium.annual");
       expect(txn.status).toBe("pending");
@@ -315,11 +317,10 @@ describe("users storage", () => {
     });
 
     it("does not expose another user's transaction (IDOR protection)", async () => {
-      const otherUser = await createTestUser(tx, {
-        username: "other_txn_user",
-      });
+      const otherUser = await createTestUser(tx);
+      const txnId = `txn_other_${uid()}`;
       await createTransaction({
-        transactionId: "txn_other_user",
+        transactionId: txnId,
         userId: otherUser.id,
         receipt: "other_receipt",
         platform: "apple",
@@ -329,7 +330,7 @@ describe("users storage", () => {
       // getTransaction retrieves by transactionId, not userId,
       // so the caller must verify ownership. Confirm it returns the
       // transaction for the other user (caller must check userId).
-      const result = await getTransaction("txn_other_user");
+      const result = await getTransaction(txnId);
       expect(result).toBeDefined();
       expect(result!.userId).toBe(otherUser.id);
       expect(result!.userId).not.toBe(testUser.id);

@@ -13,6 +13,7 @@ import {
   closeTestPool,
   createTestUser,
   getTestTx,
+  uid,
 } from "../../../test/db-test-utils";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import * as schema from "@shared/schema";
@@ -389,14 +390,15 @@ describe("cache storage", () => {
 
   describe("createMealSuggestionCache", () => {
     it("creates a meal suggestion cache entry", async () => {
+      const key = `meal_key_${uid()}`;
       const entry = await createMealSuggestionCache(
-        "meal_key_1",
+        key,
         testUser.id,
         [sampleMealSuggestion],
         futureDate(),
       );
       expect(entry.id).toBeDefined();
-      expect(entry.cacheKey).toBe("meal_key_1");
+      expect(entry.cacheKey).toBe(key);
       expect(entry.userId).toBe(testUser.id);
       expect(entry.hitCount).toBe(0);
     });
@@ -404,30 +406,32 @@ describe("cache storage", () => {
 
   describe("getMealSuggestionCache", () => {
     it("returns entry when cache key matches and not expired", async () => {
+      const key = `meal_get_${uid()}`;
       await createMealSuggestionCache(
-        "meal_get_1",
+        key,
         testUser.id,
         [sampleMealSuggestion],
         futureDate(),
       );
 
-      const cached = await getMealSuggestionCache("meal_get_1");
+      const cached = await getMealSuggestionCache(key);
       expect(cached).toBeDefined();
-      expect(cached!.cacheKey).toBe("meal_get_1");
+      expect(cached!.cacheKey).toBe(key);
       expect((cached!.suggestions as MealSuggestion[])[0].title).toBe(
         "Grilled Chicken Bowl",
       );
     });
 
     it("returns undefined when expired", async () => {
+      const key = `meal_expired_${uid()}`;
       await createMealSuggestionCache(
-        "meal_expired",
+        key,
         testUser.id,
         [sampleMealSuggestion],
         pastDate(),
       );
 
-      const cached = await getMealSuggestionCache("meal_expired");
+      const cached = await getMealSuggestionCache(key);
       expect(cached).toBeUndefined();
     });
 
@@ -440,7 +444,7 @@ describe("cache storage", () => {
   describe("incrementMealSuggestionCacheHit", () => {
     it("increments the hit count", async () => {
       const entry = await createMealSuggestionCache(
-        "meal_hit",
+        `meal_hit_${uid()}`,
         testUser.id,
         [sampleMealSuggestion],
         futureDate(),
@@ -460,13 +464,13 @@ describe("cache storage", () => {
   describe("getDailyMealSuggestionCount", () => {
     it("counts entries created today for the user", async () => {
       const entry1 = await createMealSuggestionCache(
-        "daily_1",
+        `daily_${uid()}`,
         testUser.id,
         [sampleMealSuggestion],
         futureDate(),
       );
       await createMealSuggestionCache(
-        "daily_2",
+        `daily_${uid()}`,
         testUser.id,
         [sampleMealSuggestion],
         futureDate(),
@@ -489,7 +493,7 @@ describe("cache storage", () => {
     it("does not count entries from other users", async () => {
       const otherUser = await createTestUser(tx);
       const otherEntry = await createMealSuggestionCache(
-        "other_daily",
+        `other_daily_${uid()}`,
         otherUser.id,
         [sampleMealSuggestion],
         futureDate(),
@@ -509,63 +513,68 @@ describe("cache storage", () => {
 
   describe("setMicronutrientCache", () => {
     it("creates a new cache entry", async () => {
+      const key = `micro_key_${uid()}`;
       const data = [{ nutrient: "Vitamin C", amount: 90 }];
-      await setMicronutrientCache("micro_key_1", data, 60 * 60 * 1000);
+      await setMicronutrientCache(key, data, 60 * 60 * 1000);
 
-      const cached = await getMicronutrientCache("micro_key_1");
+      const cached = await getMicronutrientCache(key);
       expect(cached).toBeDefined();
       expect(cached).toEqual(data);
     });
 
     it("upserts on conflict (updates existing key)", async () => {
+      const key = `micro_upsert_${uid()}`;
       const original = [{ nutrient: "Iron", amount: 10 }];
       const updated = [{ nutrient: "Iron", amount: 18 }];
 
-      await setMicronutrientCache("micro_upsert", original, 60 * 60 * 1000);
-      await setMicronutrientCache("micro_upsert", updated, 60 * 60 * 1000);
+      await setMicronutrientCache(key, original, 60 * 60 * 1000);
+      await setMicronutrientCache(key, updated, 60 * 60 * 1000);
 
-      const cached = await getMicronutrientCache("micro_upsert");
+      const cached = await getMicronutrientCache(key);
       expect(cached).toEqual(updated);
     });
 
     it("resets hit count on upsert", async () => {
-      await setMicronutrientCache("micro_reset", [{ a: 1 }], 60 * 60 * 1000);
+      const key = `micro_reset_${uid()}`;
+      await setMicronutrientCache(key, [{ a: 1 }], 60 * 60 * 1000);
 
       // Read to trigger a hit increment
-      await getMicronutrientCache("micro_reset");
+      await getMicronutrientCache(key);
       // Small delay for the fire-and-forget update
       await new Promise((r) => setTimeout(r, 50));
 
       // Upsert should reset hit count to 0
-      await setMicronutrientCache("micro_reset", [{ a: 2 }], 60 * 60 * 1000);
+      await setMicronutrientCache(key, [{ a: 2 }], 60 * 60 * 1000);
 
       const { eq } = await import("drizzle-orm");
       const [row] = await tx
         .select({ hitCount: schema.micronutrientCache.hitCount })
         .from(schema.micronutrientCache)
-        .where(eq(schema.micronutrientCache.queryKey, "micro_reset"));
+        .where(eq(schema.micronutrientCache.queryKey, key));
       expect(row.hitCount).toBe(0);
     });
   });
 
   describe("getMicronutrientCache", () => {
     it("returns data for non-expired entry", async () => {
+      const key = `micro_get_${uid()}`;
       const data = [{ nutrient: "Zinc", amount: 11 }];
-      await setMicronutrientCache("micro_get", data, 60 * 60 * 1000);
+      await setMicronutrientCache(key, data, 60 * 60 * 1000);
 
-      const cached = await getMicronutrientCache("micro_get");
+      const cached = await getMicronutrientCache(key);
       expect(cached).toEqual(data);
     });
 
     it("returns undefined for expired entry", async () => {
+      const key = `micro_expired_${uid()}`;
       // Insert with a TTL that's already passed
       await tx.insert(schema.micronutrientCache).values({
-        queryKey: "micro_expired",
+        queryKey: key,
         data: [{ nutrient: "B12", amount: 2.4 }],
         expiresAt: pastDate(),
       });
 
-      const cached = await getMicronutrientCache("micro_expired");
+      const cached = await getMicronutrientCache(key);
       expect(cached).toBeUndefined();
     });
 
@@ -575,9 +584,10 @@ describe("cache storage", () => {
     });
 
     it("fires a hit count increment (fire-and-forget)", async () => {
-      await setMicronutrientCache("micro_hit", [{ n: 1 }], 60 * 60 * 1000);
+      const key = `micro_hit_${uid()}`;
+      await setMicronutrientCache(key, [{ n: 1 }], 60 * 60 * 1000);
 
-      await getMicronutrientCache("micro_hit");
+      await getMicronutrientCache(key);
       // Wait for the fire-and-forget update to complete
       await new Promise((r) => setTimeout(r, 100));
 
@@ -585,7 +595,7 @@ describe("cache storage", () => {
       const [row] = await tx
         .select({ hitCount: schema.micronutrientCache.hitCount })
         .from(schema.micronutrientCache)
-        .where(eq(schema.micronutrientCache.queryKey, "micro_hit"));
+        .where(eq(schema.micronutrientCache.queryKey, key));
       expect(row.hitCount).toBe(1);
     });
   });

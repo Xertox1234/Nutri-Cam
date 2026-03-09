@@ -102,6 +102,9 @@ export function getTestTx(): NodePgDatabase<typeof schema> {
 // Test data helpers
 // ---------------------------------------------------------------------------
 
+/** Short unique suffix for test data — avoids unique-constraint collisions across parallel workers and leaked rows. */
+export const uid = () => crypto.randomUUID().slice(0, 8);
+
 let userSeq = 0;
 
 /**

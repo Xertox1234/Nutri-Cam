@@ -13,6 +13,7 @@ import {
   closeTestPool,
   createTestUser,
   getTestTx,
+  uid,
 } from "../../../test/db-test-utils";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import type * as schema from "@shared/schema";
@@ -156,16 +157,14 @@ describe("meal-plans storage", () => {
 
   describe("findMealPlanRecipeByExternalId", () => {
     it("returns a recipe matching the userId and externalId", async () => {
+      const extId = `spoon-${uid()}`;
       await createTestMealPlanRecipe(testUser.id, {
-        externalId: "spoon-123",
+        externalId: extId,
       });
 
-      const found = await findMealPlanRecipeByExternalId(
-        testUser.id,
-        "spoon-123",
-      );
+      const found = await findMealPlanRecipeByExternalId(testUser.id, extId);
       expect(found).toBeDefined();
-      expect(found!.externalId).toBe("spoon-123");
+      expect(found!.externalId).toBe(extId);
     });
 
     it("returns undefined when externalId does not exist", async () => {
@@ -178,14 +177,12 @@ describe("meal-plans storage", () => {
 
     it("does not return recipe belonging to a different user", async () => {
       const otherUser = await createTestUser(tx);
+      const extId = `ext-${uid()}`;
       await createTestMealPlanRecipe(otherUser.id, {
-        externalId: "ext-999",
+        externalId: extId,
       });
 
-      const found = await findMealPlanRecipeByExternalId(
-        testUser.id,
-        "ext-999",
-      );
+      const found = await findMealPlanRecipeByExternalId(testUser.id, extId);
       expect(found).toBeUndefined();
     });
   });
@@ -1608,7 +1605,7 @@ describe("meal-plans storage", () => {
     });
 
     it("does not return other user's frequent recipes", async () => {
-      const otherUser = await createTestUser(tx, { username: "other-freq" });
+      const otherUser = await createTestUser(tx);
       const recipe = await createTestMealPlanRecipe(otherUser.id, {
         title: "Other User Recipe",
       });
