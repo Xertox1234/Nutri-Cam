@@ -128,19 +128,23 @@ This document captures established patterns for the NutriScan codebase. Follow t
   - [Statistics Computation from Log Data](#statistics-computation-from-log-data)
   - [GPT Vision Analysis with User Context Injection](#gpt-vision-analysis-with-user-context-injection)
   - [Static Lookup Map with Normalization](#static-lookup-map-with-normalization)
+  - [Static-First with AI Fallback](#static-first-with-ai-fallback)
   - [Audio-to-Structured-Data Pipeline](#audio-to-structured-data-pipeline)
   - [MET-Based Calorie Burn Formula](#met-based-calorie-burn-formula)
   - [Private Raw Function with Public Cached Wrapper](#private-raw-function-with-public-cached-wrapper)
 - [Client Hook Patterns](#client-hook-patterns)
   - [TanStack Query CRUD Hook Module](#tanstack-query-crud-hook-module)
+  - [Mutation Parameter Over Hook Parameter for Fresh State](#mutation-parameter-over-hook-parameter-for-fresh-state)
   - [FormData Upload Mutation](#formdata-upload-mutation)
   - [SSE Client-Side Consumption with ReadableStream](#sse-client-side-consumption-with-readablestream)
   - [SSE Stream Drop Detection and Recovery](#sse-stream-drop-detection-and-recovery)
   - [refetchInterval for Live-Updating Queries](#refetchinterval-for-live-updating-queries)
 - [Database Safety Patterns](#database-safety-patterns)
   - [Safe JSONB Array Access with Array.isArray Guard](#safe-jsonb-array-access-with-arrayisarray-guard)
+  - [Shared Type Guards for JSONB Columns](#shared-type-guards-for-jsonb-columns)
 - [Testing Patterns](#testing-patterns)
   - [Pure Function Extraction for Vitest Testability](#pure-function-extraction-for-vitest-testability)
+  - [Pure Functions Outside React Component Bodies](#pure-functions-outside-react-component-bodies)
   - [Pure Function Extraction for Server Services](#pure-function-extraction-for-server-services)
   - [Type Guard Over `as` Cast for Runtime Safety](#type-guard-over-as-cast-for-runtime-safety)
   - [vi.resetModules for Env-Dependent Module Testing](#viresetmodules-for-env-dependent-module-testing)
@@ -7302,6 +7306,59 @@ export function getStandardizedFoodName(query: string): string {
 
 **Reference:** `server/services/cultural-food-map.ts`
 
+### Static-First with AI Fallback
+
+When a service needs AI-generated suggestions but many inputs have well-known answers, check a static lookup map first and only call the AI API for inputs not covered by the map. This saves API cost and latency for common cases while still handling the long tail.
+
+```typescript
+// server/services/ingredient-substitution.ts
+
+const COMMON_SUBSTITUTIONS: Record<string, StaticSubstitution[]> = {
+  butter: [
+    { name: "coconut oil", ratio: "1:1", tags: ["dairy-free", "vegan"], macroDelta: { ... } },
+    { name: "olive oil", ratio: "3/4 cup per 1 cup", tags: ["dairy-free"], macroDelta: { ... } },
+  ],
+  // ... other common ingredients
+};
+
+export async function getSubstitutions(ingredients, userProfile) {
+  const staticResults: SubstitutionSuggestion[] = [];
+  const needsAi: CookingSessionIngredient[] = [];
+
+  // Phase 1: Check static map
+  for (const ingredient of ingredients) {
+    const staticSubs = findStaticSubstitutions(ingredient.name, dietaryTags);
+    if (staticSubs.length > 0) {
+      staticResults.push(...staticSubs.map(toSuggestion));
+    } else {
+      needsAi.push(ingredient);
+    }
+  }
+
+  // Phase 2: AI fallback only for unmatched ingredients
+  let aiResults: SubstitutionSuggestion[] = [];
+  if (needsAi.length > 0) {
+    aiResults = await getAiSubstitutions(needsAi, profileSummary);
+  }
+
+  return { suggestions: [...staticResults, ...aiResults] };
+}
+```
+
+**Key elements:**
+
+1. **Partition inputs** — split into static-resolvable and needs-AI buckets in a single pass
+2. **Static results have high confidence** — assign a fixed confidence (e.g., 0.9) since they're curated
+3. **AI only called when needed** — if all ingredients are common, zero API calls
+4. **Graceful AI failure** — static results still returned even if AI call throws
+5. **Same output shape** — both paths produce the same `SubstitutionSuggestion` type
+
+**When to use:** Any service where a curated subset of inputs covers the majority of real-world usage and an AI/API call handles the rest. Examples: ingredient substitutions, food name normalization, unit conversions with unusual units.
+
+**When NOT to use:** When the static map would need constant updates or when AI quality is always superior (e.g., personalized recommendations that depend heavily on user context).
+
+**Reference:** `server/services/ingredient-substitution.ts`
+
 ### Audio-to-Structured-Data Pipeline
 
 > **Note:** The mobile client no longer uses this server-side pipeline. Voice input now uses on-device speech recognition via `expo-speech-recognition` (see "Client-Side Voice-to-Text-Input Pattern" below). The server endpoint and Whisper service remain available for potential non-mobile clients but are currently unused. Consider removing in a future cleanup.
@@ -7705,6 +7762,57 @@ export function useDeleteMedicationLog() {
 
 **Reference files:** `client/hooks/useMedication.ts`, `client/hooks/useMicronutrients.ts`, `client/hooks/useMenuScan.ts`
 
+### Mutation Parameter Over Hook Parameter for Fresh State
+
+When a mutation depends on state that may not exist when the hook is initialized (e.g., a session ID created by a prior mutation), pass the value as a **mutation parameter** rather than a **hook parameter**. Hook parameters are captured at hook initialization time — if the value changes between initialization and invocation, the mutation uses stale state.
+
+```typescript
+// Bad: Hook parameter captures stale state
+function useAddCookPhoto(sessionId: string | null) {
+  return useMutation({
+    mutationFn: async (photoUri: string) => {
+      // sessionId is null on first call — React state hasn't updated yet
+      const res = await apiRequest("POST", `/api/cooking/${sessionId}/photos`, ...);
+      return res.json();
+    },
+  });
+}
+
+// Usage: sessionId is null when hook initializes, even if ensureSession() just created one
+const addPhoto = useAddCookPhoto(sessionId);
+const sid = await ensureSession(); // creates session, sets state
+await addPhoto.mutateAsync(photoUri); // BUG: uses stale null sessionId
+```
+
+```typescript
+// Good: Mutation parameter always has the freshest value
+function useAddCookPhoto() {
+  return useMutation({
+    mutationFn: async ({ photoUri, sessionId }: { photoUri: string; sessionId: string }) => {
+      const res = await apiRequest("POST", `/api/cooking/${sessionId}/photos`, ...);
+      return res.json();
+    },
+  });
+}
+
+// Usage: sessionId passed directly from the variable that just received it
+const addPhoto = useAddCookPhoto();
+const sid = await ensureSession();
+await addPhoto.mutateAsync({ photoUri, sessionId: sid }); // Always fresh
+```
+
+**Key elements:**
+
+1. **No stale closures** — the mutation receives the value at call time, not at hook initialization
+2. **Self-documenting** — the caller explicitly provides all dependencies
+3. **Works with sequential async flows** — `ensureSession()` → `addPhoto()` where the first creates state the second needs
+
+**When to use:** Any mutation that depends on a value produced by a prior async step within the same user interaction. Common with "create-then-use" flows like session creation followed by session operations.
+
+**When NOT to use:** When the dependent value is stable by the time the mutation fires (e.g., a route param or a query result that loaded before the screen rendered).
+
+**Reference:** `client/hooks/useCookSession.ts` — `useAddCookPhoto()`
+
 ### FormData Upload Mutation
 
 When a mutation needs to upload a file (image) from the device, use `FormData` with a raw `fetch` call instead of `apiRequest()`. This is necessary because `apiRequest()` sets `Content-Type: application/json`, which conflicts with multipart form data.
@@ -8016,6 +8124,55 @@ for (const effect of effects) {
 
 **Reference:** `server/services/glp1-insights.ts` — `sideEffects` JSONB column. Also applies to `allergies`, `foodDislikes`, and other JSONB array columns in `userProfiles`.
 
+### Shared Type Guards for JSONB Columns
+
+When multiple services need to safely access the same JSONB column shape (e.g., `userProfiles.allergies` is used by both `recipe-generation.ts` and `ingredient-substitution.ts`), extract the type guard into a shared file rather than duplicating it or using `as` casts.
+
+```typescript
+// shared/types/user-profile-guards.ts — single source of truth
+export function isAllergyArray(value: unknown): value is { name: string }[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (item) =>
+        typeof item === "object" &&
+        item !== null &&
+        typeof (item as Record<string, unknown>).name === "string",
+    )
+  );
+}
+
+export function isStringArray(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) && value.every((item) => typeof item === "string")
+  );
+}
+```
+
+```typescript
+// server/services/recipe-generation.ts — consumer
+import { isAllergyArray } from "@shared/types/user-profile-guards";
+
+if (isAllergyArray(userProfile.allergies) && userProfile.allergies.length > 0) {
+  const allergyNames = userProfile.allergies.map((a) => a.name); // fully typed
+}
+```
+
+**Key elements:**
+
+1. **Single definition** — guard logic lives in one place, not duplicated across services
+2. **`shared/types/`** — importable by both server and client code via `@shared/` alias
+3. **Narrows the type** — `value is { name: string }[]` gives full TypeScript autocompletion after the check
+4. **Replaces `as` casts** — eliminates `(profile.allergies as { name: string }[])` which provides zero runtime safety
+
+**Naming convention:** `is{ColumnShape}` — `isAllergyArray`, `isStringArray`. Place in `shared/types/{table}-guards.ts` grouped by the table they apply to.
+
+**When to use:** A JSONB column shape is accessed by 2+ services or by both client and server code. Extract on the second usage.
+
+**When NOT to use:** A JSONB column is only accessed in one place — an inline `Array.isArray()` guard is sufficient (see Safe JSONB Array Access pattern above).
+
+**Reference:** `shared/types/user-profile-guards.ts` — guards for `userProfiles.allergies` and `userProfiles.foodDislikes`
+
 ---
 
 ## Testing Patterns
@@ -8187,6 +8344,49 @@ app.post("/api/meal-plan/grocery-lists", requireAuth, async (req, res) => {
 
 - `server/services/pantry-deduction.ts` — `deductPantryFromGrocery()` with 9 unit tests
 - `client/lib/iap/purchase-utils.ts` — client-side equivalent
+
+### Pure Functions Outside React Component Bodies
+
+When a function inside a React component does not depend on props, state, or hooks, define it **outside** the component body at module scope. This avoids recreating the function on every render and eliminates the need for `useCallback` or `useMemo`.
+
+```typescript
+// Good: Pure function at module scope — created once, never recreated
+function getConfidenceLabel(confidence: number): string {
+  if (confidence >= 0.8) return "High";
+  if (confidence >= 0.5) return "Medium";
+  return "Low";
+}
+
+function formatDelta(value: number): string {
+  if (value > 0) return `+${value}`;
+  return `${value}`;
+}
+
+export default function CookSessionReviewScreen() {
+  // Uses getConfidenceLabel() and formatDelta() — no useCallback needed
+}
+```
+
+```typescript
+// Bad: Pure function inside component — recreated on every render
+export default function CookSessionReviewScreen() {
+  function getConfidenceLabel(confidence: number): string {
+    if (confidence >= 0.8) return "High";
+    if (confidence >= 0.5) return "Medium";
+    return "Low";
+  }
+  // ...
+}
+```
+
+**Rule of thumb:** If the function doesn't reference `props`, `state`, `ref`, `theme`, or any hook result, it belongs outside the component.
+
+**Key difference from the "Pure Function Extraction for Vitest Testability" pattern:** That pattern extracts functions to _separate files_ (`*-utils.ts`) to make them testable in Vitest without React Native imports. This pattern simply moves functions _above_ the component in the same file for performance — no new file needed.
+
+**References:**
+
+- `client/screens/CookSessionReviewScreen.tsx` — `getConfidenceLabel()`
+- `client/screens/SubstitutionResultScreen.tsx` — `formatDelta()`
 
 ### Type Guard Over `as` Cast for Runtime Safety
 
