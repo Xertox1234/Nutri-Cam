@@ -133,6 +133,7 @@ This document captures established patterns for the NutriScan codebase. Follow t
   - [Private Raw Function with Public Cached Wrapper](#private-raw-function-with-public-cached-wrapper)
 - [Client Hook Patterns](#client-hook-patterns)
   - [TanStack Query CRUD Hook Module](#tanstack-query-crud-hook-module)
+  - [`apiRequest` Never Returns Non-OK -- Don't Re-Check `res.ok`](#apirequest-never-returns-non-ok----dont-re-check-resok)
   - [FormData Upload Mutation](#formdata-upload-mutation)
   - [SSE Client-Side Consumption with ReadableStream](#sse-client-side-consumption-with-readablestream)
   - [SSE Stream Drop Detection and Recovery](#sse-stream-drop-detection-and-recovery)
@@ -6996,7 +6997,7 @@ export function register(app: Express): void {
 4. Use `requireAuth` middleware on every authenticated endpoint — never do manual `if (!req.userId)` checks
 5. Use `checkPremiumFeature()` early-return pattern for premium features
 6. Define Zod schemas inline in each handler (unless reused across handlers)
-7. Wrap handler body in `try/catch` with `console.error` + generic 500 response
+7. Wrap handler body in `try/catch` with `console.error` + generic 500 response (never forward `error.message` to the client — use a fixed string like `"Failed to create recipe"`)
 8. For single-resource endpoints (`:id`), include ownership verification: `if (item.userId !== req.userId) return 404`
 
 **When to use:** Every new route module.
@@ -7704,6 +7705,44 @@ export function useDeleteMedicationLog() {
 **When NOT to use:** One-off API calls that don't need caching or cache invalidation. Use `apiRequest()` directly in event handlers instead.
 
 **Reference files:** `client/hooks/useMedication.ts`, `client/hooks/useMicronutrients.ts`, `client/hooks/useMenuScan.ts`
+
+### `apiRequest` Never Returns Non-OK — Don't Re-Check `res.ok`
+
+`apiRequest()` in `client/lib/query-client.ts` internally calls `throwIfResNotOk(res)` before returning. This means it **always throws** on non-OK responses and **never** returns a response where `res.ok` is `false`. Do not add redundant `if (!res.ok)` checks in mutation hooks — they are dead code.
+
+```typescript
+// ❌ Bad: Dead code — apiRequest already threw before reaching this check
+mutationFn: async (input) => {
+  const res = await apiRequest("POST", "/api/example", input);
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.error || `Request failed: ${res.status}`);
+  }
+  return res.json();
+},
+
+// ✅ Good: apiRequest handles errors, just parse the response
+mutationFn: async (input) => {
+  const res = await apiRequest("POST", "/api/example", input);
+  return res.json();
+},
+```
+
+**Why this matters:**
+
+1. **Dead code** — the `if (!res.ok)` branch can never execute
+2. **Wrong error messages** — `throwIfResNotOk` throws with format `"${status}: ${responseBody}"`, so custom messages like `"Request failed"` are never shown; users see the raw format instead
+3. **Double body consumption** — `throwIfResNotOk` reads the body via `res.text()`; if somehow bypassed, a subsequent `res.json()` would fail because the stream is already consumed
+
+**When to use:** Every `mutationFn` or `queryFn` that calls `apiRequest()`.
+
+**When NOT to use:** When using raw `fetch()` directly (e.g., FormData uploads, graceful 404 handling) — those calls do NOT go through `throwIfResNotOk`.
+
+**References:**
+
+- Implementation: `client/lib/query-client.ts` (`throwIfResNotOk` at line 29, `apiRequest` at line 55)
+- See also: [FormData Upload Mutation](#formdata-upload-mutation) (uses raw `fetch`, so `res.ok` check IS needed)
+- See also: [Graceful 404 Handling with Raw Fetch](#graceful-404-handling-with-raw-fetch)
 
 ### FormData Upload Mutation
 

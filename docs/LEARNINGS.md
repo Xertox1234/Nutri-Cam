@@ -4,6 +4,7 @@ This document captures key learnings, gotchas, and architectural decisions disco
 
 ## Table of Contents
 
+- [Receipt-to-Meal-Plan Code Review Findings (2026-03-10)](#receipt-to-meal-plan-code-review-findings-2026-03-10)
 - [PostgreSQL Decimal Aggregates Return Strings via Drizzle (2026-02-24)](#postgresql-decimal-aggregates-return-strings-via-drizzle-2026-02-24)
 - [Phase 0-7 Code Review Learnings (2026-02-24)](#phase-0-7-code-review-learnings-2026-02-24)
 - [Phase 8-11 Code Review Learnings (2026-02-24)](#phase-8-11-code-review-learnings-2026-02-24)
@@ -19,6 +20,49 @@ This document captures key learnings, gotchas, and architectural decisions disco
 - [Testing & Tooling Learnings](#testing--tooling-learnings)
 - [Database Migration Gotchas](#database-migration-gotchas)
 - [TypeScript Safety Learnings](#typescript-safety-learnings)
+
+---
+
+## [2026-03-10] Receipt-to-Meal-Plan Code Review Findings
+
+**Category:** Bug Post-Mortem
+
+### Context
+
+PR #13 added a receipt-to-meal-plan generation feature: after scanning a grocery receipt and adding items to pantry, users can generate an AI-powered multi-day meal plan. The code review found three bugs in the new code — one client-side, two server-side.
+
+### Problems Found
+
+**1. Dead error handling in mutation hooks (`client/hooks/useGenerateMealPlan.ts`)**
+
+Both `useGenerateMealPlanFromPantry` and `useSaveGeneratedMealPlan` checked `if (!res.ok)` after calling `apiRequest()`. But `apiRequest()` internally calls `throwIfResNotOk()` which throws _before_ returning a non-OK response. The `if (!res.ok)` branches were dead code, and the custom user-friendly error messages ("Meal plan generation failed", "Save failed") were never shown. Users would instead see the raw `"500: {\"error\":\"...\"}"` format from `throwIfResNotOk`.
+
+**2. Internal `error.message` leaked to client (`server/routes/meal-plan.ts:639`)**
+
+The `generate-from-pantry` catch block forwarded `error.message` directly to the client in the 500 response. Every other 500 handler in the file (11 of them) uses a fixed generic string. This could leak internal service details (OpenAI error messages, database error text, etc.) to end users.
+
+**3. Batch save without transaction (`server/routes/meal-plan.ts:710-748`)**
+
+The `save-generated` endpoint created recipes and meal plan items in a sequential loop without `db.transaction()`. If item 5 of 10 failed, items 1-4 would be permanently saved while the client received a 500 error. Retrying would duplicate those items. This violated the documented "Inline Transactions for Multi-Table Operations" pattern in PATTERNS.md.
+
+### Solution
+
+1. Removed dead `if (!res.ok)` blocks — mutations now just call `apiRequest()` and `return res.json()`
+2. Replaced dynamic `error.message` with fixed string `"Failed to generate meal plan"`
+3. Wrapped the batch save loop in `db.transaction(async (tx) => {...})` with direct drizzle operations (matching the pattern used in `nutrition.ts`, `cooking.ts`, `photos.ts`, and `profile.ts`)
+
+### Takeaways
+
+- **`apiRequest` is throw-on-error** — never re-check `res.ok` after calling it. This is the most common trap for new mutation hooks. A new pattern was added to PATTERNS.md to make this explicit.
+- **500 catch blocks must use fixed strings** — the PATTERNS.md checklist item for "generic 500 response" was clarified with an explicit note to never forward `error.message`.
+- **Multi-table writes need transactions** — the "Inline Transactions" pattern already existed but wasn't followed. When a route loop calls multiple `storage.*` methods per iteration, refactor to use `db.transaction()` with direct `tx.insert()` calls instead.
+
+### References
+
+- PR: #13 (`feat/receipt-meal-plan-generation`)
+- New pattern: PATTERNS.md > Client Hook Patterns > [`apiRequest` Never Returns Non-OK](#apirequest-never-returns-non-ok----dont-re-check-resok)
+- Existing pattern: PATTERNS.md > Database Patterns > [Inline Transactions for Multi-Table Operations](#inline-transactions-for-multi-table-operations)
+- Existing pattern: PATTERNS.md > Route Module Blueprint > Checklist item #7 (generic 500 response)
 
 ---
 
