@@ -73,12 +73,6 @@ export function useGenerateMealPlanFromPantry() {
         "/api/meal-plan/generate-from-pantry",
         input,
       );
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(
-          errorData.error || `Meal plan generation failed: ${res.status}`,
-        );
-      }
       return res.json();
     },
   });
@@ -92,10 +86,6 @@ export function useSaveGeneratedMealPlan() {
       const res = await apiRequest("POST", "/api/meal-plan/save-generated", {
         meals,
       });
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData.error || `Save failed: ${res.status}`);
-      }
       return res.json();
     },
     onSuccess: () => {

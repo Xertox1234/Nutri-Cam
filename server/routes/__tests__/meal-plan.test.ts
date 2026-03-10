@@ -3,6 +3,7 @@ import express from "express";
 import request from "supertest";
 
 import { storage } from "../../storage";
+import { db } from "../../db";
 import { register } from "../meal-plan";
 
 import { generateMealPlanFromPantry } from "../../services/pantry-meal-plan";
@@ -28,6 +29,16 @@ vi.mock("../../storage", () => ({
     getUser: vi.fn(),
     reorderMealPlanItems: vi.fn(),
   },
+}));
+
+vi.mock("../../db", () => ({
+  db: {
+    transaction: vi.fn(),
+  },
+}));
+
+vi.mock("../../services/meal-type-inference", () => ({
+  inferMealTypes: vi.fn().mockReturnValue(["lunch"]),
 }));
 
 vi.mock("../../middleware/auth");
@@ -775,13 +786,23 @@ describe("Meal Plan Routes", () => {
     };
 
     it("creates recipes and plan items", async () => {
-      vi.mocked(storage.createMealPlanRecipe).mockResolvedValue({
-        id: 10,
-        userId: "1",
-      } as never);
-      vi.mocked(storage.addMealPlanItem).mockResolvedValue({
-        id: 20,
-      } as never);
+      let insertCount = 0;
+      vi.mocked(db.transaction).mockImplementation(async (cb) => {
+        const fakeTx = {
+          insert: () => ({
+            values: () => ({
+              returning: () => {
+                insertCount++;
+                // 1st insert = recipe, 2nd = ingredients (no returning), 3rd = plan item
+                if (insertCount === 1)
+                  return Promise.resolve([{ id: 10, userId: "1" }]);
+                return Promise.resolve([{ id: 20 }]);
+              },
+            }),
+          }),
+        };
+        return cb(fakeTx as never);
+      });
 
       const res = await request(app)
         .post("/api/meal-plan/save-generated")
