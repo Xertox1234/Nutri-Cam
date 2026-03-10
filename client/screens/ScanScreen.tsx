@@ -33,6 +33,7 @@ import { useHaptics } from "@/hooks/useHaptics";
 import { useAccessibility } from "@/hooks/useAccessibility";
 import { Spacing, BorderRadius } from "@/constants/theme";
 import { UpgradeModal } from "@/components/UpgradeModal";
+import { apiRequest } from "@/lib/query-client";
 import type { ScanScreenNavigationProp } from "@/types/navigation";
 import type { RootStackParamList } from "@/navigation/RootStackNavigator";
 
@@ -88,6 +89,7 @@ export default function ScanScreen() {
   const isFocused = useIsFocused();
 
   const isLabelMode = route.params?.mode === "label";
+  const barcodeFromRoute = route.params?.barcode;
   const frame = isLabelMode ? LABEL_FRAME : RETICLE;
   const {
     permission,
@@ -123,10 +125,38 @@ export default function ScanScreen() {
           withSpring(1, { damping: 15 }),
         );
 
-        // Navigate after brief delay for animation (with cleanup tracking)
+        // Check if this barcode has been verified by a label photo recently.
+        // Race against a 3s timeout so slow networks don't stall the UX.
+        let verified = false;
+        try {
+          const timeout = new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error("timeout")), 3000),
+          );
+          const res = await Promise.race([
+            apiRequest(
+              "GET",
+              `/api/nutrition/barcode/${encodeURIComponent(result.data)}/verification`,
+            ),
+            timeout,
+          ]);
+          const data = await res.json();
+          verified = data.verified === true;
+        } catch {
+          // If verification check fails or times out, prompt for label photo
+          verified = false;
+        }
+
         navigationTimeoutRef.current = setTimeout(() => {
-          navigation.navigate("NutritionDetail", { barcode: result.data });
-          // Refresh scan count after navigation
+          if (verified) {
+            // Barcode was verified recently — go straight to nutrition detail
+            navigation.navigate("NutritionDetail", { barcode: result.data });
+          } else {
+            // Barcode not verified — prompt user to photograph the nutrition label
+            navigation.navigate("Scan", {
+              mode: "label",
+              barcode: result.data,
+            });
+          }
           refreshScanCount();
           resetTimeoutRef.current = setTimeout(() => {
             resetScanning();
@@ -231,7 +261,10 @@ export default function ScanScreen() {
 
         if (photo?.uri) {
           if (isLabelMode) {
-            navigation.navigate("LabelAnalysis", { imageUri: photo.uri });
+            navigation.navigate("LabelAnalysis", {
+              imageUri: photo.uri,
+              barcode: barcodeFromRoute,
+            });
           } else {
             navigation.navigate("PhotoIntent", { imageUri: photo.uri });
           }
@@ -460,7 +493,9 @@ export default function ScanScreen() {
               {isScanning
                 ? "Scanning..."
                 : isLabelMode
-                  ? "Align nutrition label within the frame"
+                  ? barcodeFromRoute
+                    ? "Now photograph the nutrition label for accuracy"
+                    : "Align nutrition label within the frame"
                   : "Scan barcode or tap shutter for food photo"}
             </ThemedText>
           </View>

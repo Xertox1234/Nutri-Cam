@@ -45,6 +45,7 @@ This document captures established patterns for the NutriScan codebase. Follow t
   - [Pre-Fetched IDs to Avoid Redundant Queries](#pre-fetched-ids-to-avoid-redundant-queries)
   - [Soft Delete with Aggregation Guard](#soft-delete-with-aggregation-guard)
   - [Cross-User Aggregation with Self-Exclusion](#cross-user-aggregation-with-self-exclusion)
+  - [Cross-User Product-Level Queries](#cross-user-product-level-queries)
   - [Toggle via Transaction to Prevent Duplicate Inserts](#toggle-via-transaction-to-prevent-duplicate-inserts)
   - [Upsert with onConflictDoUpdate](#upsert-with-onconflictdoupdate)
   - [Active Record Guard Before Insert](#active-record-guard-before-insert)
@@ -56,6 +57,7 @@ This document captures established patterns for the NutriScan codebase. Follow t
   - [useQuery Over useState+useEffect for Server Data](#usequery-over-usestateuseeffect-for-server-data)
   - [`enabled` Parameter for Premium-Gated Queries](#enabled-parameter-for-premium-gated-queries)
   - [Optimistic Mutation on Infinite Query Pages](#optimistic-mutation-on-infinite-query-pages)
+  - [Client-Side API Timeout with Promise.race](#client-side-api-timeout-with-promiserace)
 - [React Native Patterns](#react-native-patterns)
   - [Multi-Select Checkbox Pattern](#multi-select-checkbox-pattern)
   - [Premium Feature Gating UI](#premium-feature-gating-ui)
@@ -2888,6 +2890,55 @@ return picks.filter((p) => !suggestionTitles.has(p.title.toLowerCase()));
 - `server/storage/meal-plans.ts` — `getPopularPicksByMealType()`
 - `server/routes/meal-suggestions.ts` — `fetchDeduplicatedPopularPicks()`
 
+### Cross-User Product-Level Queries
+
+Some data is inherently product-level rather than user-specific. In these cases, queries should intentionally span all users without `userId` filtering or self-exclusion. The key distinction from "Cross-User Aggregation with Self-Exclusion" is that the data describes a product, not user behavior — so any user's contribution benefits everyone equally.
+
+**Key elements:**
+
+1. **No `userId` filter** — the query checks a global property of a product (e.g., "has this barcode been verified?"), not user-specific activity
+2. **Explicit documentation** — add a comment explaining why the query is cross-user, since the default expectation is per-user scoping
+3. **Still require authentication** — the route uses `requireAuth` to prevent unauthenticated access, even though the query isn't user-scoped
+
+```typescript
+// server/storage/nutrition.ts — getBarcodeVerification
+// Cross-user by design: barcode verification is product-level data, not
+// user-specific. If any user has verified a barcode with a label photo,
+// all users benefit from that verification.
+export async function getBarcodeVerification(
+  barcode: string,
+): Promise<{ verified: boolean; verifiedAt: Date | null }> {
+  const cutoff = new Date(Date.now() - VERIFICATION_WINDOW_MS);
+
+  const [row] = await db
+    .select({ scannedAt: scannedItems.scannedAt })
+    .from(scannedItems)
+    .where(
+      and(
+        eq(scannedItems.barcode, barcode),
+        eq(scannedItems.sourceType, "label"),
+        isNull(scannedItems.discardedAt),
+        gte(scannedItems.scannedAt, cutoff),
+      ),
+    )
+    .orderBy(desc(scannedItems.scannedAt))
+    .limit(1);
+
+  return row
+    ? { verified: true, verifiedAt: row.scannedAt }
+    : { verified: false, verifiedAt: null };
+}
+```
+
+**When to use:** Queries that check a global property of a product, resource, or entity — barcode verification, product ratings, content moderation status.
+
+**When NOT to use:** User-specific data (daily logs, favourites, preferences), or community aggregations where self-exclusion matters (use "Cross-User Aggregation with Self-Exclusion" instead).
+
+**References:**
+
+- `server/storage/nutrition.ts` — `getBarcodeVerification()`
+- `server/routes/nutrition.ts` — `GET /api/nutrition/barcode/:code/verification`
+
 ### Toggle via Transaction to Prevent Duplicate Inserts
 
 When implementing a toggle on a join table (favourite/unfavourite, follow/unfollow, like/unlike), wrap the check-then-write in `db.transaction()`. Without a transaction, two rapid taps can both see "not exists" and both insert, creating a duplicate row. The pattern is: select inside `tx`, if exists delete and return false, otherwise insert and return true.
@@ -3532,6 +3583,53 @@ pages: old.pages.map((page) => {
 - `client/hooks/useFavourites.ts` -- toggle optimistic update
 - `client/hooks/useDiscardItem.ts` -- removal with per-page total correction
 - Related learning: "Optimistic Total Must Target Correct Page" in LEARNINGS.md
+
+### Client-Side API Timeout with Promise.race
+
+When a client-side API call gates a UX decision (e.g., navigate to screen A vs screen B), wrap it in `Promise.race` with a timeout to prevent the user from being stuck on slow or unresponsive networks. Unlike server-side `AbortSignal.timeout()`, this pattern works with `apiRequest()` which doesn't accept a signal parameter.
+
+**Key elements:**
+
+1. **Short timeout (2-3s)** — the user is waiting with no visible feedback, so fail fast
+2. **Safe default on failure** — the `catch` block picks the more cautious path (e.g., prompt for more data rather than skipping)
+3. **No loading spinner** — the timeout is short enough that adding a loading state would cause more visual churn than the brief pause
+
+```typescript
+// client/screens/ScanScreen.tsx — barcode verification check
+let verified = false;
+try {
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error("timeout")), 3000),
+  );
+  const res = await Promise.race([
+    apiRequest(
+      "GET",
+      `/api/nutrition/barcode/${encodeURIComponent(barcode)}/verification`,
+    ),
+    timeout,
+  ]);
+  const data = await res.json();
+  verified = data.verified === true;
+} catch {
+  // Network error or timeout — default to the cautious path
+  verified = false;
+}
+
+if (verified) {
+  navigation.navigate("NutritionDetail", { barcode });
+} else {
+  navigation.navigate("Scan", { mode: "label", barcode });
+}
+```
+
+**When to use:** Client-side API calls that gate navigation decisions or UX branching, where the user is waiting with no loading indicator.
+
+**When NOT to use:** Data-fetching queries managed by TanStack Query (which has its own retry/timeout behavior), or server-side external API calls (use `AbortSignal.timeout()` instead — see "Fetch Timeout with AbortSignal for External APIs").
+
+**References:**
+
+- `client/screens/ScanScreen.tsx` — barcode verification before navigation
+- Related pattern: "Fetch Timeout with AbortSignal for External APIs" (server-side equivalent)
 
 ---
 

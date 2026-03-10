@@ -209,6 +209,46 @@ export async function toggleFavouriteScannedItem(
 }
 
 // ============================================================================
+// BARCODE VERIFICATION
+// ============================================================================
+
+/** ~6 months in milliseconds (180 days) */
+const VERIFICATION_WINDOW_MS = 6 * 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * Check whether a barcode has been verified by a label photo within the last
+ * ~6 months (180 days). Returns the most recent label-verified scan date if
+ * found.
+ *
+ * Cross-user by design: barcode verification is product-level data, not
+ * user-specific. If any user has verified a barcode with a label photo,
+ * all users benefit from that verification.
+ */
+export async function getBarcodeVerification(
+  barcode: string,
+): Promise<{ verified: boolean; verifiedAt: Date | null }> {
+  const cutoff = new Date(Date.now() - VERIFICATION_WINDOW_MS);
+
+  const [row] = await db
+    .select({ scannedAt: scannedItems.scannedAt })
+    .from(scannedItems)
+    .where(
+      and(
+        eq(scannedItems.barcode, barcode),
+        eq(scannedItems.sourceType, "label"),
+        isNull(scannedItems.discardedAt),
+        gte(scannedItems.scannedAt, cutoff),
+      ),
+    )
+    .orderBy(desc(scannedItems.scannedAt))
+    .limit(1);
+
+  return row
+    ? { verified: true, verifiedAt: row.scannedAt }
+    : { verified: false, verifiedAt: null };
+}
+
+// ============================================================================
 // DAILY LOGS
 // ============================================================================
 

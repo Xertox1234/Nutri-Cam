@@ -47,6 +47,7 @@ export const storage = {
   createDailyLog: nutrition.createDailyLog,
   getDailySummary: nutrition.getDailySummary,
   getDailyScanCount: nutrition.getDailyScanCount,
+  getBarcodeVerification: nutrition.getBarcodeVerification,
   getSavedItems: nutrition.getSavedItems,
   getSavedItemCount: nutrition.getSavedItemCount,
   createSavedItem: nutrition.createSavedItem,

@@ -19,6 +19,7 @@ vi.mock("../../storage", () => ({
     getDailySummary: vi.fn(),
     getConfirmedMealPlanItemIds: vi.fn(),
     getPlannedNutritionSummary: vi.fn(),
+    getBarcodeVerification: vi.fn(),
   },
 }));
 
@@ -146,6 +147,60 @@ describe("Nutrition Routes", () => {
 
       expect(res.status).toBe(404);
       expect(res.body.code).toBe("NOT_IN_DATABASE");
+    });
+  });
+
+  describe("GET /api/nutrition/barcode/:code/verification", () => {
+    it("returns verified true when barcode has label verification", async () => {
+      vi.mocked(storage.getBarcodeVerification).mockResolvedValue({
+        verified: true,
+        verifiedAt: new Date("2024-06-01T12:00:00"),
+      });
+
+      const res = await request(app)
+        .get("/api/nutrition/barcode/1234567890/verification")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.verified).toBe(true);
+      expect(res.body.verifiedAt).toBeTruthy();
+      expect(storage.getBarcodeVerification).toHaveBeenCalledWith("1234567890");
+    });
+
+    it("returns verified false when barcode has no label verification", async () => {
+      vi.mocked(storage.getBarcodeVerification).mockResolvedValue({
+        verified: false,
+        verifiedAt: null,
+      });
+
+      const res = await request(app)
+        .get("/api/nutrition/barcode/9999999999/verification")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.verified).toBe(false);
+      expect(res.body.verifiedAt).toBeNull();
+      expect(storage.getBarcodeVerification).toHaveBeenCalledWith("9999999999");
+    });
+
+    it("returns 400 for non-numeric barcode", async () => {
+      const res = await request(app)
+        .get("/api/nutrition/barcode/abc/verification")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 500 on storage error", async () => {
+      vi.mocked(storage.getBarcodeVerification).mockRejectedValue(
+        new Error("DB error"),
+      );
+
+      const res = await request(app)
+        .get("/api/nutrition/barcode/1234567890/verification")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(500);
     });
   });
 

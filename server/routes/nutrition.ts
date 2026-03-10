@@ -133,6 +133,36 @@ export function register(app: Express): void {
     },
   );
 
+  // Check whether a barcode has been verified by a label photo scan within
+  // the last 6 months.  Used by the client to decide whether to prompt the
+  // user to take a label photo after scanning a barcode.
+  app.get(
+    "/api/nutrition/barcode/:code/verification",
+    requireAuth,
+    pantryRateLimit,
+    async (req: Request, res: Response) => {
+      const rawCode = req.params.code;
+      const code = typeof rawCode === "string" ? rawCode.trim() : "";
+      if (!code || code.length > 50 || !/^\d+$/.test(code)) {
+        sendError(res, 400, "Invalid barcode", ErrorCode.VALIDATION_ERROR);
+        return;
+      }
+
+      try {
+        const result = await storage.getBarcodeVerification(code);
+        res.json(result);
+      } catch (error) {
+        console.error("Barcode verification check error:", error);
+        sendError(
+          res,
+          500,
+          "Verification check failed",
+          ErrorCode.INTERNAL_ERROR,
+        );
+      }
+    },
+  );
+
   app.get(
     "/api/scanned-items",
     requireAuth,
