@@ -42,8 +42,8 @@ npm run expo:static:build  # Build static Expo bundle
 
 - `client/` - React Native/Expo frontend
 - `server/` - Express.js backend
-  - `server/routes/` - 23 modular route files (registered via `server/routes.ts`)
-  - `server/storage/` - 12 domain-split storage modules (composed via `server/storage/index.ts`)
+  - `server/routes/` - 24 modular route files (registered via `server/routes.ts`)
+  - `server/storage/` - 13 domain-split storage modules (composed via `server/storage/index.ts`)
   - `server/services/` - 22 service files (nutrition, AI, recipes, health, etc.)
 - `shared/` - Code shared between client/server (database schema, models, constants, types)
 
@@ -78,11 +78,11 @@ Root-level modal screens: Scan, NutritionDetail, PhotoIntent, PhotoAnalysis, Goa
 
 ### Database Schema (`shared/schema.ts`)
 
-31 tables organized by domain:
+33 tables organized by domain:
 
 - **Core**: `users`, `userProfiles`, `scannedItems`, `dailyLogs`, `savedItems`, `favouriteScannedItems`
 - **Nutrition cache**: `nutritionCache`, `micronutrientCache`, `suggestionCache`, `instructionCache`, `mealSuggestionCache`
-- **Recipes & meal planning**: `communityRecipes`, `recipeGenerationLog`, `mealPlanRecipes`, `recipeIngredients`, `mealPlanItems`
+- **Recipes & meal planning**: `communityRecipes`, `recipeGenerationLog`, `mealPlanRecipes`, `recipeIngredients`, `mealPlanItems`, `cookbooks`, `cookbookRecipes`
 - **Grocery & pantry**: `groceryLists`, `groceryListItems`, `pantryItems`
 - **Exercise & activity**: `exerciseLibrary`, `exerciseLogs`
 - **Health tracking**: `weightLogs`, `healthKitSync`, `fastingSchedules`, `fastingLogs`, `medicationLogs`, `goalAdjustmentLogs`
