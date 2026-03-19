@@ -18,6 +18,7 @@ server/storage/
   medication.ts     # Medication logs
   fasting.ts        # Fasting logs
   menu.ts           # Restaurant menu scans
+  cookbooks.ts      # Cookbooks and cookbook-recipe junction
 ```
 
 **Facade pattern:**
@@ -87,7 +88,7 @@ export function getDayBounds(date: Date): { startOfDay: Date; endOfDay: Date } {
 
 - `server/storage/index.ts` -- facade with all method compositions
 - `server/storage/helpers.ts` -- `getDayBounds`, `escapeLike`
-- 12 domain modules: `users.ts`, `nutrition.ts`, `meal-plans.ts`, `activity.ts`, `chat.ts`, `cache.ts`, `community.ts`, `medication.ts`, `fasting.ts`, `menu.ts`
+- 13 domain modules: `users.ts`, `nutrition.ts`, `meal-plans.ts`, `activity.ts`, `chat.ts`, `cache.ts`, `community.ts`, `medication.ts`, `fasting.ts`, `menu.ts`, `cookbooks.ts`
 
 ## Route Module Patterns
 
