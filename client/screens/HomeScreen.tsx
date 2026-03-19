@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import { ScrollView, RefreshControl, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
@@ -23,6 +23,7 @@ import { useAccessibility } from "@/hooks/useAccessibility";
 import { useAuthContext } from "@/context/AuthContext";
 import { useDailyBudget } from "@/hooks/useDailyBudget";
 import { Spacing, FAB_CLEARANCE } from "@/constants/theme";
+import { UpgradeModal } from "@/components/UpgradeModal";
 import type { HomeScreenNavigationProp } from "@/types/navigation";
 
 const SECTIONS: { key: SectionKey; title: string; delay: number }[] = [
@@ -40,17 +41,18 @@ export default function HomeScreen() {
   const { reducedMotion } = useAccessibility();
   const { user } = useAuthContext();
 
-  const { sections, toggleSection, recentActions, recordAction } =
+  const { sections, toggleSection, recentActions, recordAction, usageCounts } =
     useHomeActions();
   const { refetch, isRefetching } = useDailyBudget();
 
   const isPremium = user?.subscriptionTier === "premium";
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   const handleActionPress = useCallback(
     (action: HomeAction) => {
       if (action.premium && !isPremium) {
-        // TODO: show premium upgrade prompt
         haptics.notification(Haptics.NotificationFeedbackType.Warning);
+        setShowUpgradeModal(true);
         return;
       }
       haptics.impact(Haptics.ImpactFeedbackStyle.Light);
@@ -83,6 +85,7 @@ export default function HomeScreen() {
         recentActionIds={recentActions}
         allActions={HOME_ACTIONS}
         onActionPress={handleActionPress}
+        usageCounts={usageCounts}
       />
 
       {SECTIONS.map(({ key, title, delay }) => (
@@ -112,6 +115,11 @@ export default function HomeScreen() {
       ))}
 
       <View style={styles.bottomSpacer} />
+
+      <UpgradeModal
+        visible={showUpgradeModal}
+        onClose={() => setShowUpgradeModal(false)}
+      />
     </ScrollView>
   );
 }

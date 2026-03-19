@@ -2,6 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const SECTIONS_KEY = "@ocrecipes_home_sections";
 const RECENT_KEY = "@ocrecipes_recent_actions";
+const USAGE_COUNTS_KEY = "@ocrecipes_action_usage_counts";
 const MAX_RECENT = 4;
 
 export type SectionKey = "scanning" | "nutrition" | "recipes" | "planning";
@@ -18,11 +19,13 @@ const DEFAULT_SECTIONS: SectionState = {
 // In-memory caches for synchronous reads after init
 let sectionCache: SectionState | null = null;
 let recentCache: string[] | null = null;
+let usageCountsCache: Record<string, number> | null = null;
 
 export async function initHomeActionsCache(): Promise<void> {
-  const [sectionsRaw, recentRaw] = await Promise.all([
+  const [sectionsRaw, recentRaw, usageCountsRaw] = await Promise.all([
     AsyncStorage.getItem(SECTIONS_KEY).catch(() => null),
     AsyncStorage.getItem(RECENT_KEY).catch(() => null),
+    AsyncStorage.getItem(USAGE_COUNTS_KEY).catch(() => null),
   ]);
 
   try {
@@ -37,6 +40,12 @@ export async function initHomeActionsCache(): Promise<void> {
     recentCache = recentRaw ? JSON.parse(recentRaw) : [];
   } catch {
     recentCache = [];
+  }
+
+  try {
+    usageCountsCache = usageCountsRaw ? JSON.parse(usageCountsRaw) : {};
+  } catch {
+    usageCountsCache = {};
   }
 }
 
@@ -63,4 +72,15 @@ export async function pushRecentAction(actionId: string): Promise<void> {
   const updated = [actionId, ...current].slice(0, MAX_RECENT);
   recentCache = updated;
   await AsyncStorage.setItem(RECENT_KEY, JSON.stringify(updated));
+}
+
+export function getActionUsageCounts(): Record<string, number> {
+  return usageCountsCache ?? {};
+}
+
+export async function incrementActionUsage(actionId: string): Promise<void> {
+  const counts = getActionUsageCounts();
+  const updated = { ...counts, [actionId]: (counts[actionId] ?? 0) + 1 };
+  usageCountsCache = updated;
+  await AsyncStorage.setItem(USAGE_COUNTS_KEY, JSON.stringify(updated));
 }
