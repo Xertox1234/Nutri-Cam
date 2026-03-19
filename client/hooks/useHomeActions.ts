@@ -4,6 +4,8 @@ import {
   setSectionExpanded,
   getRecentActions,
   pushRecentAction,
+  getActionUsageCounts,
+  incrementActionUsage,
   initHomeActionsCache,
   type SectionKey,
 } from "@/lib/home-actions-storage";
@@ -12,11 +14,14 @@ export function useHomeActions() {
   const [sections, setSections] = useState(getSectionState);
   const [recentActions, setRecentActions] =
     useState<string[]>(getRecentActions);
+  const [usageCounts, setUsageCounts] =
+    useState<Record<string, number>>(getActionUsageCounts);
 
   useEffect(() => {
     initHomeActionsCache().then(() => {
       setSections(getSectionState());
       setRecentActions(getRecentActions());
+      setUsageCounts(getActionUsageCounts());
     });
   }, []);
 
@@ -32,7 +37,10 @@ export function useHomeActions() {
     pushRecentAction(actionId).then(() => {
       setRecentActions(getRecentActions());
     });
+    incrementActionUsage(actionId).then(() => {
+      setUsageCounts(getActionUsageCounts());
+    });
   }, []);
 
-  return { sections, toggleSection, recentActions, recordAction };
+  return { sections, toggleSection, recentActions, recordAction, usageCounts };
 }

@@ -22,20 +22,25 @@ import type { HomeAction } from "./action-config";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
+const ICON_ONLY_THRESHOLD = 5;
+
 interface RecentActionsRowProps {
   recentActionIds: string[];
   allActions: HomeAction[];
   onActionPress: (action: HomeAction) => void;
+  usageCounts?: Record<string, number>;
 }
 
 function RecentActionChip({
   action,
   onPress,
   reducedMotion,
+  iconOnly,
 }: {
   action: HomeAction;
   onPress: () => void;
   reducedMotion: boolean;
+  iconOnly: boolean;
 }) {
   const { theme } = useTheme();
   const scale = useSharedValue(1);
@@ -67,17 +72,19 @@ function RecentActionChip({
     >
       <Feather
         name={action.icon as keyof typeof Feather.glyphMap}
-        size={14}
+        size={iconOnly ? 16 : 14}
         color={theme.link}
         accessible={false}
       />
-      <ThemedText
-        type="small"
-        style={[styles.chipLabel, { color: theme.link }]}
-        numberOfLines={1}
-      >
-        {action.label}
-      </ThemedText>
+      {!iconOnly && (
+        <ThemedText
+          type="small"
+          style={[styles.chipLabel, { color: theme.link }]}
+          numberOfLines={1}
+        >
+          {action.label}
+        </ThemedText>
+      )}
     </AnimatedPressable>
   );
 }
@@ -86,6 +93,7 @@ export function RecentActionsRow({
   recentActionIds,
   allActions,
   onActionPress,
+  usageCounts = {},
 }: RecentActionsRowProps) {
   const { theme } = useTheme();
   const { reducedMotion } = useAccessibility();
@@ -135,6 +143,7 @@ export function RecentActionsRow({
             action={action}
             onPress={() => onActionPress(action)}
             reducedMotion={reducedMotion}
+            iconOnly={(usageCounts[action.id] ?? 0) >= ICON_ONLY_THRESHOLD}
           />
         ))}
       </ScrollView>

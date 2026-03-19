@@ -20,6 +20,7 @@ import {
   type CookSessionNutritionItem,
   type CookSessionNutritionSummary,
 } from "@shared/types/cook-session";
+import { mergeDetectedIngredients } from "../lib/cook-session-merge";
 import { openai, OPENAI_TIMEOUT_HEAVY_MS } from "../lib/openai";
 import { SYSTEM_PROMPT_BOUNDARY } from "../lib/ai-safety";
 import { batchNutritionLookup } from "../services/nutrition-lookup";
@@ -409,23 +410,11 @@ export function register(app: Express): void {
             userEdited: false,
           }));
 
-        // Simple dedup: if exact name match exists and not userEdited, update quantity
-        for (const newItem of newIngredients) {
-          const existingIndex = session.ingredients.findIndex(
-            (i) =>
-              i.name.toLowerCase() === newItem.name.toLowerCase() &&
-              !i.userEdited,
-          );
-          if (existingIndex !== -1) {
-            session.ingredients[existingIndex].quantity += newItem.quantity;
-            session.ingredients[existingIndex].confidence = Math.max(
-              session.ingredients[existingIndex].confidence,
-              newItem.confidence,
-            );
-          } else if (session.ingredients.length < MAX_INGREDIENTS_PER_SESSION) {
-            session.ingredients.push(newItem);
-          }
-        }
+        session.ingredients = mergeDetectedIngredients(
+          session.ingredients,
+          newIngredients,
+          MAX_INGREDIENTS_PER_SESSION,
+        );
 
         session.photos.push({ id: photoId, addedAt: Date.now() });
         resetSessionTimeout(session.id);
