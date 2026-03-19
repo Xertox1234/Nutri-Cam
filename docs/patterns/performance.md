@@ -300,3 +300,46 @@ export function onLogout(userId: string): void {
 
 - `server/middleware/auth.ts` -- `tokenVersionCache`, `getCachedTokenVersion`, `setCachedTokenVersion`, `invalidateTokenVersionCache`
 - See also: [Token Versioning for JWT Revocation](#token-versioning-for-jwt-revocation) in Security Patterns
+
+### Pre-Compiled Regex Cache for Keyword Matching
+
+When a function matches input text against a known static set of keywords using regex, pre-compile the patterns at module load time into a `Map` cache instead of creating new `RegExp` objects inside the loop.
+
+```typescript
+// Pre-compiled cache — built once at module load
+const keywordPatternCache = new Map<string, RegExp>();
+
+function getKeywordPattern(keyword: string): RegExp {
+  let pattern = keywordPatternCache.get(keyword);
+  if (!pattern) {
+    const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    pattern = new RegExp(
+      `(?:^|[\\s,;/()\\-])${escaped}(?:$|[\\s,;/()\\-])`,
+      "i",
+    );
+    keywordPatternCache.set(keyword, pattern);
+  }
+  return pattern;
+}
+
+// Pre-populate at module load
+for (const kw of ALL_KEYWORDS) {
+  if (!kw.includes(" ")) getKeywordPattern(kw);
+}
+
+// Hot loop uses cached patterns — no compilation overhead
+function containsKeyword(text: string, keyword: string): boolean {
+  if (keyword.includes(" ")) return text.includes(keyword); // multi-word: substring
+  return getKeywordPattern(keyword).test(text); // single-word: cached regex
+}
+```
+
+**When to use:** Any function that matches input text against a static set of keywords using regex, especially in loops (allergen detection, cultural food name mapping, exercise synonym matching).
+
+**When NOT to use:** Dynamic patterns that change per request, or keyword sets small enough that compilation cost is negligible (< 5 keywords).
+
+**Why:** Regex compilation is expensive relative to `.test()` execution. In allergen detection with 190+ keywords across 100 ingredients, this means thousands of regex compilations per request without caching. The cache reduces this to zero after the first module load.
+
+**References:**
+
+- `shared/constants/allergens.ts` -- `keywordPatternCache`, `getKeywordPattern()`

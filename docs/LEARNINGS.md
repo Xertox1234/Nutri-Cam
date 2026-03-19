@@ -4,6 +4,7 @@ This document captures key learnings, gotchas, and architectural decisions disco
 
 ## Table of Contents
 
+- [Allergen Substitution Safety Findings (2026-03-18)](#allergen-substitution-safety-findings-2026-03-18)
 - [Receipt-to-Meal-Plan Code Review Findings (2026-03-10)](#receipt-to-meal-plan-code-review-findings-2026-03-10)
 - [PostgreSQL Decimal Aggregates Return Strings via Drizzle (2026-02-24)](#postgresql-decimal-aggregates-return-strings-via-drizzle-2026-02-24)
 - [Phase 0-7 Code Review Learnings (2026-02-24)](#phase-0-7-code-review-learnings-2026-02-24)
@@ -20,6 +21,52 @@ This document captures key learnings, gotchas, and architectural decisions disco
 - [Testing & Tooling Learnings](#testing--tooling-learnings)
 - [Database Migration Gotchas](#database-migration-gotchas)
 - [TypeScript Safety Learnings](#typescript-safety-learnings)
+
+---
+
+## [2026-03-18] Allergen Substitution Safety Findings
+
+**Category:** Security / Bug Post-Mortem
+
+### Context
+
+Building the "Intelligent Allergy-Aware Ingredient Substitution" feature across 3 phases. The feature adds allergen detection, severity-aware warnings, and substitution suggestions across recipe, grocery, and catalog surfaces. Three code review cycles uncovered safety-critical bugs and several non-obvious gotchas.
+
+### Problems Found
+
+**1. Cross-allergy safety bug: AI substitutions recommend user's own allergens**
+
+The ingredient substitution service could suggest "almond flour" as a wheat substitute to a user with a tree-nut allergy. The static lookup table, Spoonacular API, and AI all operated independently without cross-referencing the user's allergy list. AI exclusion prompts ("do NOT suggest nuts") were insufficient — the model occasionally ignored them.
+
+**2. Unsafe fallback fabricating allergen data (`?? "milk"`)**
+
+When enriching substitution suggestions with allergen context, the code used `match?.allergenId ?? "milk"` as a fallback when a Map lookup failed. This fabricated a "milk" allergen attribution for unrelated substitutions, potentially causing false warnings that erode user trust.
+
+**3. JSONB `as` cast hides runtime type mismatch**
+
+`profile.allergies` is a JSONB column typed as `unknown` by Drizzle. The code cast it with `as { name: string; severity: string }[]` in 4 locations, providing zero runtime safety. If the column contained null, a bare string, or objects with missing fields, the code would crash with unhelpful errors.
+
+### Solutions
+
+1. **Cross-allergy filter:** Added `filterSafeSubstitutions()` that passes ALL suggestions (from all 3 tiers) through `detectAllergens()` against the user's allergy list before returning results. Also added `buildExclusionList()` for the AI prompt as a first line of defense.
+
+2. **Skip instead of fabricate:** Replaced the `?? "milk"` fallback with a Map lookup that uses `continue` to skip unresolvable entries entirely.
+
+3. **Per-element Zod validation:** Replaced `as` casts with `parseAllergies()` using `allergySchema.safeParse()` per element, skipping invalid entries gracefully.
+
+### Takeaways
+
+- **AI exclusion prompts are defense-in-depth, not sole protection.** Always validate AI output programmatically against user restrictions. The AI is a suggestion source, not a safety gate.
+- **Never use a domain-meaningful value as a fallback default.** If a lookup fails, skip or log — don't fabricate data. `?? "milk"` silently creates false allergen attributions.
+- **When a Zod schema exists for a JSONB element, use it.** Per-element `safeParse()` + skip is strictly better than `as` casts or whole-array validation because it recovers from partial corruption.
+- **Safety-critical filter functions need dedicated unit tests.** `filterSafeSubstitutions` and `buildExclusionList` were initially untest — review caught this and tests were added.
+- **Multi-tier pipelines need the safety filter applied to combined output, not per-tier.** Static, Spoonacular, and AI tiers each have different blind spots — only the final combined output should be filtered.
+
+### References
+
+- Pattern: [Cross-Allergy Safety Filter](patterns/security.md#cross-allergy-safety-filter-for-aiexternal-suggestions)
+- Pattern: [Zod safeParse per JSONB Element](patterns/database.md#zod-safeparse-per-jsonb-element)
+- Files: `server/services/ingredient-substitution.ts`, `server/routes/allergen-check.ts`, `shared/constants/allergens.ts`
 
 ---
 

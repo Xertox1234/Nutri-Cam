@@ -1424,3 +1424,56 @@ mutationFn: async (input) => {
 - Implementation: `client/lib/query-client.ts` (`throwIfResNotOk` at line 29, `apiRequest` at line 55)
 - See also: [FormData Upload Mutation](#formdata-upload-mutation) (uses raw `fetch`, so `res.ok` check IS needed)
 - See also: [Graceful 404 Handling with Raw Fetch](#graceful-404-handling-with-raw-fetch)
+
+### Promise.allSettled with Cap for External API Fan-Out
+
+When calling a rate-limited external API for a list of inputs, use `Promise.allSettled()` (not `Promise.all()`) with a cap on parallel calls. Failed items degrade to the next tier instead of losing all results.
+
+```typescript
+const MAX_CALLS = 5;
+const batch = ingredients.slice(0, MAX_CALLS);
+const overflow = ingredients.slice(MAX_CALLS); // goes straight to fallback
+
+const outcomes = await Promise.allSettled(
+  batch.map(async (ingredient) => {
+    const subs = await getSpoonacularSubstitutes(ingredient.name);
+    return { ingredient, subs };
+  }),
+);
+
+const results: Suggestion[] = [];
+const needsFallback: Ingredient[] = [...overflow];
+
+for (let i = 0; i < outcomes.length; i++) {
+  const outcome = outcomes[i];
+  if (outcome.status === "fulfilled" && outcome.value.subs.length > 0) {
+    results.push(...formatSuggestions(outcome.value));
+  } else {
+    needsFallback.push(batch[i]); // degrade to AI tier
+  }
+}
+```
+
+```typescript
+// Bad: sequential calls — 5 items × 10s timeout = 50s worst case
+for (const item of items) {
+  const result = await externalApi(item); // sequential
+}
+
+// Bad: Promise.all — one failure rejects everything
+await Promise.all(items.map((item) => externalApi(item)));
+
+// Good: parallel + partial failure recovery + quota protection
+await Promise.allSettled(items.slice(0, MAX).map(...));
+```
+
+**When to use:** Fan-out calls to paid/rate-limited external APIs (Spoonacular, USDA, API Ninjas) with a list of inputs where partial results are acceptable.
+
+**When NOT to use:** Internal database queries where all-or-nothing semantics are correct. APIs with no rate limits where `Promise.all` is simpler.
+
+**Why:** (1) `Promise.all` rejects on the first failure, discarding successful results. (2) Sequential calls multiply latency linearly. (3) Uncapped parallelism can exhaust API quotas (Spoonacular free tier: 150 points/day). The cap + `allSettled` gives parallel speed with quota protection and partial failure recovery.
+
+**References:**
+
+- `server/services/ingredient-substitution.ts` -- 3-tier substitution pipeline (Static -> Spoonacular -> AI)
+- See also: [Static-First with AI Fallback](#static-first-with-ai-fallback) in Architecture Patterns

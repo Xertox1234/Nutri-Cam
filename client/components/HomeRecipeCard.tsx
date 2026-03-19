@@ -7,7 +7,12 @@ import { ThemedText } from "@/components/ThemedText";
 import { Card } from "@/components/Card";
 import { useTheme } from "@/hooks/useTheme";
 import { useAccessibility } from "@/hooks/useAccessibility";
-import { Spacing, BorderRadius, FontFamily } from "@/constants/theme";
+import {
+  Spacing,
+  BorderRadius,
+  FontFamily,
+  withOpacity,
+} from "@/constants/theme";
 import { resolveImageUrl } from "@/lib/query-client";
 import type { CommunityRecipe } from "@shared/schema";
 
@@ -18,12 +23,15 @@ interface HomeRecipeCardProps {
   recipe: CommunityRecipe;
   index?: number;
   onPress: (id: number) => void;
+  /** When true, shows a small allergen warning indicator on the card. */
+  hasAllergenWarning?: boolean;
 }
 
 export const HomeRecipeCard = React.memo(function HomeRecipeCard({
   recipe,
   index = 0,
   onPress,
+  hasAllergenWarning = false,
 }: HomeRecipeCardProps) {
   const { theme } = useTheme();
   const { reducedMotion } = useAccessibility();
@@ -43,7 +51,7 @@ export const HomeRecipeCard = React.memo(function HomeRecipeCard({
       <Card
         elevation={2}
         onPress={handlePress}
-        accessibilityLabel={`${recipe.title}. ${recipe.difficulty ? `Difficulty: ${recipe.difficulty}.` : ""} Tap to view recipe.`}
+        accessibilityLabel={`${recipe.title}. ${hasAllergenWarning ? "Contains your allergens. " : ""}${recipe.difficulty ? `Difficulty: ${recipe.difficulty}. ` : ""}Tap to view recipe.`}
         accessibilityHint="Opens recipe details"
       >
         {/* Image section */}
@@ -77,6 +85,25 @@ export const HomeRecipeCard = React.memo(function HomeRecipeCard({
               <ThemedText style={styles.difficultyText}>
                 {recipe.difficulty}
               </ThemedText>
+            </View>
+          ) : null}
+
+          {/* Allergen warning dot */}
+          {hasAllergenWarning ? (
+            <View
+              style={[
+                styles.allergenDot,
+                { backgroundColor: withOpacity(theme.error, 0.9) },
+              ]}
+              accessibilityLabel="Contains your allergens"
+              accessibilityRole="text"
+            >
+              <Feather
+                name="alert-triangle"
+                size={10}
+                color="#FFFFFF" // hardcoded — always white on colored dot
+                accessible={false}
+              />
             </View>
           ) : null}
         </View>
@@ -146,6 +173,16 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontFamily: FontFamily.semiBold,
     textTransform: "capitalize",
+  },
+  allergenDot: {
+    position: "absolute",
+    top: Spacing.sm,
+    right: Spacing.sm,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    justifyContent: "center",
+    alignItems: "center",
   },
   content: {
     padding: Spacing.lg,

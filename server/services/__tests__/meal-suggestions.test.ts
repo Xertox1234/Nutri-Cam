@@ -82,8 +82,9 @@ describe("meal-suggestions", () => {
         allergies: [{ name: "peanuts", severity: "severe" }],
       } as unknown as UserProfile;
       const result = buildDietaryContext(profile);
-      expect(result).toContain("peanuts");
-      expect(result).toContain("MUST AVOID");
+      expect(result).toContain("Peanuts");
+      expect(result).toContain("CRITICAL ALLERGY RESTRICTIONS");
+      expect(result).toContain("SEVERE");
     });
 
     it("should include diet type", () => {
@@ -152,7 +153,7 @@ describe("meal-suggestions", () => {
 
     it("should combine all fields with periods", () => {
       const profile = {
-        allergies: [{ name: "nuts" }],
+        allergies: [{ name: "tree_nuts", severity: "moderate" }],
         dietType: "vegan",
         foodDislikes: ["onions"],
         cuisinePreferences: ["Japanese"],
@@ -160,7 +161,8 @@ describe("meal-suggestions", () => {
         cookingTimeAvailable: "45 minutes",
       } as unknown as UserProfile;
       const result = buildDietaryContext(profile);
-      expect(result).toContain("MUST AVOID these allergens: nuts");
+      expect(result).toContain("CRITICAL ALLERGY RESTRICTIONS");
+      expect(result).toContain("Tree Nuts");
       expect(result).toContain("Diet type: vegan");
       expect(result).toContain("Dislikes: onions");
       expect(result).toContain("Cuisine preferences: Japanese");
