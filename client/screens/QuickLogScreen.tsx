@@ -176,21 +176,6 @@ export default function QuickLogScreen() {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
       >
-        {adaptiveGoalData?.hasRecommendation &&
-          adaptiveGoalData.recommendation && (
-            <View
-              style={{
-                marginHorizontal: Spacing.lg,
-                marginTop: Spacing.lg,
-                marginBottom: Spacing.sm,
-              }}
-            >
-              <AdaptiveGoalCard
-                recommendation={adaptiveGoalData.recommendation}
-              />
-            </View>
-          )}
-
         {/* Text Input */}
         <Card elevation={1} style={styles.inputCard}>
           <ThemedText type="h4" style={styles.sectionTitle}>
@@ -270,6 +255,13 @@ export default function QuickLogScreen() {
             )}
           </View>
         </Card>
+
+        {adaptiveGoalData?.hasRecommendation &&
+          adaptiveGoalData.recommendation && (
+            <AdaptiveGoalCard
+              recommendation={adaptiveGoalData.recommendation}
+            />
+          )}
 
         {/* Parsed items preview */}
         <ParsedFoodPreview
