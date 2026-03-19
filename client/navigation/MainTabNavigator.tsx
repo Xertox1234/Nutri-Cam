@@ -13,12 +13,14 @@ import { ScanFAB } from "@/components/ScanFAB";
 import { useTheme } from "@/hooks/useTheme";
 import { FontFamily, TAB_BAR_HEIGHT } from "@/constants/theme";
 import type { MealPlanStackParamList } from "@/navigation/MealPlanStackNavigator";
+import type { ChatStackParamList } from "@/navigation/ChatStackNavigator";
+import type { ProfileStackParamList } from "@/navigation/ProfileStackNavigator";
 
 export type MainTabParamList = {
   HomeTab: undefined;
   MealPlanTab: NavigatorScreenParams<MealPlanStackParamList> | undefined;
-  CoachTab: undefined;
-  ProfileTab: undefined;
+  CoachTab: NavigatorScreenParams<ChatStackParamList> | undefined;
+  ProfileTab: NavigatorScreenParams<ProfileStackParamList> | undefined;
 };
 
 const Tab = createBottomTabNavigator<MainTabParamList>();

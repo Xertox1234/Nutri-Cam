@@ -23,14 +23,15 @@ describe("ScanFAB", () => {
   it("has correct accessibility label", () => {
     renderComponent(<ScanFAB />);
     expect(screen.getByRole("button").getAttribute("aria-label")).toBe(
-      "Scan food item. Long press for more options.",
+      "Open scan menu",
     );
   });
 
-  it("navigates to Scan screen on press", () => {
+  it("opens scan menu on press instead of navigating directly", () => {
     renderComponent(<ScanFAB />);
     fireEvent.click(screen.getByRole("button"));
-    expect(mockNavigate).toHaveBeenCalledWith("Scan");
+    // FAB now opens a menu instead of navigating directly
+    expect(mockNavigate).not.toHaveBeenCalled();
   });
 
   it("renders plus icon", () => {
