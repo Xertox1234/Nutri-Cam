@@ -19,12 +19,18 @@ vi.mock("../../lib/ai-safety", () => ({
   SYSTEM_PROMPT_BOUNDARY: "---BOUNDARY---",
 }));
 
+vi.mock("../recipe-catalog", () => ({
+  getSpoonacularSubstitutes: vi.fn().mockResolvedValue([]),
+}));
+
 const mockCreate = vi.mocked(openai.chat.completions.create);
 
 const {
   findStaticSubstitutions,
   buildDietaryProfileSummary,
   extractDietaryTags,
+  filterSafeSubstitutions,
+  buildExclusionList,
   COMMON_SUBSTITUTIONS,
 } = _testInternals;
 
@@ -287,6 +293,127 @@ describe("ingredient-substitution", () => {
           expect(sub.tags.length).toBeGreaterThan(0);
         }
       }
+    });
+  });
+
+  describe("filterSafeSubstitutions", () => {
+    it("removes suggestions containing user allergens", () => {
+      const suggestions = [
+        {
+          originalIngredientId: "1",
+          substitute: "almond flour",
+          reason: "test",
+          ratio: "1:1",
+          macroDelta: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+          confidence: 0.9,
+        },
+        {
+          originalIngredientId: "1",
+          substitute: "oat flour",
+          reason: "test",
+          ratio: "1:1",
+          macroDelta: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+          confidence: 0.9,
+        },
+      ];
+
+      const result = filterSafeSubstitutions(suggestions, [
+        { name: "tree_nuts", severity: "severe" },
+      ]);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].substitute).toBe("oat flour");
+    });
+
+    it("returns all suggestions when user has no allergies", () => {
+      const suggestions = [
+        {
+          originalIngredientId: "1",
+          substitute: "almond milk",
+          reason: "test",
+          ratio: "1:1",
+          macroDelta: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+          confidence: 0.9,
+        },
+      ];
+
+      const result = filterSafeSubstitutions(suggestions, []);
+      expect(result).toHaveLength(1);
+    });
+
+    it("filters multiple allergens simultaneously", () => {
+      const suggestions = [
+        {
+          originalIngredientId: "1",
+          substitute: "peanut butter",
+          reason: "test",
+          ratio: "1:1",
+          macroDelta: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+          confidence: 0.9,
+        },
+        {
+          originalIngredientId: "2",
+          substitute: "whole milk",
+          reason: "test",
+          ratio: "1:1",
+          macroDelta: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+          confidence: 0.9,
+        },
+        {
+          originalIngredientId: "3",
+          substitute: "olive oil",
+          reason: "test",
+          ratio: "1:1",
+          macroDelta: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+          confidence: 0.9,
+        },
+      ];
+
+      const result = filterSafeSubstitutions(suggestions, [
+        { name: "peanuts", severity: "severe" },
+        { name: "milk", severity: "mild" },
+      ]);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].substitute).toBe("olive oil");
+    });
+  });
+
+  describe("buildExclusionList", () => {
+    it("returns empty string for no allergies", () => {
+      expect(buildExclusionList([])).toBe("");
+    });
+
+    it("includes CRITICAL ALLERGY RESTRICTIONS header", () => {
+      const result = buildExclusionList([
+        { name: "peanuts", severity: "severe" },
+      ]);
+      expect(result).toContain("CRITICAL ALLERGY RESTRICTIONS");
+    });
+
+    it("includes severity level and allergen label", () => {
+      const result = buildExclusionList([
+        { name: "peanuts", severity: "severe" },
+      ]);
+      expect(result).toContain("SEVERE");
+      expect(result).toContain("Peanuts");
+    });
+
+    it("includes ingredient examples from the allergen map", () => {
+      const result = buildExclusionList([
+        { name: "milk", severity: "moderate" },
+      ]);
+      expect(result).toContain("milk");
+      expect(result).toContain("cheese");
+    });
+
+    it("handles multiple allergens", () => {
+      const result = buildExclusionList([
+        { name: "peanuts", severity: "severe" },
+        { name: "wheat", severity: "mild" },
+      ]);
+      expect(result).toContain("Peanuts");
+      expect(result).toContain("Wheat/Gluten");
     });
   });
 });

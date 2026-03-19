@@ -310,7 +310,8 @@ describe("pantry-meal-plan", () => {
           messages: { content: string }[];
         }
       ).messages[1].content;
-      expect(userMessage).toContain("peanuts");
+      expect(userMessage).toContain("Peanuts");
+      expect(userMessage).toContain("CRITICAL ALLERGY RESTRICTIONS");
       expect(userMessage).toContain("vegetarian");
     });
 

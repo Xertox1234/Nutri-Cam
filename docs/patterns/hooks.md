@@ -418,3 +418,47 @@ export function useCurrentFast() {
 **References:**
 
 - `client/hooks/useFasting.ts` — `useCurrentFast()` with 60s polling
+
+### Query Key Stabilization for Array/Object Keys
+
+When a `useQuery` key includes an array or object that is derived on each render (e.g., from `.map()`), stabilize it with `JSON.stringify` inside `useMemo`. Without this, TanStack Query sees a new key on every render because arrays are compared by reference, causing unnecessary refetches.
+
+```typescript
+export function useAllergenCheck(ingredientNames: string[]) {
+  // Stabilize key — array identity changes don't trigger refetch
+  const stableKey = useMemo(
+    () => JSON.stringify(ingredientNames),
+    [ingredientNames],
+  );
+
+  return useQuery<AllergenCheckResult>({
+    queryKey: ["/api/allergen-check", stableKey],
+    queryFn: async () => {
+      const res = await apiRequest("POST", "/api/allergen-check", {
+        ingredients: ingredientNames,
+      });
+      return res.json();
+    },
+    enabled: ingredientNames.length > 0,
+  });
+}
+```
+
+```typescript
+// Bad: unstable array key — refetches on every render
+queryKey: ["/api/allergen-check", ingredientNames],
+
+// Good: stable string key — only refetches when contents change
+const stableKey = useMemo(() => JSON.stringify(ingredientNames), [ingredientNames]);
+queryKey: ["/api/allergen-check", stableKey],
+```
+
+**When to use:** Any `useQuery` or `useMutation` where the query key contains an array or object prop that the caller may not memoize (especially hooks meant for broad reuse).
+
+**When NOT to use:** Query keys that only contain primitive values (strings, numbers, booleans). Keys where the caller is guaranteed to memoize the input (but this is fragile).
+
+**Why:** TanStack Query uses structural equality on query keys, but JavaScript arrays created from `.map()` or spread produce new references on every render. Even though the contents are identical, React sees a different object. Serializing to a JSON string creates a primitive that only changes when the data changes. This was caught as a high-severity review finding causing unnecessary API calls.
+
+**References:**
+
+- `client/hooks/useAllergenCheck.ts` — canonical implementation

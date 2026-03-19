@@ -995,3 +995,49 @@ if (isAllergyArray(userProfile.allergies) && userProfile.allergies.length > 0) {
 **When NOT to use:** A JSONB column is only accessed in one place — an inline `Array.isArray()` guard is sufficient (see Safe JSONB Array Access pattern above).
 
 **Reference:** `shared/types/user-profile-guards.ts` — guards for `userProfiles.allergies` and `userProfiles.foodDislikes`
+
+### Zod safeParse per JSONB Element
+
+When a JSONB array column has a Zod schema for its element type, validate each element individually with `safeParse()` — skip invalid entries instead of failing the entire request. This is strictly more robust than the `isAllergyArray()` type guard approach because it recovers gracefully from partial corruption.
+
+```typescript
+import { allergySchema } from "@shared/schema";
+import type { AllergySeverity } from "@shared/constants/allergens";
+
+/** Runtime-safe extraction of allergies from JSONB column. */
+function parseAllergies(
+  raw: unknown,
+): { name: string; severity: AllergySeverity }[] {
+  if (!Array.isArray(raw)) return [];
+  const result: { name: string; severity: AllergySeverity }[] = [];
+  for (const item of raw) {
+    const parsed = allergySchema.safeParse(item);
+    if (parsed.success) result.push(parsed.data);
+    // Invalid entries silently skipped — partial corruption doesn't crash
+  }
+  return result;
+}
+```
+
+```typescript
+// Bad: as cast provides zero runtime safety
+const allergies = profile.allergies as { name: string }[];
+
+// Bad: crashes if any element is invalid
+const allergies = allergyArraySchema.parse(profile.allergies);
+
+// Good: per-element validation with graceful skip
+const allergies = parseAllergies(profile.allergies);
+```
+
+**When to use:** JSONB array columns where a Zod schema exists for the element type and partial corruption should not fail the request (allergies, preferences, tags, side effects).
+
+**When NOT to use:** When the entire array must be valid-or-nothing (use full array schema validation). When no Zod schema exists for the element type (use `Array.isArray()` + inline guard).
+
+**Why:** JSONB columns can contain unexpected data from schema evolution, manual DB edits, or migration bugs. Per-element validation means a single corrupt entry doesn't prevent the other 8 valid allergies from being used. This was caught as a high-severity code review finding — the original `as` cast hid runtime type mismatches.
+
+**References:**
+
+- `server/routes/allergen-check.ts` -- `parseAllergies()` canonical implementation
+- `shared/schema.ts` -- `allergySchema` Zod definition
+- See also: [Shared Type Guards for JSONB Columns](#shared-type-guards-for-jsonb-columns) (the type guard approach, suitable when no Zod schema exists)

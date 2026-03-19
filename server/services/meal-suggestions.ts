@@ -2,6 +2,8 @@ import crypto from "crypto";
 import { z } from "zod";
 import type { UserProfile } from "@shared/schema";
 import type { MealSuggestion } from "@shared/types/meal-suggestions";
+import { ALLERGEN_INGREDIENT_MAP } from "@shared/constants/allergens";
+import type { AllergenId } from "@shared/constants/allergens";
 import { openai, OPENAI_TIMEOUT_HEAVY_MS } from "../lib/openai";
 
 // Zod schema for validating AI response
@@ -67,10 +69,25 @@ function buildDietaryContext(userProfile: UserProfile | null): string {
     Array.isArray(userProfile.allergies) &&
     userProfile.allergies.length > 0
   ) {
-    const allergyNames = (userProfile.allergies as { name: string }[]).map(
-      (a) => a.name,
-    );
-    parts.push(`MUST AVOID these allergens: ${allergyNames.join(", ")}`);
+    const allergyLines: string[] = [];
+    for (const allergy of userProfile.allergies as {
+      name: string;
+      severity?: string;
+    }[]) {
+      const severity = allergy.severity ?? "moderate";
+      const def =
+        ALLERGEN_INGREDIENT_MAP[allergy.name as AllergenId] ??
+        ALLERGEN_INGREDIENT_MAP[allergy.name.toLowerCase() as AllergenId];
+      if (def) {
+        const examples = def.directIngredients.slice(0, 8).join(", ");
+        allergyLines.push(
+          `${severity.toUpperCase()} (${severity === "severe" ? "life-threatening" : severity === "moderate" ? "noticeable reaction" : "slight discomfort"}): ${def.label} — avoid: ${examples}`,
+        );
+      } else {
+        allergyLines.push(`${severity.toUpperCase()}: ${allergy.name}`);
+      }
+    }
+    parts.push(`CRITICAL ALLERGY RESTRICTIONS:\n${allergyLines.join("\n")}`);
   }
   if (userProfile.dietType) {
     parts.push(`Diet type: ${userProfile.dietType}`);

@@ -15,10 +15,54 @@ import {
 } from "@shared/types/cook-session";
 import {
   detectAllergens,
+  ALLERGEN_INGREDIENT_MAP,
   type AllergySeverity,
 } from "@shared/constants/allergens";
 import { openai, OPENAI_TIMEOUT_HEAVY_MS } from "../lib/openai";
 import { sanitizeUserInput, SYSTEM_PROMPT_BOUNDARY } from "../lib/ai-safety";
+import { getSpoonacularSubstitutes } from "./recipe-catalog";
+
+// ============================================================================
+// FUNCTIONAL ROLES (food science context for AI substitution prompts)
+// ============================================================================
+
+/**
+ * Maps common ingredients to their functional roles in cooking.
+ * This helps the AI understand *why* an ingredient is used — not just
+ * what it is — so substitutions preserve the dish's behavior.
+ */
+const FUNCTIONAL_ROLES: Record<string, string> = {
+  egg: "binder, leavener, emulsifier, moisture",
+  eggs: "binder, leavener, emulsifier, moisture",
+  butter: "fat, flavor, tenderness, moisture",
+  "heavy cream": "fat, richness, body, emulsion",
+  "sour cream": "fat, tang, moisture, tenderness",
+  "whole milk": "liquid, fat, protein, browning",
+  milk: "liquid, fat, protein, browning",
+  cream: "fat, richness, body",
+  "cream cheese": "fat, tang, structure, spread",
+  yogurt: "acid, moisture, tenderness, tang",
+  cheese: "fat, flavor, protein, browning",
+  flour: "structure, thickener, coating",
+  "all-purpose flour": "structure, thickener, coating",
+  "bread flour": "structure, gluten development, chew",
+  "white sugar": "sweetness, browning, moisture retention, structure",
+  sugar: "sweetness, browning, moisture retention",
+  "brown sugar": "sweetness, moisture, caramel flavor",
+  honey: "sweetness, moisture, browning",
+  oil: "fat, moisture, heat transfer",
+  "olive oil": "fat, flavor, moisture",
+  "coconut oil": "fat, flavor, solidifying agent",
+  "peanut butter": "fat, protein, flavor, binding",
+  "soy sauce": "salt, umami, color, fermented depth",
+  rice: "starch, bulk, absorbent base",
+  pasta: "starch, bulk, sauce vehicle",
+  bread: "structure, starch, texture",
+  "baking powder": "leavener, lift",
+  "baking soda": "leavener, browning, acid neutralizer",
+  gelatin: "gelling agent, thickener, stabilizer",
+  cornstarch: "thickener, coating, crispiness",
+};
 
 // ============================================================================
 // STATIC SUBSTITUTION LOOKUP (avoids API call for common ingredients)
@@ -238,26 +282,59 @@ const substitutionResponseSchema = z.object({
   suggestions: z.array(substitutionSuggestionSchema),
 });
 
+/**
+ * Build a "do NOT suggest" list from the user's allergens so the AI
+ * avoids recommending dangerous substitutions.
+ */
+function buildExclusionList(
+  userAllergies: { name: string; severity: AllergySeverity }[],
+): string {
+  if (userAllergies.length === 0) return "";
+
+  const lines: string[] = [];
+  for (const a of userAllergies) {
+    const def =
+      ALLERGEN_INGREDIENT_MAP[
+        a.name.toLowerCase() as keyof typeof ALLERGEN_INGREDIENT_MAP
+      ];
+    if (!def) continue;
+    const examples = def.directIngredients.slice(0, 6).join(", ");
+    lines.push(
+      `- ${a.severity.toUpperCase()} allergy: ${def.label} — avoid ALL of: ${examples}`,
+    );
+  }
+  return lines.length > 0
+    ? `\nCRITICAL ALLERGY RESTRICTIONS (do NOT suggest any of these):\n${lines.join("\n")}\n`
+    : "";
+}
+
 async function getAiSubstitutions(
   ingredients: CookingSessionIngredient[],
   profileSummary: string,
+  userAllergies: { name: string; severity: AllergySeverity }[] = [],
 ): Promise<SubstitutionSuggestion[]> {
   const ingredientList = ingredients
-    .map((i) => `- ${i.name} (${i.quantity} ${i.unit}, id: ${i.id})`)
+    .map((i) => {
+      const role = FUNCTIONAL_ROLES[i.name.toLowerCase().trim()];
+      const roleNote = role ? ` [functional role: ${role}]` : "";
+      return `- ${i.name} (${i.quantity} ${i.unit}, id: ${i.id})${roleNote}`;
+    })
     .join("\n");
 
   const sanitizedProfile = sanitizeUserInput(profileSummary);
+  const exclusionList = buildExclusionList(userAllergies);
 
   const prompt = `Suggest healthy substitutions for these cooking ingredients:
 
 ${ingredientList}
 
 User dietary profile: ${sanitizedProfile}
-
+${exclusionList}
 For each ingredient, provide 1-2 substitutions that:
 1. Match the dietary profile (if any restrictions/preferences)
-2. Work well in cooking (similar texture/function)
-3. Include estimated macro differences per serving
+2. Preserve the ingredient's functional role in the recipe (e.g. a binder substitute must also bind)
+3. Do NOT contain any ingredient from the allergy exclusion list above
+4. Include estimated macro differences per serving
 
 ${SYSTEM_PROMPT_BOUNDARY}
 
@@ -267,7 +344,7 @@ Respond with JSON only:
     {
       "originalIngredientId": "the ingredient id",
       "substitute": "substitute name",
-      "reason": "why this works",
+      "reason": "why this works (mention functional role)",
       "ratio": "1:1 or specific ratio",
       "macroDelta": { "calories": -20, "protein": 2, "carbs": -5, "fat": -3 },
       "confidence": 0.85
@@ -282,7 +359,7 @@ Respond with JSON only:
         {
           role: "system",
           content:
-            "You are a nutrition and cooking expert. Suggest practical ingredient substitutions. Always respond with valid JSON only.",
+            "You are a food science and nutrition expert. Suggest practical ingredient substitutions that preserve the functional role of each ingredient (binding, leavening, emulsifying, etc.). Always respond with valid JSON only.",
         },
         { role: "user", content: prompt },
       ],
@@ -367,25 +444,71 @@ export async function getSubstitutions(
     }
   }
 
-  let aiResults: SubstitutionSuggestion[] = [];
-  if (needsAi.length > 0) {
-    try {
-      aiResults = await getAiSubstitutions(needsAi, profileSummary);
-    } catch (error) {
-      console.error("AI substitution error:", error);
-      // Static results still returned even if AI fails
-    }
-  }
-
-  const allSuggestions = [...staticResults, ...aiResults];
-
-  // Safety: remove any suggestions that contain the user's own allergens
+  // Extract user allergies once for both AI context and safety filtering
   const userAllergies = (
     (userProfile?.allergies as {
       name: string;
       severity: AllergySeverity;
     }[]) ?? []
   ).filter((a) => a.name && a.severity);
+
+  // Tier 2: Spoonacular substitutes (parallel, capped at 5 to protect quota)
+  const MAX_SPOONACULAR_CALLS = 5;
+  const spoonacularResults: SubstitutionSuggestion[] = [];
+  const needsAiAfterSpoonacular: CookingSessionIngredient[] = [];
+
+  const spoonacularBatch = needsAi.slice(0, MAX_SPOONACULAR_CALLS);
+  const skippedBySpoonacular = needsAi.slice(MAX_SPOONACULAR_CALLS);
+
+  const spoonacularOutcomes = await Promise.allSettled(
+    spoonacularBatch.map(async (ingredient) => {
+      const subs = await getSpoonacularSubstitutes(ingredient.name);
+      return { ingredient, subs };
+    }),
+  );
+
+  for (let i = 0; i < spoonacularOutcomes.length; i++) {
+    const outcome = spoonacularOutcomes[i];
+    if (outcome.status === "fulfilled" && outcome.value.subs.length > 0) {
+      for (const sub of outcome.value.subs.slice(0, 2)) {
+        spoonacularResults.push({
+          originalIngredientId: outcome.value.ingredient.id,
+          substitute: sub,
+          reason: "Spoonacular recommended substitute",
+          ratio: "see description",
+          // Zeros = unknown (Spoonacular doesn't return macro diffs)
+          macroDelta: { calories: 0, protein: 0, carbs: 0, fat: 0 },
+          confidence: 0.75,
+        });
+      }
+    } else {
+      needsAiAfterSpoonacular.push(spoonacularBatch[i]);
+    }
+  }
+
+  // Any ingredients beyond the cap go straight to AI
+  needsAiAfterSpoonacular.push(...skippedBySpoonacular);
+
+  // Tier 3: AI fallback for anything not covered by static or Spoonacular
+  let aiResults: SubstitutionSuggestion[] = [];
+  if (needsAiAfterSpoonacular.length > 0) {
+    try {
+      aiResults = await getAiSubstitutions(
+        needsAiAfterSpoonacular,
+        profileSummary,
+        userAllergies,
+      );
+    } catch (error) {
+      console.error("AI substitution error:", error);
+      // Static + Spoonacular results still returned even if AI fails
+    }
+  }
+
+  const allSuggestions = [
+    ...staticResults,
+    ...spoonacularResults,
+    ...aiResults,
+  ];
 
   const safeSuggestions = filterSafeSubstitutions(
     allSuggestions,
@@ -400,8 +523,10 @@ export async function getSubstitutions(
 
 export const _testInternals = {
   COMMON_SUBSTITUTIONS,
+  FUNCTIONAL_ROLES,
   findStaticSubstitutions,
   buildDietaryProfileSummary,
   extractDietaryTags,
   filterSafeSubstitutions,
+  buildExclusionList,
 };
