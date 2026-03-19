@@ -4,6 +4,7 @@ This document captures key learnings, gotchas, and architectural decisions disco
 
 ## Table of Contents
 
+- [HomeScreen Redesign Simplicity Review (2026-03-19)](#homescreen-redesign-simplicity-review-2026-03-19)
 - [Allergen Substitution Safety Findings (2026-03-18)](#allergen-substitution-safety-findings-2026-03-18)
 - [Receipt-to-Meal-Plan Code Review Findings (2026-03-10)](#receipt-to-meal-plan-code-review-findings-2026-03-10)
 - [PostgreSQL Decimal Aggregates Return Strings via Drizzle (2026-02-24)](#postgresql-decimal-aggregates-return-strings-via-drizzle-2026-02-24)
@@ -21,6 +22,70 @@ This document captures key learnings, gotchas, and architectural decisions disco
 - [Testing & Tooling Learnings](#testing--tooling-learnings)
 - [Database Migration Gotchas](#database-migration-gotchas)
 - [TypeScript Safety Learnings](#typescript-safety-learnings)
+
+---
+
+## [2026-03-19] HomeScreen Redesign Simplicity Review
+
+**Category:** Simplification / Code Review Post-Mortem
+
+### Context
+
+Redesigned the HomeScreen from a recipe-focused page into a quick actions hub with 16 actions across 4 collapsible sections, a recent actions row, and a ScanFAB speed dial. A simplicity review was run immediately after the initial implementation to catch over-engineering before merge.
+
+### Problems Found (6 issues, ~25% of new code was removable)
+
+**1. Near-identical component copy (`ScanMenu` vs `SpeedDial`)**
+
+A new `ScanMenu` component was created that was a line-for-line copy of the existing `SpeedDial` component. Both rendered a backdrop + animated action buttons. The duplication happened because the implementer searched for "menu" components instead of checking what the existing `SpeedDial` already did.
+
+**Fix:** Deleted `ScanMenu`, reused `SpeedDial` in `ScanFAB.tsx`.
+
+**2. Two components with 80% shared code (`ActionRow` + `FeatureCard`)**
+
+`ActionRow` rendered a plain pressable row; `FeatureCard` rendered a card with a subtitle. Both had the same icon circle, label, chevron, press animation, accessibility props, and lock badge. The only difference was the subtitle line and card background.
+
+**Fix:** Merged into a single `ActionRow` component with an optional `subtitle` prop. When `subtitle` is present, card styling applies automatically.
+
+**3. Two hooks that independently initialized the same cache**
+
+`useSectionState` and `useRecentActions` both called `initHomeActionsCache()` in their `useEffect`. When HomeScreen used both hooks, the init ran twice. The two hooks also shared the same storage file.
+
+**Fix:** Merged into a single `useHomeActions` hook with one `initHomeActionsCache()` call.
+
+**4. Copy-pasted JSX blocks instead of `.map()`**
+
+HomeScreen had 4 nearly identical `<Animated.View>` + `<CollapsibleSection>` blocks — one per section — differing only in the section key, title, and animation delay. Each was ~12 lines.
+
+**Fix:** Defined a `SECTIONS` config array and replaced the 4 blocks with a single `.map()`.
+
+**5. Duplicated navigation targets**
+
+`ScanFAB` hardcoded the same `navigation.navigate("Scan")` calls that already existed in `action-config.ts`'s `navigateAction()`. If a navigation target changed, two files needed updating.
+
+**Fix:** `ScanFAB` now calls `navigateAction()` from the shared config.
+
+**6. Dead code: unused `type` field, unused `getActionById`, premature `ready` state**
+
+- An action `type` field was defined in the interface and populated on every action but never read.
+- A `getActionById()` lookup function was exported but had zero consumers.
+- A `ready` boolean state tracked cache initialization but was never exposed or consumed.
+
+**Fix:** All three removed (YAGNI).
+
+### Takeaways
+
+- **Check for existing components before creating new ones.** The `ScanMenu`/`SpeedDial` duplication would have been caught by searching the codebase for "backdrop" or "speed dial" before writing a new component. When you need a menu/popup/overlay, first search for existing overlay components.
+- **If two components differ by one optional prop, merge them.** The `ActionRow`/`FeatureCard` split added a whole file for one `subtitle` line. An optional prop on the existing component is almost always simpler than a new component with shared code.
+- **Multiple hooks for the same storage module is a smell.** If two hooks import from the same storage file, consider whether they should be one hook. Separate hooks make sense when they have independent consumers; when a single screen always uses both, merge them.
+- **`.map()` over config arrays, not copy-paste JSX.** When you see 3+ JSX blocks that differ only in props, extract the varying parts into a config array and `.map()` it. This was the difference between 48 lines of JSX and 12.
+- **YAGNI applies to fresh code, not just old code.** The review caught an unused `type` field, unused utility function, and unused `ready` state — all written in the same session. The urge to "add it while I'm here" is strongest during initial implementation. Resist it; add things when they have a consumer.
+- **Run a simplicity review after every feature implementation, not just on old code.** The ~25% reduction came from a fresh implementation, not legacy cleanup. Reviewing for duplication and dead code immediately after writing is more effective than discovering it months later.
+
+### References
+
+- Pattern: [Config-Driven Screen Rendering](patterns/react-native.md#config-driven-screen-rendering)
+- Files: `client/components/home/action-config.ts`, `client/components/home/ActionRow.tsx`, `client/hooks/useHomeActions.ts`, `client/screens/HomeScreen.tsx`, `client/components/ScanFAB.tsx`
 
 ---
 

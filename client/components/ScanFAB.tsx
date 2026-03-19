@@ -10,6 +10,10 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { SpeedDial } from "@/components/SpeedDial";
+import {
+  getActionsByGroup,
+  navigateAction,
+} from "@/components/home/action-config";
 import { useTheme } from "@/hooks/useTheme";
 import { useHaptics } from "@/hooks/useHaptics";
 import { useAccessibility } from "@/hooks/useAccessibility";
@@ -21,20 +25,20 @@ import {
   TAB_BAR_HEIGHT,
 } from "@/constants/theme";
 import { pressSpringConfig } from "@/constants/animations";
-import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import type { RootStackParamList } from "@/navigation/RootStackNavigator";
+import type { HomeScreenNavigationProp } from "@/types/navigation";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+const scanningActions = getActionsByGroup("scanning");
 
 export function ScanFAB() {
   const { theme } = useTheme();
   const haptics = useHaptics();
   const { reducedMotion } = useAccessibility();
-  const navigation =
-    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const navigation = useNavigation<HomeScreenNavigationProp>();
   const scale = useSharedValue(1);
   const rotation = useSharedValue(0);
-  const [speedDialOpen, setSpeedDialOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }, { rotate: `${rotation.value}deg` }],
@@ -53,88 +57,47 @@ export function ScanFAB() {
   };
 
   const handlePress = () => {
-    if (speedDialOpen) {
-      closeSpeedDial();
+    if (menuOpen) {
+      closeMenu();
     } else {
       haptics.impact(Haptics.ImpactFeedbackStyle.Medium);
-      navigation.navigate("Scan");
+      setMenuOpen(true);
+      if (!reducedMotion) {
+        rotation.value = withSpring(45, pressSpringConfig);
+      }
     }
   };
 
-  const handleLongPress = () => {
-    haptics.impact(Haptics.ImpactFeedbackStyle.Heavy);
-    setSpeedDialOpen(true);
-    if (!reducedMotion) {
-      rotation.value = withSpring(45, pressSpringConfig);
-    }
-  };
-
-  const closeSpeedDial = useCallback(() => {
-    setSpeedDialOpen(false);
+  const closeMenu = useCallback(() => {
+    setMenuOpen(false);
     if (!reducedMotion) {
       rotation.value = withSpring(0, pressSpringConfig);
     }
   }, [reducedMotion, rotation]);
 
   const speedDialActions = useMemo(
-    () => [
-      {
-        icon: "camera",
-        label: "Camera Scan",
+    () =>
+      scanningActions.map((action) => ({
+        icon: action.icon,
+        label: action.label,
         onPress: () => {
-          closeSpeedDial();
+          closeMenu();
           haptics.impact(Haptics.ImpactFeedbackStyle.Medium);
-          navigation.navigate("Scan");
+          navigateAction(action, navigation);
         },
-      },
-      {
-        icon: "edit-3",
-        label: "Quick Log",
-        onPress: () => {
-          closeSpeedDial();
-          haptics.impact(Haptics.ImpactFeedbackStyle.Medium);
-          navigation.navigate("QuickLog");
-        },
-      },
-      {
-        icon: "file-text",
-        label: "Scan Label",
-        onPress: () => {
-          closeSpeedDial();
-          haptics.impact(Haptics.ImpactFeedbackStyle.Medium);
-          navigation.navigate("Scan", { mode: "label" });
-        },
-      },
-      {
-        icon: "shopping-bag",
-        label: "Receipt Scan",
-        onPress: () => {
-          closeSpeedDial();
-          haptics.impact(Haptics.ImpactFeedbackStyle.Medium);
-          navigation.navigate("ReceiptCapture");
-        },
-      },
-    ],
-    [closeSpeedDial, haptics, navigation],
+      })),
+    [closeMenu, haptics, navigation],
   );
 
   return (
     <>
-      {speedDialOpen && (
-        <SpeedDial actions={speedDialActions} onClose={closeSpeedDial} />
-      )}
+      {menuOpen && <SpeedDial actions={speedDialActions} onClose={closeMenu} />}
       <AnimatedPressable
         onPress={handlePress}
         onPressIn={handlePressIn}
         onPressOut={handlePressOut}
-        onLongPress={handleLongPress}
-        delayLongPress={400}
         accessibilityRole="button"
-        accessibilityLabel={
-          speedDialOpen
-            ? "Close quick actions"
-            : "Scan food item. Long press for more options."
-        }
+        accessibilityLabel={menuOpen ? "Close scan menu" : "Open scan menu"}
         style={[
           styles.fab,
           Shadows.large,
