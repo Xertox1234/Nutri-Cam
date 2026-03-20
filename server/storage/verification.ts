@@ -2,6 +2,7 @@ import { eq, and, sql } from "drizzle-orm";
 import { db } from "../db";
 import { barcodeVerifications, verificationHistory } from "@shared/schema";
 import type { ConsensusNutritionData } from "@shared/types/verification";
+import type { FrontLabelData } from "@shared/types/front-label";
 import type { VerificationNutrition } from "../services/verification-comparison";
 
 /** Get the verification status for a barcode */
@@ -43,28 +44,49 @@ export async function hasUserVerified(
  * Streak = consecutive calendar days (UTC) with at least one verification,
  * counting backwards from today.
  */
-export async function getUserVerificationStats(
-  userId: string,
-): Promise<{ count: number; streak: number }> {
-  // Get count
+export async function getUserVerificationStats(userId: string): Promise<{
+  count: number;
+  frontLabelCount: number;
+  compositeScore: number;
+  streak: number;
+}> {
+  // Get counts (back-label + front-label)
   const [countResult] = await db
-    .select({ count: sql<number>`count(*)::int` })
+    .select({
+      count: sql<number>`count(*)::int`,
+      frontLabelCount: sql<number>`count(*) filter (where ${verificationHistory.frontLabelScanned} = true)::int`,
+    })
     .from(verificationHistory)
     .where(eq(verificationHistory.userId, userId));
   const count = countResult?.count ?? 0;
+  const frontLabelCount = countResult?.frontLabelCount ?? 0;
+  const compositeScore = count + frontLabelCount * 0.5;
 
-  if (count === 0) return { count: 0, streak: 0 };
+  if (count === 0)
+    return { count: 0, frontLabelCount: 0, compositeScore: 0, streak: 0 };
 
-  // Get distinct verification dates (UTC), ordered most recent first
+  // Get distinct activity dates (UTC), ordered most recent first.
+  // Include both back-label verification dates AND front-label scan dates for streak.
   const dates = await db
     .select({
-      day: sql<string>`DATE(${verificationHistory.createdAt} AT TIME ZONE 'UTC')`,
+      day: sql<string>`DATE(COALESCE(
+        GREATEST(${verificationHistory.createdAt}, ${verificationHistory.frontLabelScannedAt}),
+        ${verificationHistory.createdAt}
+      ) AT TIME ZONE 'UTC')`,
     })
     .from(verificationHistory)
     .where(eq(verificationHistory.userId, userId))
-    .groupBy(sql`DATE(${verificationHistory.createdAt} AT TIME ZONE 'UTC')`)
+    .groupBy(
+      sql`DATE(COALESCE(
+      GREATEST(${verificationHistory.createdAt}, ${verificationHistory.frontLabelScannedAt}),
+      ${verificationHistory.createdAt}
+    ) AT TIME ZONE 'UTC')`,
+    )
     .orderBy(
-      sql`DATE(${verificationHistory.createdAt} AT TIME ZONE 'UTC') DESC`,
+      sql`DATE(COALESCE(
+        GREATEST(${verificationHistory.createdAt}, ${verificationHistory.frontLabelScannedAt}),
+        ${verificationHistory.createdAt}
+      ) AT TIME ZONE 'UTC') DESC`,
     );
 
   // Walk backwards from today counting consecutive days
@@ -95,7 +117,7 @@ export async function getUserVerificationStats(
     }
   }
 
-  return { count, streak };
+  return { count, frontLabelCount, compositeScore, streak };
 }
 
 /**
@@ -150,4 +172,78 @@ export async function submitVerification(
         },
       });
   });
+}
+
+/** Check if a user has already submitted a front-label scan for a barcode */
+export async function hasUserFrontLabelScanned(
+  barcode: string,
+  userId: string,
+): Promise<boolean> {
+  const [existing] = await db
+    .select({ frontLabelScanned: verificationHistory.frontLabelScanned })
+    .from(verificationHistory)
+    .where(
+      and(
+        eq(verificationHistory.barcode, barcode),
+        eq(verificationHistory.userId, userId),
+      ),
+    );
+  return existing?.frontLabelScanned ?? false;
+}
+
+/** Store front-label data on the barcodeVerifications row (overwrites previous) */
+export async function storeFrontLabelData(
+  barcode: string,
+  data: FrontLabelData,
+): Promise<void> {
+  await db
+    .update(barcodeVerifications)
+    .set({
+      frontLabelData: data as unknown as Record<string, unknown>,
+      updatedAt: new Date(),
+    })
+    .where(eq(barcodeVerifications.barcode, barcode));
+}
+
+/** Mark a user's verification history entry as having completed a front-label scan */
+export async function markFrontLabelScanned(
+  barcode: string,
+  userId: string,
+): Promise<void> {
+  await db
+    .update(verificationHistory)
+    .set({
+      frontLabelScanned: true,
+      frontLabelScannedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(verificationHistory.barcode, barcode),
+        eq(verificationHistory.userId, userId),
+      ),
+    );
+}
+
+/**
+ * Get composite verification score for a user.
+ * Back-label verification = 1.0 credit, front-label scan = 0.5 credit.
+ */
+export async function getUserCompositeScore(userId: string): Promise<{
+  verificationCount: number;
+  frontLabelCount: number;
+  compositeScore: number;
+}> {
+  const [result] = await db
+    .select({
+      verificationCount: sql<number>`count(*)::int`,
+      frontLabelCount: sql<number>`count(*) filter (where ${verificationHistory.frontLabelScanned} = true)::int`,
+    })
+    .from(verificationHistory)
+    .where(eq(verificationHistory.userId, userId));
+
+  const verificationCount = result?.verificationCount ?? 0;
+  const frontLabelCount = result?.frontLabelCount ?? 0;
+  const compositeScore = verificationCount + frontLabelCount * 0.5;
+
+  return { verificationCount, frontLabelCount, compositeScore };
 }
