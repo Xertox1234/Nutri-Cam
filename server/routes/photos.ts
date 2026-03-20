@@ -17,17 +17,19 @@ import {
   analyzePhoto,
   analyzeLabelPhoto,
   analyzeRecipePhoto,
+  classifyAndAnalyze,
   refineAnalysis,
   needsFollowUp,
   getFollowUpQuestions,
   type AnalysisResult,
   type LabelExtractionResult,
 } from "../services/photo-analysis";
+import type { PhotoIntentOrAuto } from "@shared/constants/classification";
 import {
   batchNutritionLookup,
   countNonNullNutritionFields,
   mapLabelToNutritionData,
-  cacheNutrition,
+  cacheNutritionIfAbsent,
 } from "../services/nutrition-lookup";
 import multer from "multer";
 import {
@@ -38,6 +40,7 @@ import {
   getPremiumFeatures,
   parseStringParam,
 } from "./_helpers";
+import { detectImageMimeType } from "../lib/image-mime";
 
 // Higher file size limit for label photos (5MB for text readability)
 const labelUpload = multer({
@@ -73,6 +76,29 @@ interface LabelSession {
 }
 const labelSessionStore = new Map<string, LabelSession>();
 const labelSessionTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
+const userLabelSessionCount = new Map<string, number>();
+
+function decrementUserLabelCount(userId: string): void {
+  const count = userLabelSessionCount.get(userId) ?? 0;
+  if (count <= 1) {
+    userLabelSessionCount.delete(userId);
+  } else {
+    userLabelSessionCount.set(userId, count - 1);
+  }
+}
+
+function clearLabelSession(sessionId: string): void {
+  const session = labelSessionStore.get(sessionId);
+  const existingTimeout = labelSessionTimeouts.get(sessionId);
+  if (existingTimeout) {
+    clearTimeout(existingTimeout);
+    labelSessionTimeouts.delete(sessionId);
+  }
+  labelSessionStore.delete(sessionId);
+  if (session) {
+    decrementUserLabelCount(session.userId);
+  }
+}
 
 // Track session timeout references to prevent memory leaks
 const sessionTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
@@ -155,6 +181,8 @@ export const _testInternals = {
   clearSession,
   labelSessionStore,
   labelSessionTimeouts,
+  userLabelSessionCount,
+  clearLabelSession,
 };
 
 export function register(app: Express): void {
@@ -200,8 +228,128 @@ export function register(app: Express): void {
           );
         }
 
+        // Validate image content via magic bytes (don't trust client mimetype)
+        if (!detectImageMimeType(req.file.buffer)) {
+          return sendError(
+            res,
+            400,
+            "Invalid image content. Only JPEG, PNG, and WebP allowed.",
+            ErrorCode.VALIDATION_ERROR,
+          );
+        }
+
         // Parse intent from multipart form parameters (default: "log")
-        const intentRaw = (req.body?.intent as string) || "log";
+        // Supports "auto" for smart scan classification
+        const intentRaw = ((req.body?.intent as string) ||
+          "log") as PhotoIntentOrAuto;
+
+        // Convert buffer to base64
+        const imageBase64 = req.file.buffer.toString("base64");
+
+        // ── Auto-classification flow ──────────────────────────────
+        if (intentRaw === "auto") {
+          // Validate session bounds BEFORE calling paid APIs
+          if (req.file.buffer.length > MAX_IMAGE_SIZE_BYTES) {
+            return sendError(
+              res,
+              413,
+              "Image too large for analysis session",
+              "IMAGE_TOO_LARGE",
+            );
+          }
+
+          if (analysisSessionStore.size >= MAX_SESSIONS_GLOBAL) {
+            return sendError(
+              res,
+              429,
+              "Server is busy, please try again later",
+              "SESSION_LIMIT_REACHED",
+            );
+          }
+
+          const currentUserSessionsAuto =
+            userSessionCount.get(req.userId!) ?? 0;
+          if (currentUserSessionsAuto >= MAX_SESSIONS_PER_USER) {
+            return sendError(
+              res,
+              429,
+              "Too many active analysis sessions. Please confirm or wait for existing sessions to expire.",
+              "USER_SESSION_LIMIT",
+            );
+          }
+
+          const classified = await classifyAndAnalyze(imageBase64);
+
+          // If full analysis was performed (high confidence + mapped intent),
+          // look up nutrition and create a session
+          if (classified.analysisResult && classified.resolvedIntent) {
+            const intent = classified.resolvedIntent;
+            const intentConfig = INTENT_CONFIG[intent];
+            const analysisResult = classified.analysisResult;
+
+            let foodsWithNutrition;
+            if (intentConfig.needsNutrition) {
+              const foodNames = analysisResult.foods.map(
+                (f) => `${f.quantity} ${f.name}`,
+              );
+              const nutritionMap = await batchNutritionLookup(foodNames);
+              foodsWithNutrition = analysisResult.foods.map((food, index) => {
+                const query = foodNames[index];
+                const nutrition = nutritionMap.get(query);
+                return { ...food, nutrition: nutrition || null };
+              });
+            } else {
+              foodsWithNutrition = analysisResult.foods.map((food) => ({
+                ...food,
+                nutrition: null,
+              }));
+            }
+
+            const sessionId = crypto.randomUUID();
+            if (intentConfig.needsSession) {
+              analysisSessionStore.set(sessionId, {
+                userId: req.userId!,
+                result: analysisResult,
+                imageBase64,
+                createdAt: Date.now(),
+              });
+              userSessionCount.set(req.userId!, currentUserSessionsAuto + 1);
+              const timeoutId = setTimeout(() => {
+                clearSession(sessionId);
+              }, SESSION_TIMEOUT);
+              sessionTimeouts.set(sessionId, timeoutId);
+            }
+
+            return res.json({
+              sessionId,
+              intent,
+              contentType: classified.contentType,
+              confidence: classified.confidence,
+              resolvedIntent: classified.resolvedIntent,
+              barcode: classified.barcode,
+              foods: foodsWithNutrition,
+              overallConfidence: analysisResult.overallConfidence,
+              needsFollowUp: needsFollowUp(analysisResult),
+              followUpQuestions: getFollowUpQuestions(analysisResult),
+            });
+          }
+
+          // Low confidence or no mapped intent — return classification only
+          return res.json({
+            sessionId: null,
+            intent: "auto",
+            contentType: classified.contentType,
+            confidence: classified.confidence,
+            resolvedIntent: classified.resolvedIntent,
+            barcode: classified.barcode,
+            foods: [],
+            overallConfidence: classified.confidence,
+            needsFollowUp: false,
+            followUpQuestions: [],
+          });
+        }
+
+        // ── Standard intent flow (unchanged) ──────────────────────
         const intentParsed = photoIntentSchema.safeParse(intentRaw);
         const intent: PhotoIntent = intentParsed.success
           ? intentParsed.data
@@ -238,9 +386,6 @@ export function register(app: Express): void {
             );
           }
         }
-
-        // Convert buffer to base64
-        const imageBase64 = req.file.buffer.toString("base64");
 
         // Analyze photo with Vision API (intent-aware prompt)
         const analysisResult = await analyzePhoto(imageBase64, intent);
@@ -494,6 +639,15 @@ export function register(app: Express): void {
           );
         }
 
+        if (!detectImageMimeType(req.file.buffer)) {
+          return sendError(
+            res,
+            400,
+            "Invalid image content. Only JPEG, PNG, and WebP allowed.",
+            ErrorCode.VALIDATION_ERROR,
+          );
+        }
+
         const imageBase64 = req.file.buffer.toString("base64");
         const result = await analyzeRecipePhoto(imageBase64);
 
@@ -551,8 +705,37 @@ export function register(app: Express): void {
           );
         }
 
+        if (!detectImageMimeType(req.file.buffer)) {
+          return sendError(
+            res,
+            400,
+            "Invalid image content. Only JPEG, PNG, and WebP allowed.",
+            ErrorCode.VALIDATION_ERROR,
+          );
+        }
+
         const imageBase64 = req.file.buffer.toString("base64");
         const barcode = (req.body?.barcode as string) || undefined;
+
+        // Check label session bounds before calling paid APIs
+        if (labelSessionStore.size >= MAX_SESSIONS_GLOBAL) {
+          return sendError(
+            res,
+            429,
+            "Server is busy, please try again later",
+            "SESSION_LIMIT_REACHED",
+          );
+        }
+        const currentUserLabelSessions =
+          userLabelSessionCount.get(req.userId!) ?? 0;
+        if (currentUserLabelSessions >= MAX_SESSIONS_PER_USER) {
+          return sendError(
+            res,
+            429,
+            "Too many active label sessions. Please confirm or wait for existing sessions to expire.",
+            "USER_SESSION_LIMIT",
+          );
+        }
 
         const labelData = await analyzeLabelPhoto(imageBase64);
 
@@ -564,11 +747,11 @@ export function register(app: Express): void {
           barcode,
           createdAt: Date.now(),
         });
+        userLabelSessionCount.set(req.userId!, currentUserLabelSessions + 1);
 
         // Auto-expire after 30 minutes
         const timeoutId = setTimeout(() => {
-          labelSessionStore.delete(sessionId);
-          labelSessionTimeouts.delete(sessionId);
+          clearLabelSession(sessionId);
         }, SESSION_TIMEOUT);
         labelSessionTimeouts.set(sessionId, timeoutId);
 
@@ -655,27 +838,24 @@ export function register(app: Express): void {
           return [item];
         });
 
-        // Silent cache improvement: if barcode was provided, compare label
-        // vs cached data field count — update cache if label is more complete
+        // Silent cache seeding: if barcode was provided and NO cache entry
+        // exists yet, seed the cache with label data. Never overwrite existing
+        // entries to prevent cache poisoning (any user could provide an
+        // arbitrary barcode string with their label confirmation).
         if (barcode) {
           try {
             const labelNutrition = mapLabelToNutritionData(labelData);
             const labelFieldCount = countNonNullNutritionFields(labelNutrition);
             if (labelFieldCount >= 4) {
-              await cacheNutrition(barcode, labelNutrition);
+              await cacheNutritionIfAbsent(barcode, labelNutrition);
             }
           } catch {
-            // Cache improvement is best-effort
+            // Cache seeding is best-effort
           }
         }
 
-        // Clean up session
-        const timeoutRef = labelSessionTimeouts.get(validated.sessionId);
-        if (timeoutRef) {
-          clearTimeout(timeoutRef);
-          labelSessionTimeouts.delete(validated.sessionId);
-        }
-        labelSessionStore.delete(validated.sessionId);
+        // Clean up session (also decrements per-user count)
+        clearLabelSession(validated.sessionId);
 
         res.status(201).json(scannedItem);
       } catch (error) {
