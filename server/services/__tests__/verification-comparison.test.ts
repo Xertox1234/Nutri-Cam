@@ -89,7 +89,7 @@ describe("verification-comparison", () => {
       expect(nutritionMatches(a, b)).toBe(true);
     });
 
-    it("returns true when all fields are null", () => {
+    it("returns false when all fields are null (no meaningful comparison)", () => {
       const a: VerificationNutrition = {
         calories: null,
         protein: null,
@@ -102,7 +102,7 @@ describe("verification-comparison", () => {
         totalCarbs: null,
         totalFat: null,
       };
-      expect(nutritionMatches(a, b)).toBe(true);
+      expect(nutritionMatches(a, b)).toBe(false);
     });
   });
 
