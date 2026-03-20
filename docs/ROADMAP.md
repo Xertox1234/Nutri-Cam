@@ -41,40 +41,26 @@ Includes:
 - Enrichment JSONB on `barcodeVerifications` (latest scan overwrites, does not affect consensus)
 - 38 new tests (service + route + badge tier composite scores)
 
+### Public Verified Product API (Phase 2b) — PR #22
+
+Public REST API for external developers to query product nutrition data by barcode (`GET /api/v1/products/:barcode`).
+
+Includes:
+
+- API key authentication (Stripe-style prefix + bcrypt hash, in-memory cache)
+- Tiered responses: Free = unverified data (onramp), Paid = verified data with provenance
+- Monthly rate limiting with persistent DB counters (free: 500/mo, starter: 10K, pro: 100K)
+- Admin endpoints for API key CRUD (`/api/admin/api-keys`)
+- Developer docs page at `/api/v1/docs`
+- `barcodeNutrition` table auto-populated on every barcode scan + backfill script
+- PII stripping (scannedByUserId/scannedAt never exposed)
+- 42 tests across 4 test files
+
+**Post-merge steps:** `npm run db:push`, set `ADMIN_USER_IDS`, run backfill script, reach 1,000 verified products for soft launch.
+
 ---
 
 ## Next Up
-
-### Public Verified Product API (Phase 2b)
-
-**Priority:** High — the revenue product
-**Effort:** Large (new auth system, tiered responses, rate limiting, docs)
-**Status:** Not yet planned — waiting for data volume
-
-**What it does:**
-
-- External developers query verified product data by barcode
-- API key authentication (separate from JWT user auth)
-- Tiered responses:
-  - **Free:** Basic verified nutrition (calories, protein, carbs, fat, serving size)
-  - **Paid:** Full profile (brand, net weight, allergens, claims, verification metadata, confidence score, verification count, last verified date)
-- Rate limiting per API key
-- Developer portal with docs
-
-**Prerequisites:**
-
-- Meaningful data volume (target: 1,000+ verified products before soft launch?)
-- Front-of-package scanning (for rich "paid tier" data)
-
-**Open questions:**
-
-- Pricing model (per-request, monthly subscription, usage tiers)?
-- Expose unverified (database-sourced) data or only verified?
-- Regional product variants (same barcode, different formulation)?
-- GDPR: anonymize userIds in verification data exposed via API?
-- Minimum data volume threshold for launch?
-
-**Brainstorm reference:** `docs/brainstorms/2026-03-19-verified-product-api-brainstorm.md`
 
 ---
 
