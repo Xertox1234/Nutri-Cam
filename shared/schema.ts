@@ -1414,9 +1414,6 @@ export const barcodeVerifications = pgTable(
       .notNull(),
   },
   (table) => ({
-    barcodeIdx: uniqueIndex("barcode_verifications_barcode_idx").on(
-      table.barcode,
-    ),
     levelIdx: index("barcode_verifications_level_idx").on(
       table.verificationLevel,
     ),

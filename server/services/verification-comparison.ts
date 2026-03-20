@@ -62,19 +62,23 @@ export function compareWithVerifications(
 
 /**
  * Check if two nutrition extractions match on all non-null core fields.
+ * Returns false if no fields were actually compared (both all-null).
  */
 export function nutritionMatches(
   a: VerificationNutrition,
   b: VerificationNutrition,
 ): boolean {
+  let comparedCount = 0;
   for (const field of COMPARISON_FIELDS) {
     const valA = a[field];
     const valB = b[field];
     // Skip if either value is null (incomplete OCR)
     if (valA == null || valB == null) continue;
+    comparedCount++;
     if (!valuesMatch(valA, valB)) return false;
   }
-  return true;
+  // At least one field must have been compared for a meaningful match
+  return comparedCount > 0;
 }
 
 /**
