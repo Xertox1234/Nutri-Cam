@@ -37,6 +37,7 @@ import type { ScanScreenNavigationProp } from "@/types/navigation";
 import type { RootStackParamList } from "@/navigation/RootStackNavigator";
 import {
   uploadPhotoForAnalysis,
+  uploadFrontLabelPhoto,
   type PhotoAnalysisResponse,
 } from "@/lib/photo-upload";
 import {
@@ -100,8 +101,9 @@ export default function ScanScreen() {
   const isFocused = useIsFocused();
 
   const isLabelMode = route.params?.mode === "label";
+  const isFrontLabelMode = route.params?.mode === "front-label";
   const verifyBarcode = route.params?.verifyBarcode;
-  const frame = isLabelMode ? LABEL_FRAME : RETICLE;
+  const frame = isLabelMode || isFrontLabelMode ? LABEL_FRAME : RETICLE;
   const {
     permission,
     isLoading: permissionLoading,
@@ -391,7 +393,23 @@ export default function ScanScreen() {
         const photo = await cameraRef.current.takePicture();
 
         if (photo?.uri) {
-          if (isLabelMode) {
+          if (isFrontLabelMode && verifyBarcode) {
+            // Front-label mode: upload photo, get extraction, navigate to confirm
+            try {
+              const result = await uploadFrontLabelPhoto(
+                photo.uri,
+                verifyBarcode,
+              );
+              navigation.navigate("FrontLabelConfirm", {
+                imageUri: photo.uri,
+                barcode: verifyBarcode,
+                sessionId: result.sessionId,
+                data: result.data,
+              });
+            } catch (err) {
+              haptics.notification(Haptics.NotificationFeedbackType.Error);
+            }
+          } else if (isLabelMode) {
             navigation.navigate("LabelAnalysis", {
               imageUri: photo.uri,
               barcode: verifyBarcode,
@@ -508,12 +526,22 @@ export default function ScanScreen() {
     <View style={styles.container}>
       <CameraView
         ref={cameraRef}
-        barcodeTypes={isLabelMode ? [] : availableBarcodeTypes}
-        onBarcodeScanned={isLabelMode ? undefined : onBarcodeScanned}
+        barcodeTypes={
+          isLabelMode || isFrontLabelMode ? [] : availableBarcodeTypes
+        }
+        onBarcodeScanned={
+          isLabelMode || isFrontLabelMode ? undefined : onBarcodeScanned
+        }
         enableTorch={torch}
         facing="back"
         isActive={isFocused}
-        photoQuality={isLabelMode ? 0.85 : highQualityCapture ? 0.9 : 0.5}
+        photoQuality={
+          isLabelMode || isFrontLabelMode
+            ? 0.85
+            : highQualityCapture
+              ? 0.9
+              : 0.5
+        }
       />
 
       <View style={[styles.overlay, { paddingTop: insets.top + Spacing.md }]}>
@@ -625,9 +653,11 @@ export default function ScanScreen() {
             >
               {isScanning
                 ? "Scanning..."
-                : isLabelMode
-                  ? "Align nutrition label within the frame"
-                  : "Scan barcode or tap shutter for food photo"}
+                : isFrontLabelMode
+                  ? "Position the front of the package in the frame"
+                  : isLabelMode
+                    ? "Align nutrition label within the frame"
+                    : "Scan barcode or tap shutter for food photo"}
             </ThemedText>
           </View>
 
