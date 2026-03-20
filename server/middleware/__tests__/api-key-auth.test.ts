@@ -16,7 +16,7 @@ vi.mock("../../storage", () => ({
 }));
 
 const TEST_KEY = "ocr_live_0123456789abcdef0123456789abcdef";
-const TEST_PREFIX = "ocr_live";
+const TEST_PREFIX = "ocr_live_0123456";
 let testKeyHash: string;
 
 function createApp() {

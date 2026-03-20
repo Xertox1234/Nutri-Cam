@@ -5,7 +5,9 @@ import bcrypt from "bcrypt";
 import crypto from "node:crypto";
 
 const BCRYPT_ROUNDS = 10;
-const KEY_PREFIX_LENGTH = 8;
+// Must capture "ocr_live_" (9 chars) + enough random hex to be unique.
+// varchar(16) column constraint → 16 chars = "ocr_live_" + 7 hex = 268M unique prefixes.
+const KEY_PREFIX_LENGTH = 16;
 
 /**
  * Generate a new API key with format: ocr_live_ + 32 hex chars.

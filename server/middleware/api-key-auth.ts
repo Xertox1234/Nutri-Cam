@@ -13,7 +13,7 @@ declare global {
   }
 }
 
-const KEY_PREFIX_LENGTH = 8;
+const KEY_PREFIX_LENGTH = 16;
 
 // In-memory cache for validated API keys to avoid DB + bcrypt on every request.
 // Short TTL (60s) balances performance with revocation responsiveness.

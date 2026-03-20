@@ -3,7 +3,7 @@ import { z } from "zod";
 import { db } from "../db";
 import { nutritionCache } from "@shared/schema";
 import { and, gt, inArray } from "drizzle-orm";
-import { upsertBarcodeNutrition } from "../storage/api-keys";
+import { storage } from "../storage";
 import { getStandardizedFoodName } from "./cultural-food-map";
 
 // Rate limiting for parallel requests
@@ -1058,19 +1058,21 @@ export async function lookupBarcode(
   const scale = finalGrams / 100;
 
   // Populate barcodeNutrition table for Public API (fire-and-forget)
-  upsertBarcodeNutrition({
-    barcode: code,
-    productName: resolvedProductName || null,
-    brandName: resolvedBrandName || null,
-    servingSize: rawServing || `${finalGrams}g`,
-    calories: per100g.calories?.toFixed(2) ?? null,
-    protein: per100g.protein?.toFixed(2) ?? null,
-    carbs: per100g.carbs?.toFixed(2) ?? null,
-    fat: per100g.fat?.toFixed(2) ?? null,
-    source,
-  }).catch((err) => {
-    console.error("Failed to upsert barcodeNutrition:", err);
-  });
+  storage
+    .upsertBarcodeNutrition({
+      barcode: code,
+      productName: resolvedProductName || null,
+      brandName: resolvedBrandName || null,
+      servingSize: rawServing || `${finalGrams}g`,
+      calories: per100g.calories?.toFixed(2) ?? null,
+      protein: per100g.protein?.toFixed(2) ?? null,
+      carbs: per100g.carbs?.toFixed(2) ?? null,
+      fat: per100g.fat?.toFixed(2) ?? null,
+      source,
+    })
+    .catch((err) => {
+      console.error("Failed to upsert barcodeNutrition:", err);
+    });
 
   return {
     productName: resolvedProductName || "Unknown Product",
