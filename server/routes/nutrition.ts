@@ -140,6 +140,33 @@ export function register(app: Express): void {
     },
   );
 
+  // Frequently logged items for Quick Log suggestions
+  app.get(
+    "/api/scanned-items/frequent",
+    requireAuth,
+    pantryRateLimit,
+    async (req: Request, res: Response) => {
+      try {
+        const limit = parseQueryInt(req.query.limit, {
+          default: 5,
+          min: 1,
+          max: 20,
+        });
+
+        const items = await storage.getFrequentItems(req.userId!, limit);
+        res.json({ items });
+      } catch (error) {
+        console.error("Error fetching frequent items:", error);
+        sendError(
+          res,
+          500,
+          "Failed to fetch frequent items",
+          ErrorCode.INTERNAL_ERROR,
+        );
+      }
+    },
+  );
+
   app.get(
     "/api/scanned-items",
     requireAuth,
