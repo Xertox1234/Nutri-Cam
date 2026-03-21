@@ -16,6 +16,7 @@ vi.mock("../../storage", () => ({
     getScannedItemWithFavourite: vi.fn(),
     softDeleteScannedItem: vi.fn(),
     toggleFavouriteScannedItem: vi.fn(),
+    getFrequentItems: vi.fn(),
     getDailySummary: vi.fn(),
     getConfirmedMealPlanItemIds: vi.fn(),
     getPlannedNutritionSummary: vi.fn(),
@@ -489,6 +490,81 @@ describe("Nutrition Routes", () => {
 
       expect(res.status).toBe(400);
       expect(res.body.error).toBe("Invalid barcode");
+    });
+  });
+
+  describe("GET /api/scanned-items/frequent", () => {
+    it("returns frequent items with default limit", async () => {
+      const mockFrequentItems = [
+        {
+          productName: "2 eggs and toast",
+          logCount: 12,
+          lastLogged: new Date("2026-03-20T10:00:00Z"),
+        },
+        {
+          productName: "chicken salad",
+          logCount: 8,
+          lastLogged: new Date("2026-03-19T12:00:00Z"),
+        },
+      ];
+      vi.mocked(storage.getFrequentItems).mockResolvedValue(mockFrequentItems);
+
+      const res = await request(app)
+        .get("/api/scanned-items/frequent")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.items).toHaveLength(2);
+      expect(res.body.items[0].productName).toBe("2 eggs and toast");
+      expect(res.body.items[0].logCount).toBe(12);
+      expect(res.body.items[0].lastLogged).toBe("2026-03-20T10:00:00.000Z");
+      expect(storage.getFrequentItems).toHaveBeenCalledWith("1", 5);
+    });
+
+    it("respects custom limit parameter", async () => {
+      vi.mocked(storage.getFrequentItems).mockResolvedValue([]);
+
+      const res = await request(app)
+        .get("/api/scanned-items/frequent?limit=10")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(200);
+      expect(storage.getFrequentItems).toHaveBeenCalledWith("1", 10);
+    });
+
+    it("clamps limit to max 20", async () => {
+      vi.mocked(storage.getFrequentItems).mockResolvedValue([]);
+
+      const res = await request(app)
+        .get("/api/scanned-items/frequent?limit=50")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(200);
+      expect(storage.getFrequentItems).toHaveBeenCalledWith("1", 20);
+    });
+
+    it("returns empty array for users with no history", async () => {
+      vi.mocked(storage.getFrequentItems).mockResolvedValue([]);
+
+      const res = await request(app)
+        .get("/api/scanned-items/frequent")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(200);
+      expect(res.body.items).toEqual([]);
+    });
+
+    it("returns 500 on storage error", async () => {
+      vi.mocked(storage.getFrequentItems).mockRejectedValue(
+        new Error("DB error"),
+      );
+
+      const res = await request(app)
+        .get("/api/scanned-items/frequent")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(500);
+      expect(res.body.error).toBe("Failed to fetch frequent items");
     });
   });
 });
