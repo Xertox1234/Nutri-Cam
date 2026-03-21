@@ -9,12 +9,15 @@ import {
   Platform,
   ActivityIndicator,
   AccessibilityInfo,
+  InteractionManager,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import type { RootStackParamList } from "@/navigation/RootStackNavigator";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { ThemedText } from "@/components/ThemedText";
 import { Card } from "@/components/Card";
@@ -29,6 +32,7 @@ import { useParseFoodText, type ParsedFoodItem } from "@/hooks/useFoodParse";
 import { usePremiumContext } from "@/context/PremiumContext";
 import { useAdaptiveGoals } from "@/hooks/useAdaptiveGoals";
 import { apiRequest } from "@/lib/query-client";
+import { QUERY_KEYS } from "@/lib/query-keys";
 import {
   Spacing,
   BorderRadius,
@@ -36,18 +40,48 @@ import {
   withOpacity,
 } from "@/constants/theme";
 
+// ── Tip Card ──────────────────────────────────────────────────────────────────
+
+const QUICK_LOG_TIPS = [
+  { text: "Did you have a beverage with your meal?", icon: "coffee" as const },
+  { text: "Snap a pic to log it!", icon: "camera" as const },
+  {
+    text: "Try voice input \u2014 tap the mic and speak",
+    icon: "mic" as const,
+  },
+  { text: "Don\u2019t forget condiments and sauces", icon: "droplet" as const },
+  { text: "You can log multiple items at once", icon: "list" as const },
+];
+
+function randomTip() {
+  return QUICK_LOG_TIPS[Math.floor(Math.random() * QUICK_LOG_TIPS.length)];
+}
+
+// ── Examples ──────────────────────────────────────────────────────────────────
+
+const EXAMPLE_ITEMS = [
+  "2 eggs and toast with butter",
+  "chicken salad with ranch dressing",
+  "a bowl of oatmeal with blueberries",
+  "grande latte and a banana",
+];
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export default function QuickLogScreen() {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const haptics = useHaptics();
   const toast = useToast();
-  const navigation = useNavigation();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const queryClient = useQueryClient();
   const { isPremium } = usePremiumContext();
   const { data: adaptiveGoalData } = useAdaptiveGoals(isPremium);
 
   const [textInput, setTextInput] = useState("");
   const [parsedItems, setParsedItems] = useState<ParsedFoodItem[]>([]);
+  const [tip] = useState(randomTip);
 
   const {
     isListening,
@@ -61,6 +95,22 @@ export default function QuickLogScreen() {
   const parseFoodText = useParseFoodText();
 
   const isParsing = parseFoodText.isPending;
+
+  // Fetch frequent items (inline query — no separate hook)
+  const { data: frequentItems } = useQuery({
+    queryKey: QUERY_KEYS.frequentItems,
+    queryFn: async () => {
+      const res = await apiRequest(
+        "GET",
+        "/api/scanned-items/frequent?limit=5",
+      );
+      const data = (await res.json()) as {
+        items: { productName: string }[];
+      };
+      return data.items;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
 
   // Stream transcript into text input while listening
   useEffect(() => {
@@ -119,10 +169,28 @@ export default function QuickLogScreen() {
     setParsedItems((prev) => prev.filter((_, i) => i !== index));
   }, []);
 
+  const handleChipPress = useCallback(
+    (text: string) => {
+      setTextInput(text);
+      haptics.impact(Haptics.ImpactFeedbackStyle.Light);
+    },
+    [haptics],
+  );
+
+  const handleCameraPress = useCallback(() => {
+    haptics.impact(Haptics.ImpactFeedbackStyle.Light);
+    navigation.goBack();
+    InteractionManager.runAfterInteractions(() => {
+      navigation.navigate("Scan");
+    });
+  }, [haptics, navigation]);
+
   const logAllItems = useMutation({
     mutationFn: async (items: ParsedFoodItem[]) => {
       const results = [];
       for (const item of items) {
+        // POST /api/scanned-items creates both the scanned item
+        // AND a daily log entry in a single transaction
         const res = await apiRequest("POST", "/api/scanned-items", {
           productName: `${item.quantity} ${item.unit} ${item.name}`,
           sourceType: "voice",
@@ -132,19 +200,14 @@ export default function QuickLogScreen() {
           fat: item.fat?.toString(),
           servingSize: item.servingSize,
         });
-        const scannedItem = await res.json();
-        // Create daily log
-        await apiRequest("POST", "/api/daily-summary", {
-          scannedItemId: scannedItem.id,
-          source: "voice",
-        });
-        results.push(scannedItem);
+        results.push(await res.json());
       }
       return results;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/daily-summary"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/scanned-items"] });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.dailySummary });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.scannedItems });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.frequentItems });
       haptics.notification(Haptics.NotificationFeedbackType.Success);
       AccessibilityInfo.announceForAccessibility("Food items logged");
       toast.success("Food items logged");
@@ -162,6 +225,9 @@ export default function QuickLogScreen() {
     haptics.impact(Haptics.ImpactFeedbackStyle.Medium);
     logAllItems.mutate(parsedItems);
   }, [parsedItems, haptics, logAllItems]);
+
+  const hasPreviousItems =
+    frequentItems !== undefined && frequentItems.length > 0;
 
   return (
     <KeyboardAvoidingView
@@ -212,6 +278,21 @@ export default function QuickLogScreen() {
             />
           </View>
           <View style={styles.actionRow}>
+            <Pressable
+              onPress={handleCameraPress}
+              accessibilityLabel="Take a photo to log food"
+              accessibilityHint="Closes quick log and opens the camera"
+              accessibilityRole="button"
+              style={({ pressed }) => [
+                styles.cameraButton,
+                {
+                  backgroundColor: theme.link,
+                  opacity: pressed ? 0.7 : 1,
+                },
+              ]}
+            >
+              <Feather name="camera" size={24} color={theme.buttonText} />
+            </Pressable>
             <Pressable
               onPress={handleTextSubmit}
               disabled={isParsing || !textInput.trim()}
@@ -271,42 +352,83 @@ export default function QuickLogScreen() {
           isLogging={logAllItems.isPending}
         />
 
-        {/* Help text */}
+        {/* Tip card + suggestions (when no parsed items) */}
         {parsedItems.length === 0 && !isParsing && (
           <View style={styles.helpSection}>
+            {/* Instructional tip */}
+            <View
+              style={[
+                styles.tipCard,
+                { backgroundColor: withOpacity(theme.link, 0.08) },
+              ]}
+              accessibilityRole="text"
+              accessibilityLabel={tip.text}
+            >
+              <Feather
+                name={tip.icon}
+                size={16}
+                color={theme.link}
+                style={styles.tipIcon}
+              />
+              <ThemedText
+                style={[styles.tipText, { color: theme.link }]}
+                numberOfLines={2}
+              >
+                {tip.text}
+              </ThemedText>
+            </View>
+
+            {/* Previous Items or Examples */}
             <ThemedText
               type="caption"
+              accessibilityRole="header"
               style={[styles.helpText, { color: theme.textSecondary }]}
             >
-              Examples:
+              {hasPreviousItems ? "Previous Items:" : "Examples:"}
             </ThemedText>
-            {[
-              "2 eggs and toast with butter",
-              "chicken salad with ranch dressing",
-              "a bowl of oatmeal with blueberries",
-              "grande latte and a banana",
-            ].map((example) => (
-              <Pressable
-                key={example}
-                onPress={() => {
-                  setTextInput(example);
-                  haptics.impact(Haptics.ImpactFeedbackStyle.Light);
-                }}
-                accessibilityLabel={`Use example: ${example}`}
-                accessibilityRole="button"
-                style={({ pressed }) => [
-                  styles.exampleChip,
-                  {
-                    backgroundColor: withOpacity(theme.link, 0.1),
-                    opacity: pressed ? 0.7 : 1,
-                  },
-                ]}
-              >
-                <ThemedText style={[styles.exampleText, { color: theme.link }]}>
-                  {example}
-                </ThemedText>
-              </Pressable>
-            ))}
+            {hasPreviousItems
+              ? frequentItems!.map((item) => (
+                  <Pressable
+                    key={item.productName}
+                    onPress={() => handleChipPress(item.productName)}
+                    accessibilityLabel={`Use previous item: ${item.productName}`}
+                    accessibilityRole="button"
+                    style={({ pressed }) => [
+                      styles.exampleChip,
+                      {
+                        backgroundColor: withOpacity(theme.link, 0.1),
+                        opacity: pressed ? 0.7 : 1,
+                      },
+                    ]}
+                  >
+                    <ThemedText
+                      style={[styles.exampleText, { color: theme.link }]}
+                    >
+                      {item.productName}
+                    </ThemedText>
+                  </Pressable>
+                ))
+              : EXAMPLE_ITEMS.map((example) => (
+                  <Pressable
+                    key={example}
+                    onPress={() => handleChipPress(example)}
+                    accessibilityLabel={`Use example: ${example}`}
+                    accessibilityRole="button"
+                    style={({ pressed }) => [
+                      styles.exampleChip,
+                      {
+                        backgroundColor: withOpacity(theme.link, 0.1),
+                        opacity: pressed ? 0.7 : 1,
+                      },
+                    ]}
+                  >
+                    <ThemedText
+                      style={[styles.exampleText, { color: theme.link }]}
+                    >
+                      {example}
+                    </ThemedText>
+                  </Pressable>
+                ))}
           </View>
         )}
       </ScrollView>
@@ -347,6 +469,13 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     gap: Spacing.md,
   },
+  cameraButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: "center",
+    alignItems: "center",
+  },
   parseButton: {
     flex: 1,
     flexDirection: "row",
@@ -364,6 +493,22 @@ const styles = StyleSheet.create({
   helpSection: {
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.lg,
+  },
+  tipCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.xs,
+    marginBottom: Spacing.md,
+  },
+  tipIcon: {
+    marginRight: Spacing.sm,
+  },
+  tipText: {
+    flex: 1,
+    fontSize: 13,
+    fontFamily: FontFamily.regular,
   },
   helpText: {
     marginBottom: Spacing.sm,
