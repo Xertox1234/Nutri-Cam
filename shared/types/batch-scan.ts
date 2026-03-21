@@ -2,7 +2,7 @@ import { z } from "zod";
 
 // Phase 1: Barcode-only BatchItem with discriminated union on status
 const batchItemBaseSchema = z.object({
-  id: z.string().uuid(),
+  id: z.string().min(1),
   barcode: z.string().optional(),
   productName: z.string().max(500),
   brandName: z.string().max(200).optional(),
