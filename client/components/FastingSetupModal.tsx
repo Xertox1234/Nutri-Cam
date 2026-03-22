@@ -8,6 +8,7 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
+  Switch,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -36,12 +37,18 @@ interface FastingSetupModalProps {
     eatingHours: number;
     eatingWindowStart?: string;
     eatingWindowEnd?: string;
+    notifyEatingWindow: boolean;
+    notifyMilestones: boolean;
+    notifyCheckIns: boolean;
   }) => void;
   isPending?: boolean;
   initialProtocol?: string;
   initialFastingHours?: number;
   initialEatingWindowStart?: string;
   initialEatingWindowEnd?: string;
+  initialNotifyEatingWindow?: boolean;
+  initialNotifyMilestones?: boolean;
+  initialNotifyCheckIns?: boolean;
 }
 
 export function FastingSetupModal({
@@ -53,6 +60,9 @@ export function FastingSetupModal({
   initialFastingHours = 16,
   initialEatingWindowStart = "12:00",
   initialEatingWindowEnd = "20:00",
+  initialNotifyEatingWindow = true,
+  initialNotifyMilestones = true,
+  initialNotifyCheckIns = true,
 }: FastingSetupModalProps) {
   const { theme, isDark } = useTheme();
   const haptics = useHaptics();
@@ -61,6 +71,13 @@ export function FastingSetupModal({
   const [customHours, setCustomHours] = useState(String(initialFastingHours));
   const [windowStart, setWindowStart] = useState(initialEatingWindowStart);
   const [windowEnd, setWindowEnd] = useState(initialEatingWindowEnd);
+  const [notifyEatingWindow, setNotifyEatingWindow] = useState(
+    initialNotifyEatingWindow,
+  );
+  const [notifyMilestones, setNotifyMilestones] = useState(
+    initialNotifyMilestones,
+  );
+  const [notifyCheckIns, setNotifyCheckIns] = useState(initialNotifyCheckIns);
 
   const isCustom = protocol === "custom";
   const { fastingHours, eatingHours } = resolveFastingSchedule(
@@ -77,6 +94,9 @@ export function FastingSetupModal({
       eatingHours,
       eatingWindowStart: windowStart || undefined,
       eatingWindowEnd: windowEnd || undefined,
+      notifyEatingWindow,
+      notifyMilestones,
+      notifyCheckIns,
     });
   }, [
     protocol,
@@ -84,6 +104,9 @@ export function FastingSetupModal({
     eatingHours,
     windowStart,
     windowEnd,
+    notifyEatingWindow,
+    notifyMilestones,
+    notifyCheckIns,
     haptics,
     onSave,
   ]);
@@ -297,6 +320,83 @@ export function FastingSetupModal({
             </View>
           </View>
 
+          {/* Notification Settings */}
+          <ThemedText type="h4" style={styles.sectionLabel}>
+            Notifications
+          </ThemedText>
+          <View style={styles.toggleRow}>
+            <View style={styles.toggleLabel}>
+              <ThemedText style={styles.toggleTitle}>
+                Eating window reminders
+              </ThemedText>
+              {!windowStart && (
+                <ThemedText
+                  type="caption"
+                  style={{ color: theme.textSecondary }}
+                >
+                  Set eating window times to enable
+                </ThemedText>
+              )}
+            </View>
+            <Switch
+              value={notifyEatingWindow && !!windowStart}
+              onValueChange={(v) => {
+                haptics.selection();
+                setNotifyEatingWindow(v);
+              }}
+              disabled={!windowStart}
+              accessibilityRole="switch"
+              accessibilityLabel="Eating window reminders"
+              accessibilityState={{
+                checked: notifyEatingWindow && !!windowStart,
+                disabled: !windowStart,
+              }}
+              accessibilityHint={
+                !windowStart ? "Set eating window times to enable" : undefined
+              }
+            />
+          </View>
+          <View style={styles.toggleRow}>
+            <View style={styles.toggleLabel}>
+              <ThemedText style={styles.toggleTitle}>
+                Milestone encouragements
+              </ThemedText>
+              <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+                Notifications at 12h, 16h, 20h, 24h marks
+              </ThemedText>
+            </View>
+            <Switch
+              value={notifyMilestones}
+              onValueChange={(v) => {
+                haptics.selection();
+                setNotifyMilestones(v);
+              }}
+              accessibilityRole="switch"
+              accessibilityLabel="Milestone encouragements"
+              accessibilityState={{ checked: notifyMilestones }}
+            />
+          </View>
+          <View style={styles.toggleRow}>
+            <View style={styles.toggleLabel}>
+              <ThemedText style={styles.toggleTitle}>
+                Supportive check-ins
+              </ThemedText>
+              <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+                Periodic encouragement during long fasts
+              </ThemedText>
+            </View>
+            <Switch
+              value={notifyCheckIns}
+              onValueChange={(v) => {
+                haptics.selection();
+                setNotifyCheckIns(v);
+              }}
+              accessibilityRole="switch"
+              accessibilityLabel="Supportive check-ins"
+              accessibilityState={{ checked: notifyCheckIns }}
+            />
+          </View>
+
           {/* Save Button */}
           <Pressable
             onPress={handleSave}
@@ -436,5 +536,20 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontFamily: FontFamily.semiBold,
     fontWeight: "600",
+  },
+  toggleRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: Spacing.md,
+  },
+  toggleLabel: {
+    flex: 1,
+    marginRight: Spacing.md,
+  },
+  toggleTitle: {
+    fontSize: 15,
+    fontFamily: FontFamily.medium,
+    fontWeight: "500",
   },
 });

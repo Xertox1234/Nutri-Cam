@@ -20,7 +20,16 @@ export async function getFastingSchedule(
     .select()
     .from(fastingSchedules)
     .where(eq(fastingSchedules.userId, userId));
-  return schedule || undefined;
+  if (!schedule) return undefined;
+  // Coalesce NULLs for boolean columns — existing rows may have NULL
+  // after migration since .default() only applies to future INSERTs
+  return {
+    ...schedule,
+    isActive: schedule.isActive ?? true,
+    notifyEatingWindow: schedule.notifyEatingWindow ?? true,
+    notifyMilestones: schedule.notifyMilestones ?? true,
+    notifyCheckIns: schedule.notifyCheckIns ?? true,
+  };
 }
 
 export async function upsertFastingSchedule(

@@ -73,6 +73,12 @@
           "microphonePermission": "OCRecipes uses the microphone for voice food logging.",
           "speechRecognitionPermission": "OCRecipes uses speech recognition for voice food logging."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "sounds": []
+        }
       ]
     ],
     "experiments": {

@@ -4,6 +4,7 @@ This document captures key learnings, gotchas, and architectural decisions disco
 
 ## Table of Contents
 
+- [Fasting Timer Enhancements Review (2026-03-21)](#fasting-timer-enhancements-review-2026-03-21)
 - [Quick Log Enhancements Review (2026-03-21)](#quick-log-enhancements-review-2026-03-21)
 - [HomeScreen Redesign Simplicity Review (2026-03-19)](#homescreen-redesign-simplicity-review-2026-03-19)
 - [Allergen Substitution Safety Findings (2026-03-18)](#allergen-substitution-safety-findings-2026-03-18)
@@ -23,6 +24,35 @@ This document captures key learnings, gotchas, and architectural decisions disco
 - [Testing & Tooling Learnings](#testing--tooling-learnings)
 - [Database Migration Gotchas](#database-migration-gotchas)
 - [TypeScript Safety Learnings](#typescript-safety-learnings)
+
+---
+
+## [2026-03-21] Fasting Timer Enhancements Review
+
+### useRef for Scheduled Notification IDs Is Fragile
+
+**Problem:** Stored `expo-notifications` scheduled IDs in a `useRef<string[]>([])` for cancellation on fast end. If the user navigated away from FastingScreen and returned, the ref reset to `[]` — leaving orphaned notifications that would fire after the fast ended.
+
+**Root cause:** `useRef` state is tied to the component instance lifecycle. Unmount (navigation away) destroys the ref. Re-mount creates a new empty one.
+
+**Fix:** Use `Notifications.cancelAllScheduledNotificationsAsync()` instead of ID-based tracking. This is a platform-level operation that survives component unmount, app backgrounding, and even force-quit recovery.
+
+```typescript
+// ❌ BAD: IDs lost on unmount — orphaned notifications
+const notificationIdsRef = useRef<string[]>([]);
+// ... schedule notifications, collect IDs ...
+// On end-fast: cancelAllFastingNotifications(notificationIdsRef.current)
+
+// ✅ GOOD: Platform-level cancel — always works
+Notifications.cancelAllScheduledNotificationsAsync();
+```
+
+**Caveat:** `cancelAllScheduledNotificationsAsync()` cancels ALL scheduled notifications, not just fasting ones. This is fine when fasting is the only notification source. If the app adds other notification categories later, persist IDs to AsyncStorage or use notification categories/channels for selective cancellation.
+
+**References:**
+
+- `client/screens/FastingScreen.tsx` — `handleEndFast` uses global cancel
+- PR #25 simplicity + performance review
 
 ---
 
