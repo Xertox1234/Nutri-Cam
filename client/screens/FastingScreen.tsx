@@ -51,6 +51,13 @@ import {
   getNextPhaseBoundary,
   FASTING_TIPS,
 } from "@/components/fasting-display-utils";
+import { requestNotificationPermission } from "@/lib/notifications";
+import {
+  scheduleMilestoneNotifications,
+  scheduleCheckInNotifications,
+  scheduleEatingWindowNotifications,
+  cancelAllFastingNotifications,
+} from "@/lib/fasting-notifications";
 import type { FastingScreenNavigationProp } from "@/types/navigation";
 
 const COACH_QUESTIONS = [
@@ -237,6 +244,9 @@ export default function FastingScreen() {
     prevPhaseRef.current = currentPhase.name;
   }, [currentPhase]);
 
+  // Track scheduled notification IDs for cancellation
+  const notificationIdsRef = useRef<string[]>([]);
+
   // Random idle tip — stable per mount (LEARNINGS.md:59)
   const [idleTip] = useState(
     () => FASTING_TIPS[Math.floor(Math.random() * FASTING_TIPS.length)],
@@ -260,14 +270,52 @@ export default function FastingScreen() {
   const handleStartFast = useCallback(() => {
     haptics.impact(Haptics.ImpactFeedbackStyle.Medium);
     startFast.mutate(undefined, {
-      onSuccess: () => {
+      onSuccess: async (log) => {
         haptics.notification(Haptics.NotificationFeedbackType.Success);
+
+        // Schedule notifications if any toggle is enabled
+        const s = schedule;
+        const anyEnabled =
+          (s?.notifyMilestones ?? true) ||
+          (s?.notifyCheckIns ?? true) ||
+          (s?.notifyEatingWindow ?? true);
+        if (!anyEnabled) return;
+
+        const granted = await requestNotificationPermission();
+        if (!granted) return;
+
+        const startedAt = new Date(log.startedAt);
+        const ids: string[] = [];
+
+        if (s?.notifyMilestones ?? true) {
+          const milestoneIds = await scheduleMilestoneNotifications(
+            startedAt,
+            log.targetDurationHours,
+          );
+          ids.push(...milestoneIds);
+        }
+        if (s?.notifyCheckIns ?? true) {
+          const checkInIds = await scheduleCheckInNotifications(startedAt);
+          ids.push(...checkInIds);
+        }
+        if (
+          (s?.notifyEatingWindow ?? true) &&
+          s?.eatingWindowStart &&
+          s?.eatingWindowEnd
+        ) {
+          const windowIds = await scheduleEatingWindowNotifications(
+            s.eatingWindowStart,
+            s.eatingWindowEnd,
+          );
+          ids.push(...windowIds);
+        }
+        notificationIdsRef.current = ids;
       },
       onError: (err) => {
         Alert.alert("Error", err.message || "Failed to start fast");
       },
     });
-  }, [haptics, startFast]);
+  }, [haptics, startFast, schedule]);
 
   const handleEndFast = useCallback(() => {
     Alert.alert("End Fast", "Are you sure you want to end your current fast?", [
@@ -277,6 +325,13 @@ export default function FastingScreen() {
         style: "destructive",
         onPress: () => {
           haptics.impact(Haptics.ImpactFeedbackStyle.Medium);
+
+          // Cancel any pending notifications
+          if (notificationIdsRef.current.length > 0) {
+            cancelAllFastingNotifications(notificationIdsRef.current);
+            notificationIdsRef.current = [];
+          }
+
           endFast.mutate(undefined, {
             onSuccess: (result) => {
               const type = result.completed
@@ -306,6 +361,9 @@ export default function FastingScreen() {
       eatingHours: number;
       eatingWindowStart?: string;
       eatingWindowEnd?: string;
+      notifyEatingWindow: boolean;
+      notifyMilestones: boolean;
+      notifyCheckIns: boolean;
     }) => {
       updateSchedule.mutate(data, {
         onSuccess: () => {
@@ -840,6 +898,9 @@ export default function FastingScreen() {
         initialFastingHours={schedule?.fastingHours}
         initialEatingWindowStart={schedule?.eatingWindowStart ?? undefined}
         initialEatingWindowEnd={schedule?.eatingWindowEnd ?? undefined}
+        initialNotifyEatingWindow={schedule?.notifyEatingWindow ?? true}
+        initialNotifyMilestones={schedule?.notifyMilestones ?? true}
+        initialNotifyCheckIns={schedule?.notifyCheckIns ?? true}
       />
     </ScrollView>
   );

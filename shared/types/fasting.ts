@@ -14,7 +14,10 @@ export interface ApiFastingSchedule {
   eatingHours: number;
   eatingWindowStart: string | null;
   eatingWindowEnd: string | null;
-  isActive: boolean | null;
+  isActive: boolean;
+  notifyEatingWindow: boolean;
+  notifyMilestones: boolean;
+  notifyCheckIns: boolean;
 }
 
 /** Fasting log as returned by the API (dates serialized to strings). */

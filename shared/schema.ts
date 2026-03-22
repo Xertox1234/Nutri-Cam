@@ -799,6 +799,9 @@ export const fastingSchedules = pgTable(
     eatingWindowStart: text("eating_window_start"), // "12:00"
     eatingWindowEnd: text("eating_window_end"), // "20:00"
     isActive: boolean("is_active").default(true),
+    notifyEatingWindow: boolean("notify_eating_window").default(true),
+    notifyMilestones: boolean("notify_milestones").default(true),
+    notifyCheckIns: boolean("notify_check_ins").default(true),
   },
   (table) => ({
     userIdx: uniqueIndex("fasting_schedules_user_idx").on(table.userId),
