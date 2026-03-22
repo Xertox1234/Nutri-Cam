@@ -82,6 +82,11 @@ export default function CookbookDetailScreen() {
     [haptics, navigation],
   );
 
+  const handleAddRecipes = useCallback(() => {
+    haptics.selection();
+    navigation.navigate("RecipeBrowser", {});
+  }, [haptics, navigation]);
+
   const handleEdit = useCallback(() => {
     navigation.navigate("CookbookCreate", { cookbookId });
   }, [navigation, cookbookId]);
@@ -255,6 +260,22 @@ export default function CookbookDetailScreen() {
             ) : null}
             <View style={styles.headerActions}>
               <Pressable
+                onPress={handleAddRecipes}
+                style={[
+                  styles.addRecipesButton,
+                  { backgroundColor: withOpacity(theme.link, 0.1) },
+                ]}
+                accessibilityRole="button"
+                accessibilityLabel="Add recipes"
+              >
+                <Feather name="plus" size={14} color={theme.link} />
+                <ThemedText
+                  style={[styles.addRecipesText, { color: theme.link }]}
+                >
+                  Add Recipes
+                </ThemedText>
+              </Pressable>
+              <Pressable
                 onPress={handleOverflowMenu}
                 hitSlop={8}
                 style={[
@@ -282,8 +303,19 @@ export default function CookbookDetailScreen() {
             <ThemedText
               style={[styles.emptySubtitle, { color: theme.textSecondary }]}
             >
-              Add recipes from the recipe browser or recipe detail screens.
+              Browse recipes and save your favorites here.
             </ThemedText>
+            <Pressable
+              onPress={handleAddRecipes}
+              style={[styles.browseButton, { backgroundColor: theme.link }]}
+              accessibilityRole="button"
+              accessibilityLabel="Browse recipes"
+            >
+              <Feather name="search" size={16} color={theme.buttonText} />
+              <ThemedText style={styles.browseButtonText}>
+                Browse Recipes
+              </ThemedText>
+            </Pressable>
           </View>
         }
       />
@@ -308,7 +340,21 @@ const styles = StyleSheet.create({
   },
   headerActions: {
     flexDirection: "row",
+    alignItems: "center",
     justifyContent: "flex-end",
+    gap: Spacing.sm,
+  },
+  addRecipesButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.full,
+  },
+  addRecipesText: {
+    fontSize: 13,
+    fontFamily: FontFamily.semiBold,
   },
   overflowButton: {
     width: 36,
@@ -376,5 +422,19 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: "center",
     lineHeight: 20,
+    marginBottom: Spacing.xl,
+  },
+  browseButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+    borderRadius: BorderRadius.full,
+  },
+  browseButtonText: {
+    color: "#FFFFFF", // hardcoded — always white text on colored button
+    fontSize: 15,
+    fontFamily: FontFamily.semiBold,
   },
 });
