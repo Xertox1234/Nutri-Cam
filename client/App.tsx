@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { StyleSheet, ActivityIndicator, View } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -24,6 +24,7 @@ import { PremiumProvider } from "@/context/PremiumContext";
 import { ThemeProvider, useThemePreference } from "@/context/ThemeContext";
 import { ToastProvider } from "@/context/ToastContext";
 import { BatchScanProvider } from "@/context/BatchScanContext";
+import { setupNotificationChannel } from "@/lib/notifications";
 
 function AppContent() {
   const { isDark } = useThemePreference();
@@ -47,6 +48,11 @@ function AppContent() {
 }
 
 export default function App() {
+  // Set up Android notification channel once at app startup (no-op on iOS)
+  useEffect(() => {
+    setupNotificationChannel();
+  }, []);
+
   const [fontsLoaded] = useFonts({
     Poppins_400Regular,
     Poppins_500Medium,

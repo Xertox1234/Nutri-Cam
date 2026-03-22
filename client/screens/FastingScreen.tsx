@@ -13,6 +13,7 @@ import {
   Alert,
   RefreshControl,
   AccessibilityInfo,
+  Linking,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
@@ -282,7 +283,20 @@ export default function FastingScreen() {
         if (!anyEnabled) return;
 
         const granted = await requestNotificationPermission();
-        if (!granted) return;
+        if (!granted) {
+          Alert.alert(
+            "Notifications Disabled",
+            "Enable notifications in Settings to receive fasting reminders and milestone encouragements.",
+            [
+              { text: "Not Now", style: "cancel" },
+              {
+                text: "Open Settings",
+                onPress: () => Linking.openSettings(),
+              },
+            ],
+          );
+          return;
+        }
 
         const startedAt = new Date(log.startedAt);
         const ids: string[] = [];
