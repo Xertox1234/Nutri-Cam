@@ -421,3 +421,40 @@ async function handleNewPhoto(photoUri: string) {
 
 - `client/lib/serial-queue.ts` — `createSerialQueue()` utility
 - `client/lib/__tests__/serial-queue.test.ts` — tests including FIFO ordering and error isolation
+
+### Hour-Bucket Memoization for Timer-Driven UIs
+
+When a timer fires every N seconds but the derived value only changes at coarser boundaries (e.g., hourly), use a floored bucket as the `useMemo` dependency instead of the raw tick value. This prevents unnecessary recomputation and gives downstream `React.memo` components a stable prop reference.
+
+```typescript
+// ❌ BAD: Recomputes every 30 seconds even though phase changes hourly
+const currentPhase = useMemo(
+  () => getFastingPhase(elapsedMinutes),
+  [elapsedMinutes], // changes every 30s
+);
+
+// ✅ GOOD: Stable for up to 60 minutes — only recomputes on hour change
+const phaseHourBucket = Math.floor(elapsedMinutes / 60);
+const currentPhase = useMemo(
+  () => getFastingPhase(elapsedMinutes),
+  [phaseHourBucket], // changes once per hour
+);
+```
+
+This also works for `React.memo` sub-components that receive timer-derived data:
+
+```typescript
+// Pass the floored value as a prop so React.memo can bail out
+<MilestoneMarkers
+  targetHours={targetHours}
+  passedHours={Math.floor(elapsedMinutes / 60)} // stable per hour
+/>
+```
+
+**When to use:** Any UI driven by a `setInterval` where the visual output changes at a coarser granularity than the tick rate (e.g., 30s tick but hourly phases, 1s tick but minute-level display).
+
+**References:**
+
+- `client/screens/FastingScreen.tsx` — `phaseHourBucket` for phase memoization
+- `client/components/FastingTimer.tsx` — `passedHours` prop for `MilestoneMarkers`
+- Discovered during PR #25 performance review

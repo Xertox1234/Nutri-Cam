@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo } from "react";
 import { StyleSheet, View } from "react-native";
-import Svg, { Circle } from "react-native-svg";
+import Svg, { Circle, Line, Text as SvgText } from "react-native-svg";
 import Animated, {
   useSharedValue,
   useAnimatedProps,
@@ -15,9 +15,110 @@ import { FontFamily, Spacing, withOpacity } from "@/constants/theme";
 import {
   calculateFastingProgress,
   formatFastingTimeDisplay,
+  getMilestoneHours,
+  milestoneToAngle,
 } from "./fasting-display-utils";
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
+
+/** Convert polar (angle + radius) to cartesian (x, y). */
+function polarToCartesian(
+  cx: number,
+  cy: number,
+  r: number,
+  angleDeg: number,
+): { x: number; y: number } {
+  const rad = (angleDeg * Math.PI) / 180;
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+}
+
+// ---------------------------------------------------------------------------
+// MilestoneMarkers — memoised so SVG nodes only re-render on hour change
+// ---------------------------------------------------------------------------
+
+interface MilestoneMarkersProps {
+  targetHours: number;
+  /** Floored elapsed hours — stable prop that changes once per hour */
+  passedHours: number;
+  center: number;
+  radius: number;
+  strokeWidth: number;
+  successColor: string;
+  mutedColor: string;
+  mutedLabelColor: string;
+}
+
+const MilestoneMarkers = React.memo(function MilestoneMarkers({
+  targetHours,
+  passedHours,
+  center,
+  radius,
+  strokeWidth,
+  successColor,
+  mutedColor,
+  mutedLabelColor,
+}: MilestoneMarkersProps) {
+  const milestones = getMilestoneHours(targetHours);
+  const tickInward = 6; // tick extends inward from ring
+  const tickOutward = 4; // tick extends outward from ring
+  const labelOutward = strokeWidth / 2 + 14; // label sits outside the ring
+
+  return (
+    <>
+      {milestones.map((hour) => {
+        const angle = milestoneToAngle(hour, targetHours);
+        const outer = polarToCartesian(
+          center,
+          center,
+          radius + tickOutward,
+          angle,
+        );
+        const inner = polarToCartesian(
+          center,
+          center,
+          radius - tickInward,
+          angle,
+        );
+        const labelPos = polarToCartesian(
+          center,
+          center,
+          radius + labelOutward,
+          angle,
+        );
+        const isPassed = passedHours >= hour;
+        const isTarget = hour === targetHours;
+
+        return (
+          <React.Fragment key={hour}>
+            <Line
+              x1={inner.x}
+              y1={inner.y}
+              x2={outer.x}
+              y2={outer.y}
+              stroke={isPassed ? successColor : mutedColor}
+              strokeWidth={isTarget ? 3 : 2}
+              strokeLinecap="round"
+            />
+            <SvgText
+              x={labelPos.x}
+              y={labelPos.y}
+              fontSize={10}
+              fill={isPassed ? successColor : mutedLabelColor}
+              textAnchor="middle"
+              alignmentBaseline="central"
+            >
+              {hour}h
+            </SvgText>
+          </React.Fragment>
+        );
+      })}
+    </>
+  );
+});
+
+// ---------------------------------------------------------------------------
+// FastingTimer
+// ---------------------------------------------------------------------------
 
 interface FastingTimerProps {
   /** ISO string of when the fast started */
@@ -34,7 +135,7 @@ export const FastingTimer = React.memo(function FastingTimer({
   startedAt,
   targetHours,
   elapsedMinutes,
-  size = 240,
+  size = 280,
 }: FastingTimerProps) {
   const { theme } = useTheme();
   const { reducedMotion } = useAccessibility();
@@ -44,7 +145,8 @@ export const FastingTimer = React.memo(function FastingTimer({
   const isComplete = progress >= 1;
 
   const strokeWidth = 12;
-  const radius = (size - strokeWidth) / 2;
+  const labelMargin = 20; // space outside the ring for milestone labels
+  const radius = (size - strokeWidth) / 2 - labelMargin;
   const circumference = 2 * Math.PI * radius;
   const center = size / 2;
 
@@ -77,10 +179,22 @@ export const FastingTimer = React.memo(function FastingTimer({
   const progressColor = isComplete ? theme.success : theme.link;
   const trackColor = withOpacity(theme.textSecondary, 0.15);
 
+  // Stable milestone props — passedHours only changes once per hour
+  const passedHours = Math.floor(elapsedMinutes / 60);
+
+  // Build an accessible summary of milestones (stable per hour bucket)
+  const milestoneSummary = useMemo(() => {
+    const milestones = getMilestoneHours(targetHours);
+    const passedCount = milestones.filter((h) => passedHours >= h).length;
+    return milestones.length > 0
+      ? `. Milestones: ${passedCount} of ${milestones.length} reached`
+      : "";
+  }, [targetHours, passedHours]);
+
   return (
     <View
       style={[styles.container, { width: size, height: size }]}
-      accessibilityLabel={`Fasting timer: ${timeDisplay.main} ${timeDisplay.label}, ${percentageText} complete`}
+      accessibilityLabel={`Fasting timer: ${timeDisplay.main} ${timeDisplay.label}, ${percentageText} complete${milestoneSummary}`}
       accessibilityRole="timer"
     >
       <Svg width={size} height={size}>
@@ -105,6 +219,17 @@ export const FastingTimer = React.memo(function FastingTimer({
           animatedProps={animatedProps}
           strokeLinecap="round"
           transform={`rotate(-90 ${center} ${center})`}
+        />
+        {/* Milestone tick marks */}
+        <MilestoneMarkers
+          targetHours={targetHours}
+          passedHours={passedHours}
+          center={center}
+          radius={radius}
+          strokeWidth={strokeWidth}
+          successColor={theme.success}
+          mutedColor={withOpacity(theme.text, 0.3)}
+          mutedLabelColor={theme.textSecondary}
         />
       </Svg>
       {/* Center text overlay */}
@@ -136,17 +261,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     alignSelf: "center",
+    overflow: "visible",
   },
   textOverlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
+    zIndex: 1,
   },
   timeText: {
     fontSize: 36,
     fontFamily: FontFamily.bold,
     fontWeight: "700",
     letterSpacing: 1,
+    lineHeight: 46,
   },
   labelText: {
     marginTop: Spacing.xs,

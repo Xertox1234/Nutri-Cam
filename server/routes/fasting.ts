@@ -49,6 +49,9 @@ export function register(app: Express): void {
             .regex(/^\d{2}:\d{2}$/)
             .optional(),
           isActive: z.boolean().optional(),
+          notifyEatingWindow: z.boolean().default(true),
+          notifyMilestones: z.boolean().default(true),
+          notifyCheckIns: z.boolean().default(true),
         });
         const parsed = schema.safeParse(req.body);
         if (!parsed.success)
