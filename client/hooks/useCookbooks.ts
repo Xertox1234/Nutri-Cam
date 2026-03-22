@@ -16,6 +16,9 @@ export function useCookbooks() {
       if (!res.ok) throw new Error(`${res.status}`);
       return res.json();
     },
+    // Recipe counts change from other screens — always refetch when
+    // a component re-subscribes (e.g. navigating back in the stack)
+    refetchOnMount: "always",
   });
 }
 
@@ -28,6 +31,7 @@ export function useCookbookDetail(id: number) {
       return res.json();
     },
     enabled: id > 0,
+    refetchOnMount: "always",
   });
 }
 
