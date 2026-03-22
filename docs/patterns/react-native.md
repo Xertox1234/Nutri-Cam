@@ -2014,3 +2014,61 @@ const handleAsyncWithFallback = async (data: string) => {
 
 - `client/screens/ScanScreen.tsx` -- `handleSmartScan()` with classification timeout fallback
 - Bug found and fixed during PR #14 code review
+
+### SVG Elements Are Invisible to the Accessibility Tree
+
+`react-native-svg` inner elements (`<G>`, `<Line>`, `<Circle>`, `<Text>`) silently ignore `accessible`, `accessibilityLabel`, and `accessibilityRole` props. Screen readers cannot focus on individual SVG elements — the entire SVG renders as a single drawing surface.
+
+```typescript
+// ❌ BAD: These props are silently ignored
+<G accessible accessibilityLabel="12 hour milestone, reached">
+  <Line ... />
+  <SvgText>12h</SvgText>
+</G>
+
+// ✅ GOOD: Provide a summary label on the wrapping View
+<View
+  accessibilityLabel={`Timer: ${timeDisplay}. Milestones: 2 of 4 reached`}
+  accessibilityRole="timer"
+>
+  <Svg width={size} height={size}>
+    {/* SVG elements are purely visual */}
+  </Svg>
+</View>
+```
+
+**Rule:** Never put accessibility props on SVG child elements. Always provide an accessible summary on the parent `View` that conveys the same information visually encoded in the SVG.
+
+**References:**
+
+- `client/components/FastingTimer.tsx` — milestone markers with summary label on wrapping View
+- Discovered during PR #25 accessibility review
+
+### accessibilityLiveRegion on Frequently Updating Content
+
+`accessibilityLiveRegion="polite"` on Android triggers a TalkBack announcement **every time the content changes**. On a View that updates every 30 seconds (e.g., a countdown timer), this produces constant screen reader interruptions.
+
+```typescript
+// ❌ BAD: Announces every 30-second countdown update
+<View accessibilityLiveRegion="polite">
+  <Text>Next phase in {formatDuration(remaining)}</Text>
+</View>
+
+// ✅ GOOD: Announce only on meaningful discrete events
+const prevPhaseRef = useRef<string | null>(null);
+useEffect(() => {
+  if (currentPhase.name !== prevPhaseRef.current) {
+    prevPhaseRef.current = currentPhase.name;
+    AccessibilityInfo.announceForAccessibility(
+      `You've entered the ${currentPhase.name} phase`,
+    );
+  }
+}, [currentPhase.name]);
+```
+
+**Rule:** Use `accessibilityLiveRegion` only on content that changes infrequently (e.g., error messages, status changes). For timer/countdown UIs, use `AccessibilityInfo.announceForAccessibility()` triggered by discrete state transitions, not continuous updates.
+
+**References:**
+
+- `client/screens/FastingScreen.tsx` — phase transition announcements via effect, not live region
+- Discovered during PR #25 performance + accessibility review
