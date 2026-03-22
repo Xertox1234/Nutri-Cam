@@ -127,20 +127,6 @@ export default function MealPlanStackNavigator() {
         }}
       />
       <Stack.Screen
-        name="CookbookCreate"
-        component={CookbookCreateScreen}
-        options={({ route }) => ({
-          headerTitle: () => (
-            <HeaderTitle
-              title={
-                route.params?.cookbookId ? "Edit Cookbook" : "New Cookbook"
-              }
-              showIcon={false}
-            />
-          ),
-        })}
-      />
-      <Stack.Screen
         name="CookbookList"
         component={CookbookListScreen}
         options={{
@@ -153,6 +139,20 @@ export default function MealPlanStackNavigator() {
         options={{
           headerTitle: () => <HeaderTitle title="Cookbook" showIcon={false} />,
         }}
+      />
+      <Stack.Screen
+        name="CookbookCreate"
+        component={CookbookCreateScreen}
+        options={({ route }) => ({
+          headerTitle: () => (
+            <HeaderTitle
+              title={
+                route.params?.cookbookId ? "Edit Cookbook" : "New Cookbook"
+              }
+              showIcon={false}
+            />
+          ),
+        })}
       />
     </Stack.Navigator>
   );
