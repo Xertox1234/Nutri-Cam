@@ -135,7 +135,7 @@ export const FastingTimer = React.memo(function FastingTimer({
   startedAt,
   targetHours,
   elapsedMinutes,
-  size = 240,
+  size = 280,
 }: FastingTimerProps) {
   const { theme } = useTheme();
   const { reducedMotion } = useAccessibility();
