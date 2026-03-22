@@ -261,17 +261,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     alignSelf: "center",
+    overflow: "visible",
   },
   textOverlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: "center",
     justifyContent: "center",
+    zIndex: 1,
   },
   timeText: {
     fontSize: 36,
     fontFamily: FontFamily.bold,
     fontWeight: "700",
     letterSpacing: 1,
+    lineHeight: 46,
   },
   labelText: {
     marginTop: Spacing.xs,
