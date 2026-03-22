@@ -2,7 +2,7 @@ import React, { useCallback, useLayoutEffect } from "react";
 import { StyleSheet, View, Pressable, FlatList, Alert } from "react-native";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { Feather } from "@expo/vector-icons";
 
 import { ThemedText } from "@/components/ThemedText";
@@ -25,8 +25,16 @@ export default function CookbookListScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   const { theme } = useTheme();
   const haptics = useHaptics();
-  const { data: cookbooks, isLoading } = useCookbooks();
+  const { data: cookbooks, isLoading, refetch } = useCookbooks();
   const { mutate: deleteCookbook } = useDeleteCookbook();
+
+  // Refetch cookbook list (including recipe counts) when screen comes into focus,
+  // since recipes may have been added from other screens in the stack
+  useFocusEffect(
+    useCallback(() => {
+      refetch();
+    }, [refetch]),
+  );
 
   // Add "+" button in header instead of a FAB (avoids collision with Scan FAB)
   useLayoutEffect(() => {
