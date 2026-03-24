@@ -31,9 +31,18 @@ interface MicronutrientSectionProps {
   reducedMotion?: boolean;
 }
 
+const VITAMIN_NAMES = new Set([
+  "Folate",
+  "Niacin",
+  "Thiamin",
+  "Riboflavin",
+  "Biotin",
+  "Pantothenic Acid",
+]);
+
 /**
  * Splits micronutrients into vitamins and minerals groups.
- * Vitamins: names starting with "Vitamin" or "Folate".
+ * Vitamins: names starting with "Vitamin", or known B-vitamin chemical names.
  * Minerals: everything else.
  */
 export function classifyMicronutrients(data: MicronutrientData[]): {
@@ -45,7 +54,7 @@ export function classifyMicronutrients(data: MicronutrientData[]): {
 
   for (const item of data) {
     const name = item.nutrientName.trim();
-    if (name.startsWith("Vitamin") || name === "Folate") {
+    if (name.startsWith("Vitamin") || VITAMIN_NAMES.has(name)) {
       vitamins.push(item);
     } else {
       minerals.push(item);
@@ -72,7 +81,7 @@ export function getDVColor(
   return theme.textSecondary;
 }
 
-function NutrientRow({
+const NutrientRow = React.memo(function NutrientRow({
   nutrient,
   theme,
 }: {
@@ -97,8 +106,7 @@ function NutrientRow({
           type="caption"
           style={[styles.nutrientAmount, { color: theme.textSecondary }]}
         >
-          {nutrient.amount}
-          {nutrient.unit}
+          {Number(nutrient.amount.toFixed(1))} {nutrient.unit}
         </ThemedText>
       </View>
       <View style={styles.barContainer}>
@@ -121,9 +129,9 @@ function NutrientRow({
       </View>
     </View>
   );
-}
+});
 
-function NutrientGroup({
+const NutrientGroup = React.memo(function NutrientGroup({
   title,
   nutrients,
   theme,
@@ -158,7 +166,7 @@ function NutrientGroup({
       ))}
     </View>
   );
-}
+});
 
 export function MicronutrientSection({
   micronutrients,
@@ -236,7 +244,10 @@ export function MicronutrientSection({
             </View>
           ) : micronutrients.length === 0 ? (
             <View style={styles.emptyContainer}>
-              <ThemedText type="small" style={{ color: theme.textSecondary }}>
+              <ThemedText
+                type="small"
+                style={[styles.emptyText, { color: theme.textSecondary }]}
+              >
                 Micronutrient data not available for this item
               </ThemedText>
             </View>
@@ -337,5 +348,8 @@ const styles = StyleSheet.create({
   emptyContainer: {
     paddingHorizontal: Spacing.lg,
     paddingBottom: Spacing.lg,
+  },
+  emptyText: {
+    fontFamily: FontFamily.regular,
   },
 });

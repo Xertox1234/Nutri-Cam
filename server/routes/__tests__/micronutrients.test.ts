@@ -187,6 +187,7 @@ describe("Micronutrients Routes", () => {
 
   describe("GET /api/micronutrients/lookup", () => {
     it("returns micronutrients for valid food name", async () => {
+      mockPremium();
       const mockMicros = [
         {
           nutrientName: "Vitamin C",
@@ -211,6 +212,7 @@ describe("Micronutrients Routes", () => {
     });
 
     it("returns 400 for missing name param", async () => {
+      mockPremium();
       const res = await request(app)
         .get("/api/micronutrients/lookup")
         .set("Authorization", "Bearer token");
@@ -220,6 +222,7 @@ describe("Micronutrients Routes", () => {
     });
 
     it("returns 400 for empty name param", async () => {
+      mockPremium();
       const res = await request(app)
         .get("/api/micronutrients/lookup?name=")
         .set("Authorization", "Bearer token");
@@ -228,7 +231,19 @@ describe("Micronutrients Routes", () => {
       expect(res.body.code).toBe("VALIDATION_ERROR");
     });
 
+    it("returns 403 for free tier users", async () => {
+      vi.mocked(storage.getSubscriptionStatus).mockResolvedValue(null as never);
+
+      const res = await request(app)
+        .get("/api/micronutrients/lookup?name=chicken+breast")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe("PREMIUM_REQUIRED");
+    });
+
     it("returns 500 when lookup service fails", async () => {
+      mockPremium();
       vi.mocked(lookupMicronutrientsWithCache).mockRejectedValue(
         new Error("Service unavailable"),
       );
