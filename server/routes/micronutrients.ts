@@ -125,6 +125,14 @@ export function register(app: Express): void {
     micronutrientRateLimit,
     async (req: Request, res: Response) => {
       try {
+        const features = await checkPremiumFeature(
+          req,
+          res,
+          "micronutrientTracking",
+          "Micronutrient Tracking",
+        );
+        if (!features) return;
+
         const name = parseQueryString(req.query.name);
         if (!name)
           return sendError(

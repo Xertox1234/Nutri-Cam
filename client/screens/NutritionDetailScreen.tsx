@@ -231,7 +231,7 @@ export default function NutritionDetailScreen() {
 
   const { data: micronutrientData, isLoading: micronutrientsLoading } =
     useQuery<{ foodName: string; micronutrients: MicronutrientData[] }>({
-      queryKey: ["micronutrients", "lookup", nutrition?.productName],
+      queryKey: ["/api/micronutrients/lookup", nutrition?.productName],
       queryFn: async () => {
         const res = await apiRequest(
           "GET",
