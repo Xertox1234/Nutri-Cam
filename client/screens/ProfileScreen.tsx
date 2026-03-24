@@ -411,11 +411,7 @@ const SettingsItem = React.memo(function SettingsItem({
     <Pressable
       onPress={onPress}
       accessibilityLabel={
-        locked
-          ? `${label}, premium feature`
-          : value
-            ? `${label}: ${value}`
-            : label
+        locked ? `${label} (Premium)` : value ? `${label}: ${value}` : label
       }
       accessibilityRole="button"
       accessibilityHint={
@@ -441,6 +437,7 @@ const SettingsItem = React.memo(function SettingsItem({
             name={icon}
             size={20}
             color={danger ? theme.error : theme.text}
+            accessible={false}
           />
         </View>
         {locked && (
@@ -450,7 +447,12 @@ const SettingsItem = React.memo(function SettingsItem({
               { backgroundColor: theme.backgroundRoot },
             ]}
           >
-            <Feather name="lock" size={10} color={theme.textSecondary} />
+            <Feather
+              name="lock"
+              size={10}
+              color={theme.textSecondary}
+              accessible={false}
+            />
           </View>
         )}
       </View>
@@ -465,7 +467,12 @@ const SettingsItem = React.memo(function SettingsItem({
         ) : null}
       </View>
       {showChevron ? (
-        <Feather name="chevron-right" size={20} color={theme.textSecondary} />
+        <Feather
+          name="chevron-right"
+          size={20}
+          color={theme.textSecondary}
+          accessible={false}
+        />
       ) : null}
     </Pressable>
   );

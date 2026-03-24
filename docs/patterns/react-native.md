@@ -76,8 +76,8 @@ const isFeatureAvailable = features.someFeature && canUseFeature;
     Feature
   </ThemedText>
   {!isFeatureAvailable && (
-    <View style={[styles.lockBadge, { backgroundColor: withOpacity(theme.warning, 0.15) }]}>
-      <Feather name="lock" size={12} color={theme.warning} />
+    <View style={[styles.lockBadge, { backgroundColor: theme.backgroundRoot }]}>
+      <Feather name="lock" size={10} color={theme.textSecondary} accessible={false} />
     </View>
   )}
 </Pressable>
