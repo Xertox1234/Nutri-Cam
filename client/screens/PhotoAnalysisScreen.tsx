@@ -15,6 +15,7 @@ import {
   Pressable,
   KeyboardAvoidingView,
   Platform,
+  AccessibilityInfo,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useHeaderHeight } from "@react-navigation/elements";
@@ -401,6 +402,14 @@ export default function PhotoAnalysisScreen() {
   const [isAnalyzing, setIsAnalyzing] = useState(true);
   const [isConfirming, setIsConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Announce errors to iOS VoiceOver (Android uses accessibilityLiveRegion)
+  useEffect(() => {
+    if (error && Platform.OS === "ios") {
+      AccessibilityInfo.announceForAccessibility(error);
+    }
+  }, [error]);
+
   const [showFollowUp, setShowFollowUp] = useState(false);
   const [followUpIndex, setFollowUpIndex] = useState(0);
 
