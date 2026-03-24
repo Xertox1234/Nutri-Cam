@@ -10,7 +10,7 @@ import {
   communityRecipes,
 } from "@shared/schema";
 import { db } from "../db";
-import { eq, and, desc, sql, inArray } from "drizzle-orm";
+import { eq, and, desc, sql, inArray, count } from "drizzle-orm";
 
 // ============================================================================
 // COOKBOOKS
@@ -34,13 +34,12 @@ export async function getUserCookbooks(
       coverImageUrl: cookbooks.coverImageUrl,
       createdAt: cookbooks.createdAt,
       updatedAt: cookbooks.updatedAt,
-      recipeCount:
-        sql<number>`(SELECT COUNT(*) FROM cookbook_recipes WHERE cookbook_id = ${cookbooks.id})`.as(
-          "recipe_count",
-        ),
+      recipeCount: count(cookbookRecipes.id),
     })
     .from(cookbooks)
+    .leftJoin(cookbookRecipes, eq(cookbookRecipes.cookbookId, cookbooks.id))
     .where(eq(cookbooks.userId, userId))
+    .groupBy(cookbooks.id)
     .orderBy(desc(cookbooks.updatedAt))
     .limit(limit);
   return rows.map((r) => ({ ...r, recipeCount: Number(r.recipeCount) }));
