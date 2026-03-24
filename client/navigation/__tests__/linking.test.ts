@@ -33,11 +33,19 @@ describe("linking config", () => {
     expect(linking.config!.screens.Scan).toBe("scan");
   });
 
-  it("returns NaN when parse receives a non-numeric string", () => {
+  it("returns 0 when recipeId parse receives a non-numeric string", () => {
     const recipeDetail =
       // @ts-expect-error — nested screen config typing is loosely indexed
       linking.config!.screens.Main.screens.MealPlanTab.screens.RecipeDetail;
 
-    expect(recipeDetail.parse.recipeId("abc")).toBeNaN();
+    expect(recipeDetail.parse.recipeId("abc")).toBe(0);
+  });
+
+  it("returns 0 when conversationId parse receives a non-numeric string", () => {
+    const chat =
+      // @ts-expect-error — nested screen config typing is loosely indexed
+      linking.config!.screens.Main.screens.CoachTab.screens.Chat;
+
+    expect(chat.parse.conversationId("abc")).toBe(0);
   });
 });
