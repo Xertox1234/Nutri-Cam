@@ -18,6 +18,7 @@ import { ThemedText } from "@/components/ThemedText";
 import { Card } from "@/components/Card";
 import { CookbookPickerModal } from "@/components/CookbookPickerModal";
 import { useTheme } from "@/hooks/useTheme";
+import { useHaptics } from "@/hooks/useHaptics";
 import { resolveImageUrl } from "@/lib/query-client";
 import {
   Spacing,
@@ -58,6 +59,7 @@ export default function FeaturedRecipeDetailScreen() {
   const { recipeId } = route.params;
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
+  const haptics = useHaptics();
 
   const {
     data: recipe,
@@ -175,7 +177,10 @@ export default function FeaturedRecipeDetailScreen() {
 
             {/* Save to Cookbook */}
             <Pressable
-              onPress={() => setPickerVisible(true)}
+              onPress={() => {
+                haptics.impact();
+                setPickerVisible(true);
+              }}
               style={[
                 styles.saveButton,
                 { backgroundColor: withOpacity(theme.link, 0.1) },
