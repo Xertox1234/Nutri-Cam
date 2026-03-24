@@ -453,6 +453,7 @@ const SettingsSection = React.memo(function SettingsSection({
   onWeightTracking,
   onHealthKit,
   onDietaryProfile,
+  onGLP1Companion,
   onNutritionGoals,
   onLibrary,
   onScanHistory,
@@ -464,6 +465,7 @@ const SettingsSection = React.memo(function SettingsSection({
   onWeightTracking: () => void;
   onHealthKit: () => void;
   onDietaryProfile: () => void;
+  onGLP1Companion: () => void;
   onNutritionGoals: () => void;
   onLibrary: () => void;
   onScanHistory: () => void;
@@ -503,6 +505,12 @@ const SettingsSection = React.memo(function SettingsSection({
           icon="clipboard"
           label="Dietary Profile"
           onPress={onDietaryProfile}
+        />
+        <View style={[styles.divider, { backgroundColor: theme.border }]} />
+        <SettingsItem
+          icon="activity"
+          label="GLP-1 Companion"
+          onPress={onGLP1Companion}
         />
         <View style={[styles.divider, { backgroundColor: theme.border }]} />
         <SettingsItem
@@ -886,6 +894,7 @@ export default function ProfileScreen() {
           onWeightTracking={() => navigation.navigate("WeightTracking")}
           onHealthKit={() => navigation.navigate("HealthKitSettings")}
           onDietaryProfile={() => navigation.navigate("EditDietaryProfile")}
+          onGLP1Companion={() => navigation.navigate("GLP1Companion")}
           onNutritionGoals={() => navigation.navigate("GoalSetup")}
           onLibrary={() => navigation.navigate("SavedItems")}
           onScanHistory={() => navigation.navigate("ScanHistory")}
