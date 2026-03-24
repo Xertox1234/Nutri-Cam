@@ -18,6 +18,7 @@ import { AllergenWarningBanner } from "@/components/AllergenWarningBanner";
 import { InlineSubstitution } from "@/components/InlineSubstitution";
 import { CookbookPickerModal } from "@/components/CookbookPickerModal";
 import { useTheme } from "@/hooks/useTheme";
+import { useHaptics } from "@/hooks/useHaptics";
 import { useAllergenCheck } from "@/hooks/useAllergenCheck";
 import {
   Spacing,
@@ -64,6 +65,7 @@ export default function RecipeDetailScreen() {
   const headerHeight = useHeaderHeight();
   const tabBarHeight = useBottomTabBarHeight();
   const { theme } = useTheme();
+  const haptics = useHaptics();
 
   const { data: recipe, isLoading, error } = useMealPlanRecipeDetail(recipeId);
   const [pickerVisible, setPickerVisible] = useState(false);
@@ -246,7 +248,10 @@ export default function RecipeDetailScreen() {
 
           {/* Save to Cookbook */}
           <Pressable
-            onPress={() => setPickerVisible(true)}
+            onPress={() => {
+              haptics.impact();
+              setPickerVisible(true);
+            }}
             style={[
               styles.saveButton,
               { backgroundColor: withOpacity(theme.link, 0.1) },

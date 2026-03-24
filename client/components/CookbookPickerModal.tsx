@@ -136,6 +136,7 @@ export function CookbookPickerModal({
           ]}
           accessibilityRole="button"
           accessibilityLabel={`Save to ${item.name}`}
+          accessibilityState={{ disabled: isAdding && !isThisAdding }}
         >
           <View style={styles.listItemContent}>
             <Feather
