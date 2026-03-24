@@ -1,5 +1,12 @@
-import React from "react";
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import React, { useEffect } from "react";
+import {
+  StyleSheet,
+  View,
+  AccessibilityInfo,
+  Platform,
+  type StyleProp,
+  type ViewStyle,
+} from "react-native";
 import { Feather } from "@expo/vector-icons";
 
 import { ThemedText } from "@/components/ThemedText";
@@ -13,6 +20,12 @@ interface InlineErrorProps {
 
 export function InlineError({ message, style }: InlineErrorProps) {
   const { theme } = useTheme();
+
+  useEffect(() => {
+    if (message && Platform.OS === "ios") {
+      AccessibilityInfo.announceForAccessibility(message);
+    }
+  }, [message]);
 
   if (!message) return null;
 

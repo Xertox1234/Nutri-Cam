@@ -1,5 +1,5 @@
-import React from "react";
-import { StyleSheet, View } from "react-native";
+import React, { useEffect } from "react";
+import { StyleSheet, View, AccessibilityInfo, Platform } from "react-native";
 import { Feather } from "@expo/vector-icons";
 
 import { ThemedText } from "@/components/ThemedText";
@@ -23,6 +23,18 @@ export const AllergenWarningBanner = React.memo(function AllergenWarningBanner({
 }: AllergenWarningBannerProps) {
   const { theme } = useTheme();
 
+  const count = new Set(matches.map((m) => m.ingredientName)).size;
+  const message =
+    count === 1
+      ? "1 ingredient contains your allergens"
+      : `${count} ingredients contain your allergens`;
+
+  useEffect(() => {
+    if (matches.length > 0 && Platform.OS === "ios") {
+      AccessibilityInfo.announceForAccessibility(message);
+    }
+  }, [matches.length, message]);
+
   if (matches.length === 0) return null;
 
   const highestSeverity = getHighestSeverity(matches);
@@ -39,12 +51,6 @@ export const AllergenWarningBanner = React.memo(function AllergenWarningBanner({
       : highestSeverity === "moderate"
         ? "alert-circle"
         : "info";
-
-  const count = new Set(matches.map((m) => m.ingredientName)).size;
-  const message =
-    count === 1
-      ? "1 ingredient contains your allergens"
-      : `${count} ingredients contain your allergens`;
 
   return (
     <View
