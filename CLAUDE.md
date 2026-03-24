@@ -76,6 +76,8 @@ Navigator files: `HomeStackNavigator`, `MealPlanStackNavigator`, `ChatStackNavig
 
 Root-level modal screens: Scan, NutritionDetail, PhotoIntent, PhotoAnalysis, GoalSetup, EditDietaryProfile, FeaturedRecipeDetail, QuickLog, MenuScanResult
 
+**Deep linking** is configured in `client/navigation/linking.ts` (wired via `linking` prop on `NavigationContainer` in `App.tsx`). Supported paths: `ocrecipes://recipe/:recipeId`, `ocrecipes://nutrition/:barcode`, `ocrecipes://chat/:conversationId`, `ocrecipes://scan`. See `docs/patterns/react-native.md` → "Deep Linking Configuration" for the full pattern.
+
 ### Database Schema (`shared/schema.ts`)
 
 33 tables organized by domain:

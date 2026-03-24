@@ -321,6 +321,45 @@ export default function HistoryScreen() {
 - Cleaner navigation stack (back button works naturally)
 - Single source of truth for the data
 
+### Deep Linking Configuration
+
+Deep linking is configured in `client/navigation/linking.ts` and wired into `NavigationContainer` via the `linking` prop in `App.tsx`. The config maps URL paths to screens through the nested navigator hierarchy.
+
+**Supported URLs:**
+
+| URL pattern                        | Screen          | Stack path                        |
+| ---------------------------------- | --------------- | --------------------------------- |
+| `ocrecipes://recipe/:recipeId`     | RecipeDetail    | Main → MealPlanTab → RecipeDetail |
+| `ocrecipes://chat/:conversationId` | Chat            | Main → CoachTab → Chat            |
+| `ocrecipes://nutrition/:barcode`   | NutritionDetail | Root modal                        |
+| `ocrecipes://scan`                 | Scan            | Root modal                        |
+
+Universal link prefix `https://ocrecipes.app` is also registered (requires server-side AASA file for iOS).
+
+**Adding a new deep link path:**
+
+1. Add the screen's path mapping to `linking.config.screens` in `client/navigation/linking.ts`, nesting it to match the navigator hierarchy
+2. If the param is numeric, use `parseIntOrZero` for the parse function
+3. Add a test case in `client/navigation/__tests__/linking.test.ts`
+
+**Boundary validation for URL params:**
+
+Deep links are untrusted external input. Always use `parseIntOrZero` (not raw `parseInt`) for numeric params — it returns `0` instead of `NaN` for non-numeric strings, which the screen's existing error/not-found UI handles gracefully.
+
+```typescript
+// client/navigation/linking.ts
+function parseIntOrZero(value: string): number {
+  const num = parseInt(value, 10);
+  return Number.isNaN(num) ? 0 : num;
+}
+
+// Usage in config
+RecipeDetail: {
+  path: "recipe/:recipeId",
+  parse: { recipeId: parseIntOrZero },
+},
+```
+
 ### CompositeNavigationProp for Cross-Stack Navigation
 
 When navigating from one tab stack to a screen in another tab stack, use `CompositeNavigationProp`:
