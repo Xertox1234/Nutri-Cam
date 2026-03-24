@@ -18,6 +18,7 @@ import { queryClient } from "@/lib/query-client";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 
 import RootStackNavigator from "@/navigation/RootStackNavigator";
+import { linking } from "@/navigation/linking";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AuthProvider } from "@/context/AuthContext";
 import { PremiumProvider } from "@/context/PremiumContext";
@@ -36,7 +37,7 @@ function AppContent() {
         <BottomSheetModalProvider>
           <ToastProvider>
             <BatchScanProvider>
-              <NavigationContainer>
+              <NavigationContainer linking={linking}>
                 <RootStackNavigator />
               </NavigationContainer>
             </BatchScanProvider>
