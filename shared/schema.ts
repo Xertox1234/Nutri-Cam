@@ -1475,6 +1475,34 @@ export type InsertBarcodeVerification =
 export type VerificationHistoryEntry = typeof verificationHistory.$inferSelect;
 export type InsertVerificationHistory = typeof verificationHistory.$inferInsert;
 
+// ── Reformulation Detection ─────────────────────────────────────────
+
+export const reformulationFlags = pgTable(
+  "reformulation_flags",
+  {
+    id: serial("id").primaryKey(),
+    barcode: text("barcode")
+      .references(() => barcodeVerifications.barcode, { onDelete: "cascade" })
+      .notNull(),
+    status: text("status").default("flagged").notNull(), // flagged | resolved
+    divergentScanCount: integer("divergent_scan_count").default(0).notNull(),
+    previousConsensus: jsonb("previous_consensus"), // snapshot of old consensus for audit
+    previousVerificationLevel: text("previous_verification_level"),
+    previousVerificationCount: integer("previous_verification_count"),
+    detectedAt: timestamp("detected_at")
+      .default(sql`CURRENT_TIMESTAMP`)
+      .notNull(),
+    resolvedAt: timestamp("resolved_at"),
+  },
+  (table) => ({
+    barcodeIdx: index("reformulation_flags_barcode_idx").on(table.barcode),
+    statusIdx: index("reformulation_flags_status_idx").on(table.status),
+  }),
+);
+
+export type ReformulationFlag = typeof reformulationFlags.$inferSelect;
+export type InsertReformulationFlag = typeof reformulationFlags.$inferInsert;
+
 // ── Public API ──────────────────────────────────────────────────────
 
 export const apiKeys = pgTable(

@@ -15,13 +15,22 @@ import {
   CONSENSUS_THRESHOLD,
   type VerificationNutrition,
 } from "../services/verification-comparison";
+import {
+  detectReformulation,
+  REFORMULATION_THRESHOLD,
+} from "../services/reformulation-detection";
 import { analyzeFrontLabel } from "../services/front-label-analysis";
 import { consensusNutritionSchema } from "@shared/types/verification";
 import {
   frontLabelDataSchema,
   type FrontLabelExtractionResult,
 } from "@shared/types/front-label";
-import { createRateLimiter } from "./_helpers";
+import {
+  createRateLimiter,
+  parseQueryInt,
+  parseQueryString,
+  parseStringParam,
+} from "./_helpers";
 
 const verificationRateLimit = createRateLimiter({
   windowMs: 60 * 1000,
@@ -229,6 +238,62 @@ export function register(app: Express): void {
           matchingCount,
           consensusData,
         );
+
+        // ── Reformulation detection ──────────────────────────────────
+        // When a scan doesn't match on a previously-verified product,
+        // check if enough divergent scans have accumulated to flag it.
+        if (!comparison.isMatch) {
+          const existingVerification = await storage.getVerification(barcode);
+          if (
+            existingVerification &&
+            existingVerification.verificationLevel === "verified" &&
+            existingVerification.consensusNutritionData
+          ) {
+            const consensusParsed = consensusNutritionSchema.safeParse(
+              existingVerification.consensusNutritionData,
+            );
+            const existingFlag = await storage.getReformulationFlag(barcode);
+
+            if (consensusParsed.success && !existingFlag) {
+              // Get full history including this new scan
+              const fullHistory = await storage.getVerificationHistory(barcode);
+              const historyForDetection = fullHistory.map((h) => {
+                const n = h.extractedNutrition as Record<string, unknown>;
+                return {
+                  extractedNutrition: {
+                    calories:
+                      typeof n.calories === "number" ? n.calories : null,
+                    protein: typeof n.protein === "number" ? n.protein : null,
+                    totalCarbs:
+                      typeof n.totalCarbs === "number" ? n.totalCarbs : null,
+                    totalFat:
+                      typeof n.totalFat === "number" ? n.totalFat : null,
+                  },
+                  userId: h.userId,
+                  isMatch: h.isMatch ?? true,
+                };
+              });
+
+              const detection = detectReformulation(
+                consensusParsed.data,
+                historyForDetection,
+              );
+
+              if (detection.shouldFlag) {
+                console.warn(
+                  `[REFORMULATION] Product ${barcode} flagged: ${detection.divergentCount} divergent scans from ${detection.distinctUsers} users`,
+                );
+                await storage.flagReformulation(
+                  barcode,
+                  detection.divergentCount,
+                  consensusParsed.data,
+                  existingVerification.verificationLevel,
+                  existingVerification.verificationCount,
+                );
+              }
+            }
+          }
+        }
 
         // Check if user can scan front label (hasn't already done it for this barcode)
         const canScanFrontLabel = !(await storage.hasUserFrontLabelScanned(
@@ -454,6 +519,76 @@ export function register(app: Express): void {
           res,
           500,
           "Failed to confirm front label data",
+          ErrorCode.INTERNAL_ERROR,
+        );
+      }
+    },
+  );
+
+  /**
+   * Get reformulation-flagged products.
+   * Registered BEFORE /:barcode to avoid route collision.
+   */
+  app.get(
+    "/api/verification/reformulation-flags",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      try {
+        const statusParam = parseQueryString(req.query.status);
+        const status =
+          statusParam === "flagged" || statusParam === "resolved"
+            ? statusParam
+            : undefined;
+        const limit = parseQueryInt(req.query.limit, {
+          default: 50,
+          max: 100,
+        });
+        const offset = parseQueryInt(req.query.offset, { default: 0 });
+
+        const [flags, totalCount] = await Promise.all([
+          storage.getReformulationFlags(status, limit, offset),
+          storage.getReformulationFlagCount(),
+        ]);
+
+        res.json({ flags, total: totalCount, limit, offset });
+      } catch (error) {
+        console.error("Reformulation flags error:", error);
+        sendError(
+          res,
+          500,
+          "Failed to get reformulation flags",
+          ErrorCode.INTERNAL_ERROR,
+        );
+      }
+    },
+  );
+
+  /**
+   * Resolve a reformulation flag (mark as reviewed).
+   */
+  app.post(
+    "/api/verification/reformulation-flags/:flagId/resolve",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      try {
+        const flagId = parseInt(parseStringParam(req.params.flagId) ?? "", 10);
+        if (isNaN(flagId)) {
+          return sendError(
+            res,
+            400,
+            "Invalid flag ID",
+            ErrorCode.VALIDATION_ERROR,
+          );
+        }
+
+        await storage.resolveReformulationFlag(flagId);
+        res.json({ success: true });
+      } catch (error) {
+        console.error("Resolve reformulation flag error:", error);
+        sendError(
+          res,
+          500,
+          "Failed to resolve reformulation flag",
           ErrorCode.INTERNAL_ERROR,
         );
       }

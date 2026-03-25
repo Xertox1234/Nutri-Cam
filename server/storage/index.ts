@@ -22,6 +22,7 @@ import * as cookbooksStorage from "./cookbooks";
 import * as verification from "./verification";
 import * as apiKeysStorage from "./api-keys";
 import * as batch from "./batch";
+import * as reformulation from "./reformulation";
 
 export { escapeLike, getDayBounds, getMonthBounds } from "./helpers";
 
@@ -203,4 +204,11 @@ export const storage = {
   hasUserFrontLabelScanned: verification.hasUserFrontLabelScanned,
   confirmFrontLabelData: verification.confirmFrontLabelData,
   getUserCompositeScore: verification.getUserCompositeScore,
+
+  // Reformulation detection
+  getReformulationFlag: reformulation.getReformulationFlag,
+  getReformulationFlags: reformulation.getReformulationFlags,
+  flagReformulation: reformulation.flagReformulation,
+  resolveReformulationFlag: reformulation.resolveReformulationFlag,
+  getReformulationFlagCount: reformulation.getReformulationFlagCount,
 };
