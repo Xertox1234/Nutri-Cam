@@ -22,6 +22,7 @@ import {
 } from "@react-navigation/native";
 
 import { ThemedText } from "@/components/ThemedText";
+import { useConfirmationModal } from "@/components/ConfirmationModal";
 import { useTheme } from "@/hooks/useTheme";
 import { useHaptics } from "@/hooks/useHaptics";
 import { useToast } from "@/context/ToastContext";
@@ -38,6 +39,7 @@ export default function CookSessionCaptureScreen() {
   const { theme } = useTheme();
   const haptics = useHaptics();
   const toast = useToast();
+  const { confirm, ConfirmationModal } = useConfirmationModal();
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<RootStackParamList, "CookSessionCapture">>();
@@ -168,22 +170,17 @@ export default function CookSessionCaptureScreen() {
 
   const handleClose = useCallback(() => {
     if (ingredientCount > 0) {
-      Alert.alert(
-        "Discard Session?",
-        "Your detected ingredients will be lost.",
-        [
-          { text: "Cancel", style: "cancel" },
-          {
-            text: "Discard",
-            style: "destructive",
-            onPress: () => navigation.goBack(),
-          },
-        ],
-      );
+      confirm({
+        title: "Discard Session?",
+        message: "Your detected ingredients will be lost.",
+        confirmLabel: "Discard",
+        destructive: true,
+        onConfirm: () => navigation.goBack(),
+      });
     } else {
       navigation.goBack();
     }
-  }, [ingredientCount, navigation]);
+  }, [ingredientCount, navigation, confirm]);
 
   // Permission states
   if (permissionLoading) {
@@ -390,6 +387,7 @@ export default function CookSessionCaptureScreen() {
           </Pressable>
         </View>
       </View>
+      <ConfirmationModal />
     </View>
   );
 }

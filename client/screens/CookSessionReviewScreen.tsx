@@ -18,6 +18,7 @@ import {
 } from "@react-navigation/native";
 
 import { ThemedText } from "@/components/ThemedText";
+import { useConfirmationModal } from "@/components/ConfirmationModal";
 import { ThemedView } from "@/components/ThemedView";
 import { Card } from "@/components/Card";
 import { useTheme } from "@/hooks/useTheme";
@@ -50,6 +51,7 @@ export default function CookSessionReviewScreen() {
   const { theme } = useTheme();
   const haptics = useHaptics();
   const toast = useToast();
+  const { confirm, ConfirmationModal } = useConfirmationModal();
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const route = useRoute<RouteProp<RootStackParamList, "CookSessionReview">>();
@@ -96,20 +98,18 @@ export default function CookSessionReviewScreen() {
 
   const handleDelete = useCallback(
     (ingredientId: string, name: string) => {
-      haptics.notification(Haptics.NotificationFeedbackType.Warning);
-      Alert.alert("Remove Ingredient", `Remove ${name}?`, [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Remove",
-          style: "destructive",
-          onPress: async () => {
-            await deleteIngredient.mutateAsync(ingredientId);
-            AccessibilityInfo.announceForAccessibility(`${name} removed`);
-          },
+      confirm({
+        title: "Remove Ingredient",
+        message: `Remove ${name}?`,
+        confirmLabel: "Remove",
+        destructive: true,
+        onConfirm: async () => {
+          await deleteIngredient.mutateAsync(ingredientId);
+          AccessibilityInfo.announceForAccessibility(`${name} removed`);
         },
-      ]);
+      });
     },
-    [deleteIngredient, haptics],
+    [confirm, deleteIngredient],
   );
 
   const handlePreparationChange = useCallback(
@@ -357,6 +357,7 @@ export default function CookSessionReviewScreen() {
           </Pressable>
         </View>
       </View>
+      <ConfirmationModal />
     </ThemedView>
   );
 }
