@@ -14,7 +14,20 @@ vi.mock("../../storage", () => ({
     hasUserFrontLabelScanned: vi.fn(),
     confirmFrontLabelData: vi.fn(),
     getUserCompositeScore: vi.fn(),
+    getReformulationFlags: vi.fn(),
+    getReformulationFlagCount: vi.fn(),
+    resolveReformulationFlag: vi.fn(),
+    getReformulationFlag: vi.fn(),
   },
+}));
+
+vi.mock("../../services/reformulation-detection", () => ({
+  detectReformulation: vi.fn().mockReturnValue({
+    shouldFlag: false,
+    divergentCount: 0,
+    distinctUsers: 0,
+  }),
+  REFORMULATION_THRESHOLD: 3,
 }));
 
 vi.mock("../../services/front-label-analysis", () => ({
@@ -350,6 +363,128 @@ describe("Verification Routes", () => {
 
       expect(res.status).toBe(200);
       expect(res.body.canScanFrontLabel).toBe(true);
+    });
+  });
+
+  describe("GET /api/verification/reformulation-flags", () => {
+    it("returns list with total count", async () => {
+      const mockFlags = [
+        {
+          id: 1,
+          barcode: "111111",
+          status: "flagged",
+          divergentScanCount: 4,
+          previousConsensus: { calories: 200, protein: 10, carbs: 25, fat: 8 },
+          previousVerificationLevel: "verified",
+          previousVerificationCount: 5,
+          detectedAt: new Date(),
+          resolvedAt: null,
+        },
+        {
+          id: 2,
+          barcode: "222222",
+          status: "flagged",
+          divergentScanCount: 3,
+          previousConsensus: { calories: 150, protein: 8, carbs: 20, fat: 6 },
+          previousVerificationLevel: "verified",
+          previousVerificationCount: 3,
+          detectedAt: new Date(),
+          resolvedAt: null,
+        },
+      ];
+
+      vi.mocked(storage.getReformulationFlags).mockResolvedValue(mockFlags);
+      vi.mocked(storage.getReformulationFlagCount).mockResolvedValue(2);
+
+      const res = await request(app).get(
+        "/api/verification/reformulation-flags",
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.body.flags).toHaveLength(2);
+      expect(res.body.total).toBe(2);
+      expect(res.body.limit).toBe(50);
+      expect(res.body.offset).toBe(0);
+      expect(storage.getReformulationFlags).toHaveBeenCalledWith(
+        undefined,
+        50,
+        0,
+      );
+    });
+
+    it("passes status filter to storage", async () => {
+      vi.mocked(storage.getReformulationFlags).mockResolvedValue([]);
+      vi.mocked(storage.getReformulationFlagCount).mockResolvedValue(0);
+
+      const res = await request(app).get(
+        "/api/verification/reformulation-flags?status=resolved",
+      );
+
+      expect(res.status).toBe(200);
+      expect(storage.getReformulationFlags).toHaveBeenCalledWith(
+        "resolved",
+        50,
+        0,
+      );
+    });
+
+    it("respects limit and offset params", async () => {
+      vi.mocked(storage.getReformulationFlags).mockResolvedValue([]);
+      vi.mocked(storage.getReformulationFlagCount).mockResolvedValue(0);
+
+      const res = await request(app).get(
+        "/api/verification/reformulation-flags?limit=10&offset=20",
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.body.limit).toBe(10);
+      expect(res.body.offset).toBe(20);
+      expect(storage.getReformulationFlags).toHaveBeenCalledWith(
+        undefined,
+        10,
+        20,
+      );
+    });
+
+    it("clamps limit to 100", async () => {
+      vi.mocked(storage.getReformulationFlags).mockResolvedValue([]);
+      vi.mocked(storage.getReformulationFlagCount).mockResolvedValue(0);
+
+      const res = await request(app).get(
+        "/api/verification/reformulation-flags?limit=999",
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.body.limit).toBe(100);
+      expect(storage.getReformulationFlags).toHaveBeenCalledWith(
+        undefined,
+        100,
+        0,
+      );
+    });
+  });
+
+  describe("POST /api/verification/reformulation-flags/:flagId/resolve", () => {
+    it("returns success when resolving a valid flag", async () => {
+      vi.mocked(storage.resolveReformulationFlag).mockResolvedValue();
+
+      const res = await request(app).post(
+        "/api/verification/reformulation-flags/42/resolve",
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(storage.resolveReformulationFlag).toHaveBeenCalledWith(42);
+    });
+
+    it("returns 400 for non-numeric flagId", async () => {
+      const res = await request(app).post(
+        "/api/verification/reformulation-flags/abc/resolve",
+      );
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain("Invalid flag ID");
+      expect(storage.resolveReformulationFlag).not.toHaveBeenCalled();
     });
   });
 });
