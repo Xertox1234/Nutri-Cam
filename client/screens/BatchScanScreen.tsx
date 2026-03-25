@@ -4,7 +4,6 @@ import {
   Pressable,
   Text,
   StyleSheet,
-  Alert,
   AccessibilityInfo,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
@@ -20,6 +19,7 @@ import Animated, {
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 import { CameraView, useCameraPermissions, useCamera } from "@/camera";
+import { useConfirmationModal } from "@/components/ConfirmationModal";
 import { useBatchScan } from "@/context/BatchScanContext";
 import { useTheme } from "@/hooks/useTheme";
 import { useHaptics } from "@/hooks/useHaptics";
@@ -41,6 +41,7 @@ export default function BatchScanScreen() {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const haptics = useHaptics();
+  const { confirm, ConfirmationModal } = useConfirmationModal();
   const { permission, requestPermission } = useCameraPermissions();
   const { availableBarcodeTypes } = usePremiumCamera();
 
@@ -136,25 +137,22 @@ export default function BatchScanScreen() {
       if (itemCount === 0) return;
 
       e.preventDefault();
-      Alert.alert(
-        "Discard scanned items?",
-        `You have ${itemCount} item${itemCount !== 1 ? "s" : ""}. Discard and leave?`,
-        [
-          { text: "Keep Scanning", style: "cancel" },
-          {
-            text: "Discard",
-            style: "destructive",
-            onPress: () => {
-              clearSession();
-              navigation.dispatch(e.data.action);
-            },
-          },
-        ],
-      );
+      const action = e.data.action;
+      confirm({
+        title: "Discard scanned items?",
+        message: `You have ${itemCount} item${itemCount !== 1 ? "s" : ""}. Discard and leave?`,
+        confirmLabel: "Discard",
+        cancelLabel: "Keep Scanning",
+        destructive: true,
+        onConfirm: () => {
+          clearSession();
+          navigation.dispatch(action);
+        },
+      });
     });
 
     return unsubscribe;
-  }, [navigation, itemCount, clearSession]);
+  }, [navigation, itemCount, clearSession, confirm]);
 
   // Handle "Done" press
   const handleDone = useCallback(() => {
@@ -316,6 +314,7 @@ export default function BatchScanScreen() {
           </Text>
         </View>
       )}
+      <ConfirmationModal />
     </View>
   );
 }
