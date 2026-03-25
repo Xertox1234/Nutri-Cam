@@ -542,3 +542,77 @@ export function useCookbookRecipes(cookbookId: number) {
 
 - TanStack Query v5 `refetchOnMount` documentation
 - Related: "TanStack Query CRUD Hook Module" pattern — mutations should still invalidate queries where possible
+
+### Hook-Returned Component Pattern for BottomSheetModal
+
+When a reusable bottom sheet needs an imperative API (`confirm()`, `open()`) but also renders a component, return both from a custom hook. This avoids the declarative/imperative mismatch that causes timing bugs when syncing a `visible` boolean prop with `present()`/`dismiss()`.
+
+```typescript
+// client/hooks/useConfirmationModal.ts
+
+export function useConfirmationModal() {
+  const optionsRef = useRef<ConfirmOptions>(defaultOptions);
+  const sheetRef = useRef<BottomSheetModal>(null);
+  const [revision, setRevision] = useState(0);
+
+  // Imperative trigger — stores options in ref, bumps revision, presents sheet
+  const confirm = useCallback((options: ConfirmOptions) => {
+    optionsRef.current = options;
+    setRevision((r) => r + 1); // force child re-render
+    sheetRef.current?.present();
+  }, []);
+
+  // Stable component identity — useMemo with empty deps
+  const ConfirmationModal = useMemo(
+    () =>
+      function StableConfirmationModal() {
+        return (
+          <ConfirmationModalInner
+            sheetRef={sheetRef}
+            optionsRef={optionsRef}
+            revision={revision}
+          />
+        );
+      },
+    [revision],
+  );
+
+  return { confirm, ConfirmationModal };
+}
+
+// Usage in a screen:
+const { confirm, ConfirmationModal } = useConfirmationModal();
+
+const handleDelete = () => {
+  confirm({
+    title: "Delete item?",
+    message: "This cannot be undone.",
+    confirmLabel: "Delete",
+    destructive: true,
+    onConfirm: () => deleteMutation.mutate(itemId),
+  });
+};
+
+return (
+  <View>
+    {/* screen content */}
+    <ConfirmationModal />
+  </View>
+);
+```
+
+**Key elements:**
+
+1. **Ref for options, not state** — avoids a new component identity on every `confirm()` call. Options are read by the inner component via ref.
+2. **`useMemo` for stable component identity** — `useCallback` would change when options state changes, causing React to remount instead of re-render. `useMemo` with `[revision]` only changes when `confirm()` is actually called.
+3. **Force-render counter (`revision`)** — since the inner component reads from a ref, React.memo/shallow comparison sees no prop change. The revision counter triggers re-renders when `confirm()` stores new options.
+4. **Do NOT use `React.memo` on the inner component** — when props are refs (stable references), `React.memo` blocks ALL re-renders since shallow comparison sees no change. The revision counter bypasses this by being a changing primitive.
+
+**When to use:** Any reusable bottom sheet or modal that needs an imperative trigger API and is consumed by multiple screens.
+
+**When NOT to use:** One-off modals on a single screen — use the Bottom-Sheet Lifecycle State Machine pattern instead (see `docs/patterns/documentation.md`).
+
+**References:**
+
+- `client/hooks/useConfirmationModal.ts` — confirmation dialog hook
+- Related: "Bottom-Sheet Lifecycle State Machine" in `docs/patterns/documentation.md`

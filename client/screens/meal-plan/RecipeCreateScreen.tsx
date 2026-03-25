@@ -5,7 +5,6 @@ import {
   TextInput,
   ScrollView,
   Pressable,
-  Alert,
   Keyboard,
   InteractionManager,
   AccessibilityInfo,
@@ -20,6 +19,7 @@ import type { RouteProp } from "@react-navigation/native";
 import { NotificationFeedbackType } from "expo-haptics";
 
 import { ThemedText } from "@/components/ThemedText";
+import { useConfirmationModal } from "@/components/ConfirmationModal";
 import { InlineError } from "@/components/InlineError";
 import { SectionRow } from "@/components/recipe-builder/SectionRow";
 import { SheetHeader } from "@/components/recipe-builder/SheetHeader";
@@ -64,6 +64,7 @@ export default function RecipeCreateScreen() {
   const { theme } = useTheme();
   const haptics = useHaptics();
   const toast = useToast();
+  const { confirm, ConfirmationModal } = useConfirmationModal();
 
   const prefill = route.params?.prefill;
   const returnToMealPlan = route.params?.returnToMealPlan;
@@ -174,18 +175,19 @@ export default function RecipeCreateScreen() {
       }
 
       e.preventDefault();
-      Alert.alert("Discard changes?", "You have unsaved changes.", [
-        { text: "Keep editing", style: "cancel" },
-        {
-          text: "Discard",
-          style: "destructive",
-          onPress: () => navigation.dispatch(e.data.action),
-        },
-      ]);
+      const action = e.data.action;
+      confirm({
+        title: "Discard changes?",
+        message: "You have unsaved changes.",
+        confirmLabel: "Discard",
+        cancelLabel: "Keep editing",
+        destructive: true,
+        onConfirm: () => navigation.dispatch(action),
+      });
     });
 
     return unsubscribe;
-  }, [navigation, form.isDirty, createMutation.isPending]);
+  }, [navigation, form.isDirty, createMutation.isPending, confirm]);
 
   // ── Save ──
   const handleSave = useCallback(async () => {
@@ -481,6 +483,7 @@ export default function RecipeCreateScreen() {
           <TagsCuisineSheet data={form.tags} onChange={form.setTags} />
         </BottomSheetModal>
       )}
+      <ConfirmationModal />
     </View>
   );
 }

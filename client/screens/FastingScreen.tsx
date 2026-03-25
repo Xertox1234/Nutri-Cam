@@ -24,6 +24,7 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 import Svg, { Rect, Text as SvgText } from "react-native-svg";
 
 import { ThemedText } from "@/components/ThemedText";
+import { useConfirmationModal } from "@/components/ConfirmationModal";
 import { Card } from "@/components/Card";
 import { FastingTimer } from "@/components/FastingTimer";
 import { FastingSetupModal } from "@/components/FastingSetupModal";
@@ -177,6 +178,7 @@ export default function FastingScreen() {
   const haptics = useHaptics();
   const toast = useToast();
   const { reducedMotion } = useAccessibility();
+  const { confirm, ConfirmationModal } = useConfirmationModal();
 
   const [showSetup, setShowSetup] = useState(false);
   const [elapsedMinutes, setElapsedMinutes] = useState(0);
@@ -331,39 +333,35 @@ export default function FastingScreen() {
   }, [haptics, toast, startFast, schedule]);
 
   const handleEndFast = useCallback(() => {
-    Alert.alert("End Fast", "Are you sure you want to end your current fast?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "End Fast",
-        style: "destructive",
-        onPress: () => {
-          haptics.impact(Haptics.ImpactFeedbackStyle.Medium);
+    confirm({
+      title: "End Fast",
+      message: "Are you sure you want to end your current fast?",
+      confirmLabel: "End Fast",
+      destructive: true,
+      onConfirm: () => {
+        // Cancel all pending fasting notifications (survives unmount/crash)
+        Notifications.cancelAllScheduledNotificationsAsync();
 
-          // Cancel all pending fasting notifications (survives unmount/crash)
-          Notifications.cancelAllScheduledNotificationsAsync();
-
-          endFast.mutate(undefined, {
-            onSuccess: (result) => {
-              const type = result.completed
-                ? Haptics.NotificationFeedbackType.Success
-                : Haptics.NotificationFeedbackType.Warning;
-              haptics.notification(type);
-              if (result.completed) {
-                Alert.alert(
-                  "Fast Complete",
-                  `Great job! You fasted for ${formatDuration(result.actualDurationMinutes ?? 0)}.`,
-                );
-              }
-            },
-            onError: (err) => {
-              haptics.notification(Haptics.NotificationFeedbackType.Error);
-              toast.error(err.message || "Failed to end fast");
-            },
-          });
-        },
+        endFast.mutate(undefined, {
+          onSuccess: (result) => {
+            const type = result.completed
+              ? Haptics.NotificationFeedbackType.Success
+              : Haptics.NotificationFeedbackType.Warning;
+            haptics.notification(type);
+            if (result.completed) {
+              toast.success(
+                `Great job! You fasted for ${formatDuration(result.actualDurationMinutes ?? 0)}.`,
+              );
+            }
+          },
+          onError: (err) => {
+            haptics.notification(Haptics.NotificationFeedbackType.Error);
+            toast.error(err.message || "Failed to end fast");
+          },
+        });
       },
-    ]);
-  }, [haptics, toast, endFast]);
+    });
+  }, [confirm, haptics, toast, endFast]);
 
   const handleSaveSchedule = useCallback(
     (data: {
@@ -930,6 +928,7 @@ export default function FastingScreen() {
         initialNotifyMilestones={schedule?.notifyMilestones ?? true}
         initialNotifyCheckIns={schedule?.notifyCheckIns ?? true}
       />
+      <ConfirmationModal />
     </ScrollView>
   );
 }
