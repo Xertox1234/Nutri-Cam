@@ -238,133 +238,127 @@ export default function CookSessionReviewScreen() {
     substitutionsMutation.isPending;
 
   return (
-    <>
-      <ThemedView style={styles.container} accessibilityViewIsModal={true}>
-        <FlatList
-          data={ingredients}
-          keyExtractor={(item) => item.id}
-          renderItem={renderIngredient}
-          contentContainerStyle={[
-            styles.listContent,
-            { paddingBottom: insets.bottom + 200 },
-          ]}
-          ListHeaderComponent={
-            <View style={styles.header}>
-              <ThemedText type="h2">
-                {ingredients.length} Ingredient
-                {ingredients.length !== 1 ? "s" : ""}
+    <ThemedView style={styles.container} accessibilityViewIsModal={true}>
+      <FlatList
+        data={ingredients}
+        keyExtractor={(item) => item.id}
+        renderItem={renderIngredient}
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingBottom: insets.bottom + 200 },
+        ]}
+        ListHeaderComponent={
+          <View style={styles.header}>
+            <ThemedText type="h2">
+              {ingredients.length} Ingredient
+              {ingredients.length !== 1 ? "s" : ""}
+            </ThemedText>
+          </View>
+        }
+        ListFooterComponent={
+          nutrition ? (
+            <NutritionSummaryCard nutrition={nutrition} theme={theme} />
+          ) : isLoadingNutrition ? (
+            <View style={styles.nutritionLoading}>
+              <ActivityIndicator size="small" color={theme.success} />
+              <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                Calculating nutrition...
               </ThemedText>
             </View>
-          }
-          ListFooterComponent={
-            nutrition ? (
-              <NutritionSummaryCard nutrition={nutrition} theme={theme} />
-            ) : isLoadingNutrition ? (
-              <View style={styles.nutritionLoading}>
-                <ActivityIndicator size="small" color={theme.success} />
-                <ThemedText type="small" style={{ color: theme.textSecondary }}>
-                  Calculating nutrition...
-                </ThemedText>
-              </View>
-            ) : null
-          }
-        />
+          ) : null
+        }
+      />
 
-        {/* Action Hub */}
-        <View
-          style={[
-            styles.actionHub,
-            {
-              paddingBottom: insets.bottom + Spacing.md,
-              backgroundColor: theme.backgroundDefault,
-              borderTopColor: withOpacity(theme.border, 0.3),
-            },
-          ]}
+      {/* Action Hub */}
+      <View
+        style={[
+          styles.actionHub,
+          {
+            paddingBottom: insets.bottom + Spacing.md,
+            backgroundColor: theme.backgroundDefault,
+            borderTopColor: withOpacity(theme.border, 0.3),
+          },
+        ]}
+      >
+        <Pressable
+          style={[styles.actionButton, { backgroundColor: theme.success }]}
+          onPress={handleLogMeal}
+          disabled={isActionLoading || ingredients.length === 0}
+          accessibilityLabel="Log meal"
+          accessibilityRole="button"
         >
+          {logSession.isPending ? (
+            <ActivityIndicator size="small" color={theme.buttonText} />
+          ) : (
+            <>
+              <Feather name="check-circle" size={20} color={theme.buttonText} />
+              <ThemedText type="body" style={styles.actionText}>
+                Log Meal
+              </ThemedText>
+            </>
+          )}
+        </Pressable>
+
+        <View style={styles.secondaryActions}>
           <Pressable
-            style={[styles.actionButton, { backgroundColor: theme.success }]}
-            onPress={handleLogMeal}
-            disabled={isActionLoading || ingredients.length === 0}
-            accessibilityLabel="Log meal"
+            style={[
+              styles.secondaryButton,
+              { borderColor: theme.border },
+              !features.recipeGeneration && { opacity: 0.5 },
+            ]}
+            onPress={handleGenerateRecipe}
+            disabled={
+              isActionLoading ||
+              !features.recipeGeneration ||
+              ingredients.length === 0
+            }
+            accessibilityLabel={
+              features.recipeGeneration
+                ? "Generate recipe"
+                : "Generate recipe (premium)"
+            }
             accessibilityRole="button"
           >
-            {logSession.isPending ? (
-              <ActivityIndicator size="small" color={theme.buttonText} />
+            {recipeMutation.isPending ? (
+              <ActivityIndicator size="small" color={theme.link} />
             ) : (
               <>
-                <Feather
-                  name="check-circle"
-                  size={20}
-                  color={theme.buttonText}
-                />
-                <ThemedText type="body" style={styles.actionText}>
-                  Log Meal
+                <Feather name="book-open" size={18} color={theme.link} />
+                <ThemedText
+                  type="small"
+                  style={{ color: theme.link, fontWeight: "600" }}
+                >
+                  Recipe
                 </ThemedText>
               </>
             )}
           </Pressable>
 
-          <View style={styles.secondaryActions}>
-            <Pressable
-              style={[
-                styles.secondaryButton,
-                { borderColor: theme.border },
-                !features.recipeGeneration && { opacity: 0.5 },
-              ]}
-              onPress={handleGenerateRecipe}
-              disabled={
-                isActionLoading ||
-                !features.recipeGeneration ||
-                ingredients.length === 0
-              }
-              accessibilityLabel={
-                features.recipeGeneration
-                  ? "Generate recipe"
-                  : "Generate recipe (premium)"
-              }
-              accessibilityRole="button"
-            >
-              {recipeMutation.isPending ? (
-                <ActivityIndicator size="small" color={theme.link} />
-              ) : (
-                <>
-                  <Feather name="book-open" size={18} color={theme.link} />
-                  <ThemedText
-                    type="small"
-                    style={{ color: theme.link, fontWeight: "600" }}
-                  >
-                    Recipe
-                  </ThemedText>
-                </>
-              )}
-            </Pressable>
-
-            <Pressable
-              style={[styles.secondaryButton, { borderColor: theme.border }]}
-              onPress={handleSubstitutions}
-              disabled={isActionLoading || ingredients.length === 0}
-              accessibilityLabel="Get substitution suggestions"
-              accessibilityRole="button"
-            >
-              {substitutionsMutation.isPending ? (
-                <ActivityIndicator size="small" color={theme.link} />
-              ) : (
-                <>
-                  <Feather name="repeat" size={18} color={theme.link} />
-                  <ThemedText
-                    type="small"
-                    style={{ color: theme.link, fontWeight: "600" }}
-                  >
-                    Substitutes
-                  </ThemedText>
-                </>
-              )}
-            </Pressable>
-          </View>
+          <Pressable
+            style={[styles.secondaryButton, { borderColor: theme.border }]}
+            onPress={handleSubstitutions}
+            disabled={isActionLoading || ingredients.length === 0}
+            accessibilityLabel="Get substitution suggestions"
+            accessibilityRole="button"
+          >
+            {substitutionsMutation.isPending ? (
+              <ActivityIndicator size="small" color={theme.link} />
+            ) : (
+              <>
+                <Feather name="repeat" size={18} color={theme.link} />
+                <ThemedText
+                  type="small"
+                  style={{ color: theme.link, fontWeight: "600" }}
+                >
+                  Substitutes
+                </ThemedText>
+              </>
+            )}
+          </Pressable>
         </View>
-      </ThemedView>
+      </View>
       <ConfirmationModal />
-    </>
+    </ThemedView>
   );
 }
 

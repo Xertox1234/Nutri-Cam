@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
 import { StyleSheet, View, Pressable } from "react-native";
 import {
   BottomSheetModal,
@@ -48,16 +48,24 @@ export interface ConfirmOptions {
  */
 export function useConfirmationModal() {
   const sheetRef = useRef<BottomSheetModal>(null);
-  const [options, setOptions] = useState<ConfirmOptions | null>(null);
+  const optionsRef = useRef<ConfirmOptions | null>(null);
+  const [, setRevision] = useState(0);
 
   const confirm = useCallback((opts: ConfirmOptions) => {
-    setOptions(opts);
+    optionsRef.current = opts;
+    setRevision((r) => r + 1);
     sheetRef.current?.present();
   }, []);
 
-  const ConfirmationModal = useCallback(
-    () => <ConfirmationModalInner sheetRef={sheetRef} options={options} />,
-    [options],
+  // Stable component identity — never changes, so React re-renders (not remounts)
+  const ConfirmationModal = useMemo(
+    () =>
+      function StableConfirmationModal() {
+        return (
+          <ConfirmationModalInner sheetRef={sheetRef} optionsRef={optionsRef} />
+        );
+      },
+    [],
   );
 
   return { confirm, ConfirmationModal };
@@ -67,15 +75,16 @@ export function useConfirmationModal() {
 
 interface ConfirmationModalInnerProps {
   sheetRef: React.RefObject<BottomSheetModal | null>;
-  options: ConfirmOptions | null;
+  optionsRef: React.RefObject<ConfirmOptions | null>;
 }
 
 const MAX_DYNAMIC_HEIGHT = 350;
 
-function ConfirmationModalInnerBase({
+function ConfirmationModalInner({
   sheetRef,
-  options,
+  optionsRef,
 }: ConfirmationModalInnerProps) {
+  const options = optionsRef.current;
   const { theme } = useTheme();
   const haptics = useHaptics();
   const { reducedMotion } = useAccessibility();
@@ -91,24 +100,24 @@ function ConfirmationModalInnerBase({
 
   const handleDismiss = useCallback(() => {
     if (!isActioning.current) {
-      options?.onCancel?.();
+      optionsRef.current?.onCancel?.();
     }
     isActioning.current = false;
-  }, [options]);
+  }, [optionsRef]);
 
   const handleConfirm = useCallback(() => {
     if (isActioning.current) return;
     isActioning.current = true;
 
-    if (destructive) {
+    if (optionsRef.current?.destructive) {
       haptics.notification(NotificationFeedbackType.Warning);
     } else {
       haptics.impact(ImpactFeedbackStyle.Medium);
     }
 
-    options?.onConfirm();
+    optionsRef.current?.onConfirm();
     sheetRef.current?.dismiss();
-  }, [destructive, haptics, options, sheetRef]);
+  }, [haptics, optionsRef, sheetRef]);
 
   const handleCancel = useCallback(() => {
     if (isActioning.current) return;
@@ -218,8 +227,6 @@ function ConfirmationModalInnerBase({
     </BottomSheetModal>
   );
 }
-
-const ConfirmationModalInner = React.memo(ConfirmationModalInnerBase);
 
 const styles = StyleSheet.create({
   content: {
