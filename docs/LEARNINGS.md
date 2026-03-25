@@ -4,6 +4,9 @@ This document captures key learnings, gotchas, and architectural decisions disco
 
 ## Table of Contents
 
+- [React.memo + Ref-Only Props = Component That Never Updates (2026-03-25)](#reactmemo--ref-only-props--component-that-never-updates-2026-03-25)
+- [accessibilityViewIsModal Placement with Portal-Rendered BottomSheetModal (2026-03-25)](#accessibilityviewismodal-placement-with-portal-rendered-bottomsheetmodal-2026-03-25)
+- [useCallback vs useMemo for Hook-Returned Components (2026-03-25)](#usecallback-vs-usememo-for-hook-returned-components-2026-03-25)
 - [Read-Then-Write-Then-Check: Snapshot State Before Mutation (2026-03-25)](#read-then-write-then-check-snapshot-state-before-mutation-2026-03-25)
 - [NetInfo isConnected: null on Cold Start Causes False Offline State (2026-03-24)](#netinfo-isconnected-null-on-cold-start-causes-false-offline-state-2026-03-24)
 - [Screen Registration Order in React Navigation Native Stacks (2026-03-24)](#screen-registration-order-in-react-navigation-native-stacks-2026-03-24)
@@ -28,6 +31,137 @@ This document captures key learnings, gotchas, and architectural decisions disco
 - [Testing & Tooling Learnings](#testing--tooling-learnings)
 - [Database Migration Gotchas](#database-migration-gotchas)
 - [TypeScript Safety Learnings](#typescript-safety-learnings)
+
+---
+
+## [2026-03-25] React.memo + Ref-Only Props = Component That Never Updates
+
+**Category:** Gotcha
+
+### Context
+
+Building a `useConfirmationModal()` hook that returns a `ConfirmationModal` component. The inner component receives options via a ref (for stable identity) and was wrapped in `React.memo` for performance.
+
+### Problem
+
+When `React.memo` wraps a component whose props are all refs (stable object references), shallow comparison sees no change on any re-render. The component never updates, even when the ref's `.current` value has changed. The confirmation dialog showed stale title/message from the previous `confirm()` call.
+
+### Solution
+
+Removed `React.memo` from the inner component. Instead, the hook uses a `revision` counter state that increments on each `confirm()` call, which the parent component passes as a prop to force re-renders.
+
+```typescript
+// ❌ React.memo blocks all re-renders — refs never change identity
+const ConfirmationModalInner = React.memo(function Inner({
+  optionsRef,
+  sheetRef,
+}) {
+  // optionsRef.current changed, but optionsRef identity didn't → memo blocks render
+});
+
+// ✅ No memo — revision counter drives re-renders
+function ConfirmationModalInner({ optionsRef, sheetRef, revision }) {
+  // revision changes on each confirm() → component re-renders → reads fresh ref
+}
+```
+
+### Takeaways
+
+- `React.memo` does shallow comparison of props. Refs are stable by design — they never trigger re-renders through memo.
+- When using refs for data that changes, you need an external mechanism (counter, state) to trigger re-renders.
+- This is the inverse of the common "use refs to avoid re-renders" pattern — here we actually want re-renders but refs prevent them.
+
+### References
+
+- `client/hooks/useConfirmationModal.ts`
+- Related pattern: "Hook-Returned Component Pattern for BottomSheetModal" in `docs/patterns/hooks.md`
+
+---
+
+## [2026-03-25] accessibilityViewIsModal Placement with Portal-Rendered BottomSheetModal
+
+**Category:** Gotcha
+
+### Context
+
+Migrating destructive confirmation dialogs from `Alert.alert()` to a `ConfirmationModal` component using `@gorhom/bottom-sheet`'s `BottomSheetModal`. Some screens already had `accessibilityViewIsModal={true}` on their main container for other modals.
+
+### Problem
+
+`BottomSheetModal` renders via a React Native portal — its DOM node lives outside the normal component tree. When a screen's main container has `accessibilityViewIsModal={true}` and the `<ConfirmationModal />` is placed as a sibling outside that container, VoiceOver cannot reach the bottom sheet because `accessibilityViewIsModal` tells VoiceOver to ignore everything outside the container.
+
+### Solution
+
+Place the `<ConfirmationModal />` component **inside** the `accessibilityViewIsModal` container, not as a sibling. Even though `BottomSheetModal` portals its content elsewhere in the native view hierarchy, the React tree placement determines the accessibility tree relationship.
+
+```typescript
+// ❌ BAD — ConfirmationModal is a sibling, VoiceOver can't reach it
+<View accessibilityViewIsModal>
+  {/* screen content */}
+</View>
+<ConfirmationModal />
+
+// ✅ GOOD — inside the modal container
+<View accessibilityViewIsModal>
+  {/* screen content */}
+  <ConfirmationModal />
+</View>
+```
+
+### Takeaways
+
+- Portal-rendered components still respect their React tree position for accessibility purposes.
+- Always test VoiceOver after adding `accessibilityViewIsModal` — it can silently hide portaled content.
+- The "Modal Focus Trapping" pattern in `docs/patterns/react-native.md` has been updated with this portal caveat.
+
+### References
+
+- `client/hooks/useConfirmationModal.ts`
+- Updated pattern: "Modal Focus Trapping" in `docs/patterns/react-native.md`
+
+---
+
+## [2026-03-25] useCallback vs useMemo for Hook-Returned Components
+
+**Category:** Gotcha
+
+### Context
+
+The `useConfirmationModal()` hook needed to return a stable `ConfirmationModal` component. The initial implementation used `useCallback` to create the component function.
+
+### Problem
+
+`useCallback` returns a new function reference when its dependencies change. When the callback depended on `options` state (which changes on every `confirm()` call), React received a new component type on each call. React treats a new function reference as a new component type, unmounting the old instance and mounting a new one — losing all internal state including the `BottomSheetModal`'s presented state.
+
+### Solution
+
+Switched to `useMemo(() => function StableModal() { ... }, [revision])` where `revision` is a counter that only changes when `confirm()` is called. The options are stored in a ref (stable identity) and read inside the component, so the `useMemo` dependencies are minimal.
+
+```typescript
+// ❌ useCallback — new identity on every options change → remount
+const ConfirmationModal = useCallback(() => {
+  return <ConfirmationModalInner options={options} />;
+}, [options]); // options changes every confirm() → new component identity
+
+// ✅ useMemo — stable identity, ref for changing data
+const ConfirmationModal = useMemo(
+  () => function StableConfirmationModal() {
+    return <ConfirmationModalInner optionsRef={optionsRef} revision={revision} />;
+  },
+  [revision],
+);
+```
+
+### Takeaways
+
+- `useCallback` and `useMemo` are both valid for creating functions, but for hook-returned components the distinction matters: React uses function identity to determine if a component type changed.
+- When a hook returns a component, minimize the `useMemo` dependency array. Move changing data into refs and use a counter to signal when the component should re-read the ref.
+- Named function expressions inside `useMemo` (`function StableModal() {}`) give better React DevTools names than anonymous arrows.
+
+### References
+
+- `client/hooks/useConfirmationModal.ts`
+- Related pattern: "Hook-Returned Component Pattern for BottomSheetModal" in `docs/patterns/hooks.md`
 
 ---
 

@@ -1559,6 +1559,8 @@ Add `accessibilityViewIsModal` to the inner container of all modal components to
 
 **Why:** Without this prop, VoiceOver/TalkBack can navigate to elements behind the modal overlay, confusing users and breaking the expected focus flow.
 
+**Portal-rendered modals (BottomSheetModal):** `BottomSheetModal` renders via a portal outside the normal component tree. If the parent screen has `accessibilityViewIsModal={true}` on its container and the `<ConfirmationModal />` is a sibling (outside that container), VoiceOver cannot reach the portal-rendered sheet. Place hook-returned modal components **inside** the `accessibilityViewIsModal` container, not as siblings.
+
 ### Inline Validation Errors
 
 Use the shared `<InlineError>` component for form validation instead of `Alert.alert()`:
@@ -2412,3 +2414,144 @@ navigation.navigate("CookSessionReview", { sessionId });
 - `client/screens/CookSessionReviewScreen.tsx` → SubstitutionResult
 - `client/screens/BatchScanScreen.tsx` → BatchSummary
 - Existing correct usage: `FrontLabelConfirmScreen`, `LabelAnalysisScreen`, `ReceiptReviewScreen`
+
+### enableDynamicSizing for Minimal-Content Sheets
+
+When a bottom sheet contains minimal content (confirmation dialogs, single-action prompts, ~200px of content), use `enableDynamicSizing={true}` with `maxDynamicContentSize` instead of fixed `snapPoints`. Fixed percentage snap points (e.g., `["45%"]`) leave excessive empty space below short content.
+
+```typescript
+// ✅ GOOD — sheet sizes to content, capped at 350px
+<BottomSheetModal
+  ref={sheetRef}
+  enableDynamicSizing={true}
+  maxDynamicContentSize={350}
+>
+  <BottomSheetView>  {/* Required wrapper for dynamic sizing */}
+    <ThemedText>Are you sure?</ThemedText>
+    <Pressable onPress={handleConfirm}>
+      <ThemedText>Confirm</ThemedText>
+    </Pressable>
+  </BottomSheetView>
+</BottomSheetModal>
+
+// ❌ BAD — 45% of screen for 200px of content
+<BottomSheetModal
+  ref={sheetRef}
+  snapPoints={["45%"]}
+  enableDynamicSizing={false}
+>
+  <View>
+    <ThemedText>Are you sure?</ThemedText>
+    <Pressable onPress={handleConfirm}>
+      <ThemedText>Confirm</ThemedText>
+    </Pressable>
+  </View>
+</BottomSheetModal>
+```
+
+**Key elements:**
+
+1. **`enableDynamicSizing={true}`** — sheet measures content and sizes accordingly
+2. **`maxDynamicContentSize={350}`** — prevents the sheet from growing too tall on content-heavy renders
+3. **`<BottomSheetView>` wrapper** — required for dynamic sizing (plain `<View>` won't measure correctly)
+4. **Omit `snapPoints`** — dynamic sizing and snap points are mutually exclusive
+
+**When to use:** Confirmation dialogs, single-action prompts, short forms with 1-3 fields.
+
+**When NOT to use:** Multi-section sheets with scrollable content — use fixed `snapPoints` with `BottomSheetScrollView` instead.
+
+**References:**
+
+- `client/hooks/useConfirmationModal.ts` — dynamically-sized confirmation sheet
+- Existing fixed-snap-point sheets: `RecipeCreateScreen`, `GroceryListScreen`
+
+### beforeRemove Navigation Guard with Bottom Sheet
+
+When migrating `Alert.alert` inside `beforeRemove` navigation listeners to bottom sheets, capture the navigation action synchronously before opening the sheet. `Alert.alert` callbacks close over `e` naturally because the handler is synchronous. With an async bottom sheet, the event object may be stale by the time `onConfirm` fires.
+
+```typescript
+// ✅ GOOD — capture action before presenting sheet
+useEffect(() => {
+  const unsubscribe = navigation.addListener("beforeRemove", (e) => {
+    if (!form.isDirty) return;
+    e.preventDefault();
+
+    // Capture action NOW — e.data.action is only valid synchronously
+    const action = e.data.action;
+    confirm({
+      title: "Discard changes?",
+      message: "You have unsaved changes.",
+      confirmLabel: "Discard",
+      destructive: true,
+      onConfirm: () => navigation.dispatch(action),
+    });
+  });
+  return unsubscribe;
+}, [navigation, form.isDirty, confirm]);
+
+// ❌ BAD — e.data.action read asynchronously in closure
+useEffect(() => {
+  const unsubscribe = navigation.addListener("beforeRemove", (e) => {
+    e.preventDefault();
+    confirm({
+      onConfirm: () => navigation.dispatch(e.data.action), // may be stale
+    });
+  });
+  return unsubscribe;
+}, [navigation, confirm]);
+```
+
+**When to use:** Any screen migrating from `Alert.alert` to bottom sheet confirmations inside `beforeRemove` listeners.
+
+**Why:** `Alert.alert` is synchronous — it blocks the JS thread and its callbacks run in the same event loop tick. Bottom sheets are async — `present()` returns immediately and `onConfirm` fires later. The navigation event's `data.action` must be captured in a local variable before the async gap.
+
+**References:**
+
+- Related: "Unsaved Changes Navigation Guard" in `docs/patterns/documentation.md`
+- `client/hooks/useConfirmationModal.ts` — `confirm()` pattern
+
+### Haptic Ownership During Component Migration
+
+When migrating from `Alert.alert` (or any inline confirmation) to a shared confirmation component that owns its own haptic feedback, remove pre-existing haptics at the callsite to avoid double-buzz. The component that presents the confirmation owns the feedback timing.
+
+```typescript
+// Confirmation modal handles its own haptics internally:
+// - Warning haptic on destructive confirm tap
+// - Selection haptic on cancel tap
+
+// ✅ GOOD — callsite delegates haptics to the modal
+const handleDelete = () => {
+  confirm({
+    onConfirm: () => deleteMutation.mutate(itemId),
+  });
+  // No haptics here — modal handles it
+};
+
+// ❌ BAD — double haptic (callsite + modal both fire)
+const handleDelete = () => {
+  haptics.notification(NotificationFeedbackType.Warning); // ← remove this
+  confirm({
+    onConfirm: () => deleteMutation.mutate(itemId),
+  });
+};
+```
+
+**Exception:** Post-mutation haptics in the `onConfirm` callback are the **caller's responsibility** — they fire at a different time and for a different purpose (success/failure feedback after the action completes, not the confirmation interaction itself).
+
+```typescript
+confirm({
+  onConfirm: async () => {
+    await deleteMutation.mutateAsync(itemId);
+    haptics.notification(NotificationFeedbackType.Success); // ✅ caller owns post-mutation feedback
+  },
+});
+```
+
+**When to use:** Any migration that moves user confirmation from an inline pattern to a shared component with built-in haptics.
+
+**When NOT to use:** Components that explicitly do NOT own haptic feedback (e.g., plain `Pressable` wrappers).
+
+**References:**
+
+- `client/hooks/useConfirmationModal.ts` — owns warning haptic on destructive confirm
+- Related: "Haptic Feedback on User Actions" and "Accessibility-Aware Haptics Pattern" in this file
