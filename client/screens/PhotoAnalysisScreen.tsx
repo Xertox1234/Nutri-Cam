@@ -42,6 +42,9 @@ import { useHaptics } from "@/hooks/useHaptics";
 import { useAccessibility } from "@/hooks/useAccessibility";
 import { Spacing, BorderRadius, withOpacity } from "@/constants/theme";
 import { RecipeGenerationModal } from "@/components/RecipeGenerationModal";
+import { useBeverageSheet } from "@/hooks/useBeverageSheet";
+import { formatBeverageConfirmation } from "@/components/beverage-picker-utils";
+import type { BeverageSize } from "@shared/constants/beverages";
 import {
   INTENT_CONFIG,
   type PhotoIntent,
@@ -423,6 +426,35 @@ export default function PhotoAnalysisScreen() {
   // Recipe modal visibility
   const [showRecipeModal, setShowRecipeModal] = useState(false);
 
+  // Beverage follow-up
+  const [beverageConfirmation, setBeverageConfirmation] = useState<
+    string | null
+  >(null);
+  const beverageTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { open: openBeverageSheet, BeverageSheet } = useBeverageSheet();
+
+  const handleBeverageLogged = useCallback(
+    (name: string, size: BeverageSize) => {
+      const msg = formatBeverageConfirmation(name, size);
+      setBeverageConfirmation(msg);
+      // Clear after 3 seconds
+      if (beverageTimerRef.current) clearTimeout(beverageTimerRef.current);
+      beverageTimerRef.current = setTimeout(
+        () => setBeverageConfirmation(null),
+        3000,
+      );
+    },
+    [],
+  );
+
+  // Announce beverage confirmation to iOS VoiceOver
+  // (accessibilityLiveRegion is Android-only, so pair with announceForAccessibility)
+  useEffect(() => {
+    if (beverageConfirmation && Platform.OS === "ios") {
+      AccessibilityInfo.announceForAccessibility(beverageConfirmation);
+    }
+  }, [beverageConfirmation]);
+
   // Refs for synchronous checks (from institutional learning: stale-closure-callback-refs)
   const isUploadingRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -433,6 +465,9 @@ export default function PhotoAnalysisScreen() {
       return () => {
         // Abort any in-flight requests
         abortControllerRef.current?.abort();
+
+        // Clear beverage confirmation timer
+        if (beverageTimerRef.current) clearTimeout(beverageTimerRef.current);
 
         // Clean up image URI to free memory
         if (imageUri) {
@@ -894,18 +929,46 @@ export default function PhotoAnalysisScreen() {
               <View style={styles.actionBar}>
                 {/* Log intent: Log button */}
                 {showLogButton && (
-                  <Button
-                    onPress={handleLogSelected}
-                    disabled={selectedItems.size === 0}
-                    loading={isConfirming}
-                    accessibilityLabel={`Log ${selectedItems.size} items to today`}
-                    style={[
-                      styles.primaryButton,
-                      { backgroundColor: theme.success },
-                    ]}
-                  >
-                    {`Log ${selectedItems.size} Item${selectedItems.size !== 1 ? "s" : ""} to Today`}
-                  </Button>
+                  <>
+                    <Button
+                      onPress={handleLogSelected}
+                      disabled={selectedItems.size === 0}
+                      loading={isConfirming}
+                      accessibilityLabel={`Log ${selectedItems.size} items to today`}
+                      style={[
+                        styles.primaryButton,
+                        { backgroundColor: theme.success },
+                      ]}
+                    >
+                      {`Log ${selectedItems.size} Item${selectedItems.size !== 1 ? "s" : ""} to Today`}
+                    </Button>
+
+                    <Button
+                      variant="outline"
+                      onPress={() =>
+                        openBeverageSheet({
+                          mealType: null,
+                          onLogged: handleBeverageLogged,
+                        })
+                      }
+                      accessibilityLabel="Add a beverage"
+                    >
+                      Add Beverage
+                    </Button>
+
+                    {beverageConfirmation && (
+                      <ThemedText
+                        type="caption"
+                        style={[
+                          styles.beverageConfirmation,
+                          { color: theme.success },
+                        ]}
+                        accessibilityLiveRegion="polite"
+                      >
+                        {beverageConfirmation}
+                      </ThemedText>
+                    )}
+                  </>
                 )}
 
                 {/* Recipe intent: Generate Recipe button */}
@@ -941,6 +1004,9 @@ export default function PhotoAnalysisScreen() {
             </>
           )}
         </ScrollView>
+
+        {/* Beverage Picker Sheet */}
+        <BeverageSheet />
 
         {/* Follow-up Questions Modal */}
         {showFollowUp && analysisResult?.followUpQuestions && (
@@ -1113,6 +1179,11 @@ const styles = StyleSheet.create({
   },
   primaryButton: {
     marginTop: Spacing.sm,
+  },
+  beverageConfirmation: {
+    textAlign: "center",
+    fontSize: 13,
+    marginTop: Spacing.xs,
   },
   followUpModal: {
     position: "absolute",
