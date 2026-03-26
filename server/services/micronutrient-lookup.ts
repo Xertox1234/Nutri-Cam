@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { storage } from "../storage";
+import { fireAndForget } from "../lib/fire-and-forget";
 
 const USDA_API_KEY = process.env.USDA_API_KEY || "DEMO_KEY";
 const USDA_BASE_URL = "https://api.nal.usda.gov/fdc/v1";
@@ -189,9 +190,10 @@ export async function lookupMicronutrientsWithCache(
 
   const result = await lookupMicronutrients(foodName);
   if (result.length > 0) {
-    storage
-      .setMicronutrientCache(key, result, MICRONUTRIENT_CACHE_TTL_MS)
-      .catch(console.error);
+    fireAndForget(
+      "micronutrient-cache-write",
+      storage.setMicronutrientCache(key, result, MICRONUTRIENT_CACHE_TTL_MS),
+    );
   }
   return result;
 }

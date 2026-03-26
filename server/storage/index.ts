@@ -23,6 +23,7 @@ import * as verification from "./verification";
 import * as apiKeysStorage from "./api-keys";
 import * as batch from "./batch";
 import * as reformulation from "./reformulation";
+import * as sessions from "./sessions";
 
 export { escapeLike, getDayBounds, getMonthBounds } from "./helpers";
 
@@ -211,4 +212,15 @@ export const storage = {
   flagReformulation: reformulation.flagReformulation,
   resolveReformulationFlag: reformulation.resolveReformulationFlag,
   getReformulationFlagCount: reformulation.getReformulationFlagCount,
+
+  // Sessions (in-memory photo analysis workflow state)
+  canCreateAnalysisSession: sessions.canCreateAnalysisSession,
+  createAnalysisSession: sessions.createAnalysisSession,
+  getAnalysisSession: sessions.getAnalysisSession,
+  updateAnalysisSession: sessions.updateAnalysisSession,
+  clearAnalysisSession: sessions.clearAnalysisSession,
+  canCreateLabelSession: sessions.canCreateLabelSession,
+  createLabelSession: sessions.createLabelSession,
+  getLabelSession: sessions.getLabelSession,
+  clearLabelSession: sessions.clearLabelSession,
 };

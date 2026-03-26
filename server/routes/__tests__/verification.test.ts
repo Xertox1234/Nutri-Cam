@@ -4,22 +4,26 @@ import request from "supertest";
 import { storage } from "../../storage";
 import { register, _testInternals } from "../verification";
 
-vi.mock("../../storage", () => ({
-  storage: {
-    hasUserVerified: vi.fn(),
-    getVerification: vi.fn(),
-    getVerificationHistory: vi.fn(),
-    getUserVerificationStats: vi.fn(),
-    submitVerification: vi.fn(),
-    hasUserFrontLabelScanned: vi.fn(),
-    confirmFrontLabelData: vi.fn(),
-    getUserCompositeScore: vi.fn(),
-    getReformulationFlags: vi.fn(),
-    getReformulationFlagCount: vi.fn(),
-    resolveReformulationFlag: vi.fn(),
-    getReformulationFlag: vi.fn(),
-  },
-}));
+vi.mock("../../storage", async () => {
+  const sessions = await import("../../storage/sessions");
+  return {
+    storage: {
+      hasUserVerified: vi.fn(),
+      getVerification: vi.fn(),
+      getVerificationHistory: vi.fn(),
+      getUserVerificationStats: vi.fn(),
+      submitVerification: vi.fn(),
+      hasUserFrontLabelScanned: vi.fn(),
+      confirmFrontLabelData: vi.fn(),
+      getUserCompositeScore: vi.fn(),
+      getReformulationFlags: vi.fn(),
+      getReformulationFlagCount: vi.fn(),
+      resolveReformulationFlag: vi.fn(),
+      getReformulationFlag: vi.fn(),
+      getLabelSession: sessions.getLabelSession,
+    },
+  };
+});
 
 vi.mock("../../services/reformulation-detection", () => ({
   detectReformulation: vi.fn().mockReturnValue({
@@ -51,10 +55,6 @@ vi.mock("../../services/verification-comparison", () => ({
     totalFat: 8,
   }),
   CONSENSUS_THRESHOLD: 3,
-}));
-
-vi.mock("../photos", () => ({
-  labelSessionStore: new Map(),
 }));
 
 vi.mock("../../db", () => ({
@@ -325,8 +325,10 @@ describe("Verification Routes", () => {
 
   describe("POST /api/verification/submit", () => {
     it("includes canScanFrontLabel in response", async () => {
-      const { labelSessionStore } = await import("../photos");
-      labelSessionStore.set("label-session", {
+      const { _testInternals: sessionInternals } = await import(
+        "../../storage/sessions"
+      );
+      sessionInternals.labelSessionStore.set("label-session", {
         userId: "1",
         labelData: {
           servingSize: "1 cup",

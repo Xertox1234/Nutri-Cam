@@ -5,6 +5,7 @@ import { storage } from "../storage";
 import { db } from "../db";
 import { requireAuth } from "../middleware/auth";
 import { sendError } from "../lib/api-errors";
+import { fireAndForget } from "../lib/fire-and-forget";
 import { ErrorCode } from "@shared/constants/error-codes";
 import { userProfiles, users } from "@shared/schema";
 import {
@@ -140,9 +141,10 @@ export function register(app: Express): void {
           (f) => f in validated,
         );
         if (changedCacheFields) {
-          storage
-            .invalidateSuggestionCacheForUser(req.userId!)
-            .catch(console.error);
+          fireAndForget(
+            "suggestion-cache-invalidation",
+            storage.invalidateSuggestionCacheForUser(req.userId!),
+          );
         }
 
         res.json(profile);

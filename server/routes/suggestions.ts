@@ -3,6 +3,7 @@ import { z } from "zod";
 import { storage } from "../storage";
 import { requireAuth } from "../middleware/auth";
 import { sendError } from "../lib/api-errors";
+import { fireAndForget } from "../lib/fire-and-forget";
 import { ErrorCode } from "@shared/constants/error-codes";
 import { type Allergy } from "@shared/schema";
 import { calculateProfileHash } from "../utils/profile-hash";
@@ -55,7 +56,10 @@ export function register(app: Express): void {
         );
         if (cached) {
           // Increment hit count in background
-          storage.incrementSuggestionCacheHit(cached.id).catch(console.error);
+          fireAndForget(
+            "suggestion-cache-hit",
+            storage.incrementSuggestionCacheHit(cached.id),
+          );
           return res.json({
             suggestions: cached.suggestions,
             cacheId: cached.id,
@@ -217,9 +221,10 @@ Keep descriptions concise. Make recipes practical and kid activities fun and saf
           );
           if (cachedInstruction) {
             // Increment hit count in background
-            storage
-              .incrementInstructionCacheHit(cachedInstruction.id)
-              .catch(console.error);
+            fireAndForget(
+              "instruction-cache-hit",
+              storage.incrementInstructionCacheHit(cachedInstruction.id),
+            );
             return res.json({ instructions: cachedInstruction.instructions });
           }
         }
@@ -307,15 +312,16 @@ Format as plain text with clear sections.`;
 
         // Cache the instruction if we have a cacheId
         if (cacheId) {
-          storage
-            .createInstructionCache(
+          fireAndForget(
+            "instruction-cache-write",
+            storage.createInstructionCache(
               cacheId,
               suggestionIndex,
               suggestionTitle,
               suggestionType,
               instructions,
-            )
-            .catch(console.error);
+            ),
+          );
         }
 
         res.json({ instructions });
