@@ -8,6 +8,7 @@ import {
 } from "@shared/schema";
 import type { MealSuggestion } from "@shared/types/meal-suggestions";
 import { db } from "../db";
+import { fireAndForget } from "../lib/fire-and-forget";
 import { eq, and, gte, gt, lt, sql } from "drizzle-orm";
 import { getDayBounds } from "./helpers";
 
@@ -202,10 +203,13 @@ export async function getMicronutrientCache(
       ),
     );
   if (!row) return undefined;
-  db.update(micronutrientCache)
-    .set({ hitCount: sql`${micronutrientCache.hitCount} + 1` })
-    .where(eq(micronutrientCache.id, row.id))
-    .catch(console.error);
+  fireAndForget(
+    "cache-hit-increment",
+    db
+      .update(micronutrientCache)
+      .set({ hitCount: sql`${micronutrientCache.hitCount} + 1` })
+      .where(eq(micronutrientCache.id, row.id)),
+  );
   return row.data as unknown[];
 }
 

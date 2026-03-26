@@ -10,6 +10,7 @@ import {
   communityRecipes,
 } from "@shared/schema";
 import { db } from "../db";
+import { fireAndForget } from "../lib/fire-and-forget";
 import { eq, and, desc, sql, inArray, count } from "drizzle-orm";
 
 // ============================================================================
@@ -227,9 +228,10 @@ export async function getResolvedCookbookRecipes(
 
   // Fire-and-forget orphan cleanup
   if (orphanIds.length) {
-    db.delete(cookbookRecipes)
-      .where(inArray(cookbookRecipes.id, orphanIds))
-      .catch(console.error);
+    fireAndForget(
+      "cookbook-orphan-cleanup",
+      db.delete(cookbookRecipes).where(inArray(cookbookRecipes.id, orphanIds)),
+    );
   }
 
   return resolved;

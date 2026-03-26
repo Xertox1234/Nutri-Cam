@@ -4,6 +4,7 @@ This document captures key learnings, gotchas, and architectural decisions disco
 
 ## Table of Contents
 
+- [Mixing Real and Mocked Implementations in vi.mock Storage Facade (2026-03-26)](#mixing-real-and-mocked-implementations-in-vimock-storage-facade-2026-03-26)
 - [React.memo + Ref-Only Props = Component That Never Updates (2026-03-25)](#reactmemo--ref-only-props--component-that-never-updates-2026-03-25)
 - [accessibilityViewIsModal Placement with Portal-Rendered BottomSheetModal (2026-03-25)](#accessibilityviewismodal-placement-with-portal-rendered-bottomsheetmodal-2026-03-25)
 - [useCallback vs useMemo for Hook-Returned Components (2026-03-25)](#usecallback-vs-usememo-for-hook-returned-components-2026-03-25)
@@ -31,6 +32,56 @@ This document captures key learnings, gotchas, and architectural decisions disco
 - [Testing & Tooling Learnings](#testing--tooling-learnings)
 - [Database Migration Gotchas](#database-migration-gotchas)
 - [TypeScript Safety Learnings](#typescript-safety-learnings)
+
+---
+
+## [2026-03-26] Mixing Real and Mocked Implementations in vi.mock Storage Facade
+
+**Category:** Gotcha
+
+### Context
+
+During the session store extraction (`server/storage/sessions.ts`), route tests that mock the storage facade needed to handle a mix of DB-backed functions (which should be mocked) and in-memory session functions (which should use real implementations).
+
+### Problem
+
+The naive approach of mocking all storage functions with `vi.fn()` means you must manually re-implement session lifecycle logic in mock return values. This is fragile, diverges from production behavior, and breaks when the real implementation changes.
+
+### Solution
+
+Use `vi.mock`'s async factory to dynamically import the real module and mix its exports with mocked functions:
+
+```typescript
+vi.mock("../../storage", async () => {
+  const sessions = await import("../../storage/sessions");
+  return {
+    storage: {
+      // DB-backed functions — mock
+      getSubscriptionStatus: vi.fn(),
+      getDailyScanCount: vi.fn(),
+      // In-memory functions — use real implementation
+      canCreateAnalysisSession: sessions.canCreateAnalysisSession,
+      createAnalysisSession: sessions.createAnalysisSession,
+      getAnalysisSession: sessions.getAnalysisSession,
+      clearAnalysisSession: sessions.clearAnalysisSession,
+    },
+  };
+});
+```
+
+**Key detail:** The factory must be `async` because `vi.mock` hoists to the top of the file, so you cannot use static imports — `await import()` is required.
+
+### Takeaways
+
+- When the storage facade mixes DB and in-memory modules, don't mock everything — pass through the real in-memory functions
+- The `async () => { const mod = await import(...) }` pattern inside `vi.mock` is the way to reference real implementations
+- Clear in-memory state in `beforeEach` (including `clearTimeout` on any timer Maps) to prevent cross-test pollution
+
+### References
+
+- `server/routes/__tests__/photos.test.ts` — analysis session mock wiring
+- `server/routes/__tests__/verification.test.ts` — label session mock wiring
+- Related pattern: `docs/patterns/testing.md` "Test Internals Export Pattern"
 
 ---
 

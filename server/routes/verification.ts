@@ -7,7 +7,6 @@ import { requireAuth } from "../middleware/auth";
 import { sendError } from "../lib/api-errors";
 import { ErrorCode } from "@shared/constants/error-codes";
 import { detectImageMimeType } from "../lib/image-mime";
-import { labelSessionStore } from "./photos";
 import {
   compareWithVerifications,
   computeConsensus,
@@ -138,7 +137,7 @@ export function register(app: Express): void {
         const { barcode, sessionId } = validated;
 
         // Get label data from existing session
-        const session = labelSessionStore.get(sessionId);
+        const session = storage.getLabelSession(sessionId);
         if (!session) {
           return sendError(
             res,

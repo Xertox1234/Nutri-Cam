@@ -117,7 +117,11 @@ export async function uploadPhotoForAnalysis(
       }
     }
 
-    return JSON.parse(uploadResult.body) as PhotoAnalysisResponse;
+    try {
+      return JSON.parse(uploadResult.body) as PhotoAnalysisResponse;
+    } catch {
+      throw new Error("Invalid response from server");
+    }
   } finally {
     // Clean up compressed image
     await cleanupImage(compressed.uri);

@@ -65,7 +65,7 @@ app.get("/api/items/:id/suggestions", requireAuth, async (req, res) => {
   );
   if (cached) {
     // Increment hit count in background (fire-and-forget)
-    storage.incrementCacheHit(cached.id).catch(console.error);
+    fireAndForget("suggestion-cache-hit", storage.incrementCacheHit(cached.id));
     return res.json({ suggestions: cached.suggestions, cacheId: cached.id });
   }
 
@@ -125,13 +125,18 @@ async getSuggestionCache(
 
 ### Fire-and-Forget for Non-Critical Background Operations
 
-When an operation shouldn't block the response but failure should be logged, use the fire-and-forget pattern:
+When an operation shouldn't block the response but failure should be logged, use the `fireAndForget` helper from `server/lib/fire-and-forget.ts`:
 
 ```typescript
-// Good: Fire-and-forget with error logging
-storage.incrementCacheHit(cached.id).catch(console.error);
-storage.invalidateCacheForUser(userId).catch(console.error);
-storage.createCacheEntry(data).catch(console.error);
+import { fireAndForget } from "../lib/fire-and-forget";
+
+// Good: Fire-and-forget with labeled error logging
+fireAndForget("cache-hit-increment", storage.incrementCacheHit(cached.id));
+fireAndForget(
+  "suggestion-cache-invalidation",
+  storage.invalidateCacheForUser(userId),
+);
+fireAndForget("instruction-cache-write", storage.createCacheEntry(data));
 
 // Response sent immediately, background operation continues
 return res.json({ data });
@@ -154,7 +159,7 @@ return res.json({ data }); // User waited for analytics
   - Failure doesn't affect the current request's correctness
   - The user shouldn't wait for completion
 
-**Why `.catch(console.error)`:** Without the catch, unhandled promise rejections can crash Node.js in strict mode. The console.error ensures failures are logged for debugging while not blocking the response.
+**Why `fireAndForget`:** Without a catch, unhandled promise rejections can crash Node.js in strict mode. The helper logs failures with a context label for easier debugging while not blocking the response.
 
 **When NOT to use:**
 
@@ -228,7 +233,10 @@ app.patch("/api/profile", requireAuth, async (req, res) => {
 
   // Eagerly invalidate cache if relevant fields changed
   if (changedCacheFields) {
-    storage.invalidateCacheForUser(req.userId!).catch(console.error);
+    fireAndForget(
+      "suggestion-cache-invalidation",
+      storage.invalidateCacheForUser(req.userId!),
+    );
   }
 
   res.json(profile);

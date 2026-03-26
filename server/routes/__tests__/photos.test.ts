@@ -11,16 +11,36 @@ import {
   getFollowUpQuestions,
 } from "../../services/photo-analysis";
 import { batchNutritionLookup } from "../../services/nutrition-lookup";
-import { register, _testInternals } from "../photos";
+import { register } from "../photos";
+import {
+  _testInternals,
+  clearAnalysisSession,
+  MAX_SESSIONS_PER_USER,
+  MAX_SESSIONS_GLOBAL,
+  MAX_IMAGE_SIZE_BYTES,
+} from "../../storage/sessions";
 
-vi.mock("../../storage", () => ({
-  storage: {
-    getSubscriptionStatus: vi.fn(),
-    getDailyScanCount: vi.fn(),
-    createScannedItem: vi.fn(),
-    createDailyLog: vi.fn(),
-  },
-}));
+vi.mock("../../storage", async () => {
+  const sessions = await import("../../storage/sessions");
+  return {
+    storage: {
+      getSubscriptionStatus: vi.fn(),
+      getDailyScanCount: vi.fn(),
+      createScannedItem: vi.fn(),
+      createDailyLog: vi.fn(),
+      // Session functions use real in-memory implementation (no DB)
+      canCreateAnalysisSession: sessions.canCreateAnalysisSession,
+      createAnalysisSession: sessions.createAnalysisSession,
+      getAnalysisSession: sessions.getAnalysisSession,
+      updateAnalysisSession: sessions.updateAnalysisSession,
+      clearAnalysisSession: sessions.clearAnalysisSession,
+      canCreateLabelSession: sessions.canCreateLabelSession,
+      createLabelSession: sessions.createLabelSession,
+      getLabelSession: sessions.getLabelSession,
+      clearLabelSession: sessions.clearLabelSession,
+    },
+  };
+});
 
 vi.mock("../../services/photo-analysis", () => ({
   analyzePhoto: vi.fn(),
@@ -88,6 +108,20 @@ describe("Photos Routes", () => {
     vi.clearAllMocks();
     // Reset to valid JPEG buffer for magic-byte validation
     mockFileBuffer.current = VALID_JPEG_HEADER;
+    // Clear pending timeouts before clearing maps to prevent leaks
+    for (const [, timeout] of _testInternals.sessionTimeouts) {
+      clearTimeout(timeout);
+    }
+    for (const [, timeout] of _testInternals.labelSessionTimeouts) {
+      clearTimeout(timeout);
+    }
+    // Clear in-memory session state between tests
+    _testInternals.analysisSessionStore.clear();
+    _testInternals.sessionTimeouts.clear();
+    _testInternals.userSessionCount.clear();
+    _testInternals.labelSessionStore.clear();
+    _testInternals.labelSessionTimeouts.clear();
+    _testInternals.userLabelSessionCount.clear();
     app = createApp();
   });
 
@@ -350,15 +384,12 @@ describe("Photos Routes", () => {
     it("returns 429 when user exceeds per-user session limit", async () => {
       setupAnalyzeMocks();
 
-      for (let i = 0; i < _testInternals.MAX_SESSIONS_PER_USER; i++) {
+      for (let i = 0; i < MAX_SESSIONS_PER_USER; i++) {
         _testInternals.analysisSessionStore.set(`existing-${i}`, {
           ...dummySession,
         });
       }
-      _testInternals.userSessionCount.set(
-        "1",
-        _testInternals.MAX_SESSIONS_PER_USER,
-      );
+      _testInternals.userSessionCount.set("1", MAX_SESSIONS_PER_USER);
 
       const res = await request(app)
         .post("/api/photos/analyze")
@@ -374,7 +405,7 @@ describe("Photos Routes", () => {
     it("allows session when user is under per-user limit", async () => {
       setupAnalyzeMocks();
 
-      const underLimit = _testInternals.MAX_SESSIONS_PER_USER - 1;
+      const underLimit = MAX_SESSIONS_PER_USER - 1;
       for (let i = 0; i < underLimit; i++) {
         _testInternals.analysisSessionStore.set(`existing-${i}`, {
           ...dummySession,
@@ -395,7 +426,7 @@ describe("Photos Routes", () => {
       setupAnalyzeMocks();
 
       // Fill to global cap using the exported constant
-      for (let i = 0; i < _testInternals.MAX_SESSIONS_GLOBAL; i++) {
+      for (let i = 0; i < MAX_SESSIONS_GLOBAL; i++) {
         _testInternals.analysisSessionStore.set(`global-${i}`, {
           ...dummySession,
           userId: "other",
@@ -417,7 +448,7 @@ describe("Photos Routes", () => {
 
       const originalBuffer = mockFileBuffer.current;
       // Create oversized buffer with valid JPEG magic bytes
-      const oversized = Buffer.alloc(_testInternals.MAX_IMAGE_SIZE_BYTES + 1);
+      const oversized = Buffer.alloc(MAX_IMAGE_SIZE_BYTES + 1);
       oversized[0] = 0xff;
       oversized[1] = 0xd8;
       oversized[2] = 0xff;
@@ -445,7 +476,7 @@ describe("Photos Routes", () => {
       });
       _testInternals.userSessionCount.set("1", 1);
 
-      _testInternals.clearSession(sessionId);
+      clearAnalysisSession(sessionId);
 
       expect(_testInternals.analysisSessionStore.size).toBe(0);
       expect(_testInternals.userSessionCount.get("1")).toBeUndefined();

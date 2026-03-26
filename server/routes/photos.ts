@@ -1,5 +1,6 @@
 import type { Express, Request, Response } from "express";
 import crypto from "crypto";
+import { MAX_IMAGE_SIZE_BYTES } from "../storage/sessions";
 import { z, ZodError } from "zod";
 import { storage } from "../storage";
 import { db } from "../db";
@@ -21,8 +22,6 @@ import {
   refineAnalysis,
   needsFollowUp,
   getFollowUpQuestions,
-  type AnalysisResult,
-  type LabelExtractionResult,
 } from "../services/photo-analysis";
 import type { PhotoIntentOrAuto } from "@shared/constants/classification";
 import {
@@ -56,93 +55,6 @@ const labelUpload = multer({
   },
 });
 
-// In-memory store for analysis sessions
-// TODO: Replace with Redis for horizontal scaling in production
-interface AnalysisSession {
-  userId: string;
-  result: AnalysisResult;
-  imageBase64?: string;
-  /** Timestamp used for diagnostics and future LRU eviction when migrating to Redis */
-  createdAt: number;
-}
-const analysisSessionStore = new Map<string, AnalysisSession>();
-
-// In-memory store for label analysis sessions
-export interface LabelSession {
-  userId: string;
-  labelData: LabelExtractionResult;
-  barcode?: string;
-  createdAt: number;
-}
-const labelSessionStore = new Map<string, LabelSession>();
-const labelSessionTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
-const userLabelSessionCount = new Map<string, number>();
-
-function decrementUserLabelCount(userId: string): void {
-  const count = userLabelSessionCount.get(userId) ?? 0;
-  if (count <= 1) {
-    userLabelSessionCount.delete(userId);
-  } else {
-    userLabelSessionCount.set(userId, count - 1);
-  }
-}
-
-function clearLabelSession(sessionId: string): void {
-  const session = labelSessionStore.get(sessionId);
-  const existingTimeout = labelSessionTimeouts.get(sessionId);
-  if (existingTimeout) {
-    clearTimeout(existingTimeout);
-    labelSessionTimeouts.delete(sessionId);
-  }
-  labelSessionStore.delete(sessionId);
-  if (session) {
-    decrementUserLabelCount(session.userId);
-  }
-}
-
-// Track session timeout references to prevent memory leaks
-const sessionTimeouts = new Map<string, ReturnType<typeof setTimeout>>();
-
-// Per-user session count for enforcing per-user caps
-const userSessionCount = new Map<string, number>();
-
-// Session limits
-const MAX_SESSIONS_PER_USER = 3;
-const MAX_SESSIONS_GLOBAL = 1000;
-const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB decoded
-
-// Session timeout duration (30 minutes)
-const SESSION_TIMEOUT = 30 * 60 * 1000;
-
-/**
- * Decrement the per-user session count (and clean up entry when zero).
- */
-function decrementUserCount(userId: string): void {
-  const count = userSessionCount.get(userId) ?? 0;
-  if (count <= 1) {
-    userSessionCount.delete(userId);
-  } else {
-    userSessionCount.set(userId, count - 1);
-  }
-}
-
-/**
- * Clear session and its associated timeout.
- * Call this whenever a session is deleted to prevent memory leaks.
- */
-function clearSession(sessionId: string): void {
-  const session = analysisSessionStore.get(sessionId);
-  const existingTimeout = sessionTimeouts.get(sessionId);
-  if (existingTimeout) {
-    clearTimeout(existingTimeout);
-    sessionTimeouts.delete(sessionId);
-  }
-  analysisSessionStore.delete(sessionId);
-  if (session) {
-    decrementUserCount(session.userId);
-  }
-}
-
 // Zod schema for follow-up input validation
 const followUpSchema = z.object({
   question: z.string().min(1).max(500),
@@ -166,27 +78,6 @@ const confirmPhotoSchema = z.object({
   preparationMethods: z.array(preparationMethodSchema).optional(),
   analysisIntent: photoIntentSchema.optional(),
 });
-
-/**
- * Internal state exported for testing only.
- * Convention: prefix with underscore to signal non-public API.
- * See docs/PATTERNS.md "Test Internals Export Pattern".
- */
-/** Exported for use by the verification route (needs to read label session data) */
-export { labelSessionStore };
-
-export const _testInternals = {
-  analysisSessionStore,
-  userSessionCount,
-  MAX_SESSIONS_PER_USER,
-  MAX_SESSIONS_GLOBAL,
-  MAX_IMAGE_SIZE_BYTES,
-  clearSession,
-  labelSessionStore,
-  labelSessionTimeouts,
-  userLabelSessionCount,
-  clearLabelSession,
-};
 
 export function register(app: Express): void {
   // Photo Analysis Endpoints
@@ -261,24 +152,9 @@ export function register(app: Express): void {
             );
           }
 
-          if (analysisSessionStore.size >= MAX_SESSIONS_GLOBAL) {
-            return sendError(
-              res,
-              429,
-              "Server is busy, please try again later",
-              "SESSION_LIMIT_REACHED",
-            );
-          }
-
-          const currentUserSessionsAuto =
-            userSessionCount.get(req.userId!) ?? 0;
-          if (currentUserSessionsAuto >= MAX_SESSIONS_PER_USER) {
-            return sendError(
-              res,
-              429,
-              "Too many active analysis sessions. Please confirm or wait for existing sessions to expire.",
-              "USER_SESSION_LIMIT",
-            );
+          const sessionCheck = storage.canCreateAnalysisSession(req.userId!);
+          if (!sessionCheck.allowed) {
+            return sendError(res, 429, sessionCheck.reason, sessionCheck.code);
           }
 
           const classified = await classifyAndAnalyze(imageBase64);
@@ -308,20 +184,13 @@ export function register(app: Express): void {
               }));
             }
 
-            const sessionId = crypto.randomUUID();
-            if (intentConfig.needsSession) {
-              analysisSessionStore.set(sessionId, {
-                userId: req.userId!,
-                result: analysisResult,
-                imageBase64,
-                createdAt: Date.now(),
-              });
-              userSessionCount.set(req.userId!, currentUserSessionsAuto + 1);
-              const timeoutId = setTimeout(() => {
-                clearSession(sessionId);
-              }, SESSION_TIMEOUT);
-              sessionTimeouts.set(sessionId, timeoutId);
-            }
+            const sessionId = intentConfig.needsSession
+              ? storage.createAnalysisSession(
+                  req.userId!,
+                  analysisResult,
+                  imageBase64,
+                )
+              : crypto.randomUUID();
 
             return res.json({
               sessionId,
@@ -370,23 +239,9 @@ export function register(app: Express): void {
             );
           }
 
-          if (analysisSessionStore.size >= MAX_SESSIONS_GLOBAL) {
-            return sendError(
-              res,
-              429,
-              "Server is busy, please try again later",
-              "SESSION_LIMIT_REACHED",
-            );
-          }
-
-          const currentUserSessions = userSessionCount.get(req.userId!) ?? 0;
-          if (currentUserSessions >= MAX_SESSIONS_PER_USER) {
-            return sendError(
-              res,
-              429,
-              "Too many active analysis sessions. Please confirm or wait for existing sessions to expire.",
-              "USER_SESSION_LIMIT",
-            );
+          const sessionCheck = storage.canCreateAnalysisSession(req.userId!);
+          if (!sessionCheck.allowed) {
+            return sendError(res, 429, sessionCheck.reason, sessionCheck.code);
           }
         }
 
@@ -413,24 +268,13 @@ export function register(app: Express): void {
         }
 
         // Generate session ID (needed for follow-ups and confirm)
-        const sessionId = crypto.randomUUID();
-        if (intentConfig.needsSession) {
-          const currentUserSessions = userSessionCount.get(req.userId!) ?? 0;
-
-          analysisSessionStore.set(sessionId, {
-            userId: req.userId!,
-            result: analysisResult,
-            imageBase64,
-            createdAt: Date.now(),
-          });
-          userSessionCount.set(req.userId!, currentUserSessions + 1);
-
-          // Clean up old sessions after timeout, tracking the timeout reference
-          const timeoutId = setTimeout(() => {
-            clearSession(sessionId);
-          }, SESSION_TIMEOUT);
-          sessionTimeouts.set(sessionId, timeoutId);
-        }
+        const sessionId = intentConfig.needsSession
+          ? storage.createAnalysisSession(
+              req.userId!,
+              analysisResult,
+              imageBase64,
+            )
+          : crypto.randomUUID();
 
         const response = {
           sessionId,
@@ -481,7 +325,7 @@ export function register(app: Express): void {
         }
         const { question, answer } = parsed.data;
 
-        const session = analysisSessionStore.get(sessionId);
+        const session = storage.getAnalysisSession(sessionId);
         if (!session) {
           return sendError(
             res,
@@ -504,8 +348,7 @@ export function register(app: Express): void {
         );
 
         // Update session
-        session.result = refinedResult;
-        analysisSessionStore.set(sessionId, session);
+        storage.updateAnalysisSession(sessionId, refinedResult);
 
         // Re-lookup nutrition with refined data
         const foodNames = refinedResult.foods.map(
@@ -560,7 +403,7 @@ export function register(app: Express): void {
         );
 
         // Get confidence from session if available
-        const session = analysisSessionStore.get(validated.sessionId);
+        const session = storage.getAnalysisSession(validated.sessionId);
 
         // Verify session ownership if session exists
         if (session && session.userId !== req.userId!) {
@@ -598,7 +441,7 @@ export function register(app: Express): void {
         });
 
         // Clean up session and its timeout to prevent memory leaks
-        clearSession(validated.sessionId);
+        storage.clearAnalysisSession(validated.sessionId);
 
         res.status(201).json(scannedItem);
       } catch (error) {
@@ -721,42 +564,19 @@ export function register(app: Express): void {
         const barcode = (req.body?.barcode as string) || undefined;
 
         // Check label session bounds before calling paid APIs
-        if (labelSessionStore.size >= MAX_SESSIONS_GLOBAL) {
-          return sendError(
-            res,
-            429,
-            "Server is busy, please try again later",
-            "SESSION_LIMIT_REACHED",
-          );
-        }
-        const currentUserLabelSessions =
-          userLabelSessionCount.get(req.userId!) ?? 0;
-        if (currentUserLabelSessions >= MAX_SESSIONS_PER_USER) {
-          return sendError(
-            res,
-            429,
-            "Too many active label sessions. Please confirm or wait for existing sessions to expire.",
-            "USER_SESSION_LIMIT",
-          );
+        const labelCheck = storage.canCreateLabelSession(req.userId!);
+        if (!labelCheck.allowed) {
+          return sendError(res, 429, labelCheck.reason, labelCheck.code);
         }
 
         const labelData = await analyzeLabelPhoto(imageBase64);
 
         // Store session for confirm step
-        const sessionId = crypto.randomUUID();
-        labelSessionStore.set(sessionId, {
-          userId: req.userId!,
+        const sessionId = storage.createLabelSession(
+          req.userId!,
           labelData,
           barcode,
-          createdAt: Date.now(),
-        });
-        userLabelSessionCount.set(req.userId!, currentUserLabelSessions + 1);
-
-        // Auto-expire after 30 minutes
-        const timeoutId = setTimeout(() => {
-          clearLabelSession(sessionId);
-        }, SESSION_TIMEOUT);
-        labelSessionTimeouts.set(sessionId, timeoutId);
+        );
 
         res.json({
           sessionId,
@@ -783,7 +603,7 @@ export function register(app: Express): void {
       try {
         const validated = confirmLabelSchema.parse(req.body);
 
-        const session = labelSessionStore.get(validated.sessionId);
+        const session = storage.getLabelSession(validated.sessionId);
         if (!session) {
           return sendError(
             res,
@@ -858,7 +678,7 @@ export function register(app: Express): void {
         }
 
         // Clean up session (also decrements per-user count)
-        clearLabelSession(validated.sessionId);
+        storage.clearLabelSession(validated.sessionId);
 
         res.status(201).json(scannedItem);
       } catch (error) {
