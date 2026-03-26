@@ -17,14 +17,22 @@ import {
   type BeverageModifier,
 } from "@shared/constants/beverages";
 
-const logBeverageSchema = z.object({
-  beverageType: z.enum(BEVERAGE_TYPES),
-  size: z.enum(["small", "medium", "large"] as const),
-  modifiers: z.array(z.enum(BEVERAGE_MODIFIERS)).optional().default([]),
-  customName: z.string().max(100).optional(),
-  customCalories: z.number().min(0).max(5000).optional(),
-  mealType: z.string().nullable().optional(),
-});
+const logBeverageSchema = z
+  .object({
+    beverageType: z.enum(BEVERAGE_TYPES),
+    size: z.enum(["small", "medium", "large"] as const),
+    modifiers: z.array(z.enum(BEVERAGE_MODIFIERS)).optional().default([]),
+    customName: z.string().max(100).optional(),
+    customCalories: z.number().min(0).max(5000).optional(),
+    mealType: z.string().nullable().optional(),
+  })
+  .refine(
+    (data) =>
+      data.beverageType !== "custom" ||
+      data.customName !== undefined ||
+      data.customCalories !== undefined,
+    { message: "Custom beverages require either a name or calorie count" },
+  );
 
 function buildNutritionQuery(
   beverage: BeverageType,

@@ -444,6 +444,14 @@ export default function PhotoAnalysisScreen() {
     );
   }, []);
 
+  // Announce beverage confirmation to iOS VoiceOver
+  // (accessibilityLiveRegion is Android-only, so pair with announceForAccessibility)
+  useEffect(() => {
+    if (beverageConfirmation && Platform.OS === "ios") {
+      AccessibilityInfo.announceForAccessibility(beverageConfirmation);
+    }
+  }, [beverageConfirmation]);
+
   // Refs for synchronous checks (from institutional learning: stale-closure-callback-refs)
   const isUploadingRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);

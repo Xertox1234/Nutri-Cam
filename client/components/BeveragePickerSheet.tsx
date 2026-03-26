@@ -55,7 +55,6 @@ const MAX_DYNAMIC_HEIGHT = 480;
 export interface BeveragePickerSheetProps {
   sheetRef: React.RefObject<BottomSheetModal | null>;
   optionsRef: React.RefObject<BeverageSheetOptions | null>;
-  revision: number;
 }
 
 export function BeveragePickerSheet({

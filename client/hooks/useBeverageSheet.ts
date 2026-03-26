@@ -20,7 +20,7 @@ const defaults: BeverageSheetOptions = { mealType: null };
 export function useBeverageSheet() {
   const optionsRef = useRef<BeverageSheetOptions>(defaults);
   const sheetRef = useRef<BottomSheetModal>(null);
-  const [revision, setRevision] = useState(0);
+  const [, setRevision] = useState(0);
 
   const open = useCallback((options: BeverageSheetOptions) => {
     optionsRef.current = options;
@@ -28,17 +28,17 @@ export function useBeverageSheet() {
     sheetRef.current?.present();
   }, []);
 
-  // Stable component identity — useMemo (not useCallback) to avoid remounts
+  // Stable component identity — empty deps so React never remounts the sheet.
+  // setRevision triggers a re-render which reads fresh optionsRef.current.
   const BeverageSheet = useMemo(
     () =>
       function StableBeverageSheet() {
         return React.createElement(BeveragePickerSheet, {
           sheetRef,
           optionsRef,
-          revision,
         });
       },
-    [revision],
+    [],
   );
 
   return { open, BeverageSheet };

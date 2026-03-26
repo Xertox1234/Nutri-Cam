@@ -163,6 +163,16 @@ describe("Beverages Routes", () => {
       expect(res.body.error).toContain("Could not find nutrition data");
     });
 
+    it("returns 400 for custom beverage with no name or calories", async () => {
+      const res = await request(app).post("/api/beverages/log").send({
+        beverageType: "custom",
+        size: "medium",
+      });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain("Custom beverages require");
+    });
+
     it("returns 400 for invalid beverage type", async () => {
       const res = await request(app).post("/api/beverages/log").send({
         beverageType: "invalid",
