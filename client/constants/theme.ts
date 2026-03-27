@@ -49,7 +49,7 @@ export const Colors = {
     // Border
     border: "#4A4A5A",
     // Status colors
-    error: "#EF5350",
+    error: "#F16360", // WCAG AA: 4.7:1 on #212832
     warning: "#FFB74D",
     success: "#00E676",
     info: "#64B5F6",

@@ -54,7 +54,7 @@ export function register(app: Express): void {
           );
         }
 
-        const hashedPassword = await bcrypt.hash(validated.password, 10);
+        const hashedPassword = await bcrypt.hash(validated.password, 12);
         const user = await storage.createUser({
           username: validated.username,
           password: hashedPassword,

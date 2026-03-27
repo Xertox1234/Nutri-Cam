@@ -82,12 +82,10 @@ export function register(app: Express): void {
         }
 
         // Enforce date range limit based on subscription tier
-        const user = await storage.getUser(req.userId!);
-        const tier = user?.subscriptionTier || "free";
-        const maxDays = TIER_FEATURES[tier as keyof typeof TIER_FEATURES]
-          .extendedPlanRange
-          ? 90
-          : 7;
+        const subscription = await storage.getSubscriptionStatus(req.userId!);
+        const tierValue = subscription?.tier || "free";
+        const tier = isValidSubscriptionTier(tierValue) ? tierValue : "free";
+        const maxDays = TIER_FEATURES[tier].extendedPlanRange ? 90 : 7;
         const start = new Date(parsed.data.startDate);
         const end = new Date(parsed.data.endDate);
         const daysDiff = Math.ceil(

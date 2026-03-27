@@ -36,6 +36,7 @@ import {
   formatZodError,
   upload,
   checkPremiumFeature,
+  checkAiConfigured,
   getPremiumFeatures,
   parseStringParam,
 } from "./_helpers";
@@ -89,6 +90,8 @@ export function register(app: Express): void {
     upload.single("photo"),
     async (req: Request, res: Response) => {
       try {
+        if (!checkAiConfigured(res)) return;
+
         // Premium gate
         const features = await checkPremiumFeature(
           req,

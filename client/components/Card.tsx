@@ -37,6 +37,8 @@ interface CardProps {
   description?: string;
   /** Optional header image */
   image?: ImageSourcePropType;
+  /** Accessibility label for the header image */
+  imageAccessibilityLabel?: string;
   /** Image height (default: 120) */
   imageHeight?: number;
   /** Badges to display on the image */
@@ -60,6 +62,7 @@ export function Card({
   title,
   description,
   image,
+  imageAccessibilityLabel,
   imageHeight = 120,
   badges,
   children,
@@ -108,6 +111,8 @@ export function Card({
             source={image}
             style={[styles.image, { height: imageHeight }]}
             resizeMode="cover"
+            accessible={!!imageAccessibilityLabel}
+            accessibilityLabel={imageAccessibilityLabel}
           />
           {badges && badges.length > 0 ? (
             <View style={styles.badgeContainer}>

@@ -33,8 +33,10 @@ function setupCors(app: express.Application) {
   const ALLOWED_ORIGIN_PATTERNS = [
     /^https?:\/\/localhost(:\d+)?$/,
     /^exp:\/\/.+$/,
-    /^https:\/\/.+\.loca\.lt$/, // localtunnel
-    /^https:\/\/.+\.ngrok\.io$/, // ngrok
+    // Dev tunnels — only allowed outside production
+    ...(process.env.NODE_ENV !== "production"
+      ? [/^https:\/\/.+\.loca\.lt$/, /^https:\/\/.+\.ngrok\.io$/]
+      : []),
   ];
 
   const publicDomain = process.env.EXPO_PUBLIC_DOMAIN;
