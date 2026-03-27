@@ -1364,3 +1364,148 @@ res.json({ items, total: Number(count), page, limit });
 **References:**
 
 - `server/routes/verification.ts` — reformulation flag list endpoint
+
+### Transaction-Wrapped Count-Then-Insert to Prevent TOCTOU
+
+When a storage method enforces a per-user limit (max saved items, max sessions, max grocery lists), wrap the count query and the insert in a single `db.transaction()`. Without this, two concurrent requests can both pass the count check and both insert, exceeding the limit.
+
+```typescript
+// ✅ GOOD: Count + insert in one transaction — second request sees the first's insert
+export async function createSavedItem(
+  userId: string,
+  itemData: CreateSavedItemInput,
+): Promise<SavedItem | null> {
+  return db.transaction(async (tx) => {
+    const countResult = await tx
+      .select({ count: sql<number>`count(*)::int` })
+      .from(savedItems)
+      .where(eq(savedItems.userId, userId));
+    const count = countResult[0]?.count ?? 0;
+
+    // Read tier inside the same transaction for consistency
+    const [subRow] = await tx
+      .select({ tier: users.subscriptionTier })
+      .from(users)
+      .where(eq(users.id, userId));
+    const tier = isValidSubscriptionTier(subRow?.tier) ? subRow.tier : "free";
+    const limit = TIER_FEATURES[tier].maxSavedItems;
+
+    if (count >= limit) return null; // Signal limit reached
+
+    const [item] = await tx
+      .insert(savedItems)
+      .values({ ...itemData, userId })
+      .returning();
+    return item;
+  });
+}
+
+// ❌ BAD: Separate count and insert — race condition on concurrent requests
+export async function createSavedItem(userId: string, itemData: CreateSavedItemInput) {
+  const count = await getSavedItemCount(userId); // Not in a transaction
+  if (count >= limit) return null;
+  const [item] = await db.insert(savedItems).values({ ... }).returning(); // Another request may have inserted between count and here
+  return item;
+}
+```
+
+**When to use:**
+
+- Any storage method that checks a count/existence before inserting (saved items, grocery lists, meal plan items, API keys)
+- Any "check then act" pattern where concurrent requests could both pass the check
+
+**When NOT to use:**
+
+- Operations where over-limit insertion is harmless and can be cleaned up later
+- Unique constraints that already prevent duplicates (use `onConflictDoNothing` instead)
+
+**References:**
+
+- `server/storage/nutrition.ts` — `createSavedItem()` with tier-limit check
+- `server/storage/users.ts` — `createTransactionAndUpgrade()` (atomic transaction + tier update)
+- `server/storage/chat.ts` — `createChatMessage()` (message insert + conversation timestamp)
+
+### CASE/WHEN Batch Update for Reordering
+
+When updating a sort order or position for multiple rows, use a single `UPDATE ... SET sortOrder = CASE WHEN id = X THEN Y ... END` instead of N sequential UPDATEs. This reduces round-trips from O(N) to O(1).
+
+```typescript
+// ✅ GOOD: Single UPDATE with CASE expression
+export async function reorderMealPlanItems(
+  userId: string,
+  items: { id: number; sortOrder: number }[],
+): Promise<void> {
+  if (items.length === 0) return;
+
+  const ids = items.map((i) => i.id);
+  const caseFragments = items.map(
+    (i) => sql`WHEN ${mealPlanItems.id} = ${i.id} THEN ${i.sortOrder}`,
+  );
+
+  await db
+    .update(mealPlanItems)
+    .set({
+      sortOrder: sql`CASE ${sql.join(caseFragments, sql` `)} ELSE ${mealPlanItems.sortOrder} END`,
+    })
+    .where(
+      and(eq(mealPlanItems.userId, userId), inArray(mealPlanItems.id, ids)),
+    );
+}
+
+// ❌ BAD: N sequential UPDATEs in a transaction — N round-trips to the database
+await db.transaction(async (tx) => {
+  for (const item of items) {
+    await tx
+      .update(mealPlanItems)
+      .set({ sortOrder: item.sortOrder })
+      .where(
+        and(eq(mealPlanItems.id, item.id), eq(mealPlanItems.userId, userId)),
+      );
+  }
+});
+```
+
+**Key elements:**
+
+1. **`sql.join(caseFragments, sql` `)`** — Drizzle helper to safely join SQL fragments with a separator
+2. **`inArray(mealPlanItems.id, ids)`** — limits the UPDATE to only the rows being reordered (+ userId for IDOR protection)
+3. **`ELSE ${mealPlanItems.sortOrder} END`** — keeps untouched rows at their current position
+4. **Early return on empty** — avoids generating an invalid `CASE END` with no WHEN clauses
+
+**When to use:** Any drag-and-drop reorder, bulk priority update, or batch position assignment where the caller sends `{ id, newPosition }[]`.
+
+**When NOT to use:** Single-row updates, or cases where each row needs different SET columns (not just different values for the same column).
+
+**References:**
+
+- `server/storage/meal-plans.ts` — `reorderMealPlanItems()`
+
+### CHECK Constraint for Mutually-Optional FK Pairs
+
+When a table has two nullable foreign keys where at least one must be non-null (e.g., `dailyLogs` must reference either a `scannedItem` or a `recipe`), add a PostgreSQL CHECK constraint via Drizzle's `check()` to prevent ghost rows at the schema level.
+
+```typescript
+export const dailyLogs = pgTable(
+  "daily_logs",
+  {
+    id: serial("id").primaryKey(),
+    scannedItemId: integer("scanned_item_id").references(() => scannedItems.id),
+    recipeId: integer("recipe_id").references(() => mealPlanRecipes.id),
+    // ... other columns
+  },
+  (table) => ({
+    hasNutritionSource: check(
+      "daily_logs_has_source",
+      sql`scanned_item_id IS NOT NULL OR recipe_id IS NOT NULL`,
+    ),
+  }),
+);
+```
+
+**When to use:** Any table where a row must reference one of several possible parent tables via nullable FKs (polymorphic references without a discriminator column).
+
+**Why:** Application-level validation can be bypassed by direct DB access, bulk imports, or future code paths. The CHECK constraint is an immutable database-level invariant that prevents data corruption regardless of how the row is inserted.
+
+**References:**
+
+- `shared/schema.ts` — `dailyLogs` table with `daily_logs_has_source` check

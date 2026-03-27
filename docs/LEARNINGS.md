@@ -4,6 +4,7 @@ This document captures key learnings, gotchas, and architectural decisions disco
 
 ## Table of Contents
 
+- [Launch Readiness Audit — Security and Data Integrity Findings (2026-03-27)](#launch-readiness-audit--security-and-data-integrity-findings-2026-03-27)
 - [Mixing Real and Mocked Implementations in vi.mock Storage Facade (2026-03-26)](#mixing-real-and-mocked-implementations-in-vimock-storage-facade-2026-03-26)
 - [React.memo + Ref-Only Props = Component That Never Updates (2026-03-25)](#reactmemo--ref-only-props--component-that-never-updates-2026-03-25)
 - [accessibilityViewIsModal Placement with Portal-Rendered BottomSheetModal (2026-03-25)](#accessibilityviewismodal-placement-with-portal-rendered-bottomsheetmodal-2026-03-25)
@@ -32,6 +33,64 @@ This document captures key learnings, gotchas, and architectural decisions disco
 - [Testing & Tooling Learnings](#testing--tooling-learnings)
 - [Database Migration Gotchas](#database-migration-gotchas)
 - [TypeScript Safety Learnings](#typescript-safety-learnings)
+
+---
+
+## [2026-03-27] Launch Readiness Audit — Security and Data Integrity Findings
+
+**Category:** Security, Data Integrity, Infrastructure
+
+### Context
+
+A 6-commit launch readiness audit reviewed the full server codebase for production-readiness issues. The audit covered security hardening, data integrity gaps, infrastructure reliability, and accessibility.
+
+### Key Findings
+
+**bcrypt cost factor was 10, now 12:**
+The original `bcrypt.hash(password, 10)` used a cost factor of 10 (the minimum acceptable). Increased to 12 to stay ahead of hardware advances. Cost 12 takes ~250ms per hash — acceptable for login/register (not called in hot paths). This is a one-line change but easy to forget when copying auth code from tutorials (which universally use 10).
+
+**CORS allowed dev tunnel origins in production:**
+`localtunnel` and `ngrok` regex patterns were unconditionally included in `ALLOWED_ORIGIN_PATTERNS`. An attacker could register `*.loca.lt` or `*.ngrok.io` subdomains to bypass CORS. Fixed by conditionally including these patterns only when `NODE_ENV !== "production"`.
+
+**Subscription purchase was two non-atomic writes:**
+`createTransaction()` followed by `updateSubscription()` meant a crash between the two calls would record a payment but never upgrade the user. Merged into `createTransactionAndUpgrade()` wrapping both in `db.transaction()` with a null guard on the user update.
+
+**`createSavedItem()` had a TOCTOU race:**
+The count check and insert were separate DB calls. Two concurrent requests could both pass the count check and both insert, exceeding the tier limit. Wrapped in `db.transaction()` so the second request sees the first's insert. See the new pattern in `docs/patterns/database.md`.
+
+**Reorder endpoint used N sequential UPDATEs:**
+`reorderMealPlanItems()` ran one `UPDATE` per item inside a transaction — O(N) round-trips. Replaced with a single `UPDATE ... SET sortOrder = CASE WHEN ...` expression. See the new pattern in `docs/patterns/database.md`.
+
+**Chat message + conversation timestamp were not atomic:**
+`createChatMessage()` inserted the message then updated `chatConversations.updatedAt` in a separate query. A failure between the two would leave the conversation timestamp stale. Wrapped in `db.transaction()`.
+
+**Rate limiter failed open on DB error:**
+The API key rate limiter caught DB errors and called `next()`, letting the request through. Changed to return 503. See the new pattern in `docs/patterns/security.md`.
+
+**No health check endpoint:**
+Added `GET /api/health` with a DB ping (`SELECT 1`). Returns `{ status: "ok" }` or 503 with `{ status: "unhealthy" }`. Registered before routes for fast response without auth middleware.
+
+**No graceful shutdown:**
+`SIGTERM` from Docker/Kubernetes would kill in-flight requests. Added shutdown handler: clear intervals -> server.close -> pool.end -> exit. See the new pattern in `docs/patterns/api.md`.
+
+**Response logs included tokens and medical data:**
+The request logger captured and logged full response JSON, including JWT tokens from login/register and medication names from health endpoints. Added `SENSITIVE_PATHS` exclusion list.
+
+**5xx errors leaked internal details:**
+The global error handler returned the raw error message for all status codes, including 500s. Messages like `"relation \"users\" does not exist"` reveal database technology. Changed to return generic `"Internal Server Error"` for 5xx while preserving error messages for 4xx.
+
+### Takeaways
+
+- Audit storage methods for TOCTOU patterns — any "count then insert" or "check then act" should be in a transaction
+- Rate limiters should fail closed (503), not fail open — an attacker who can trigger a DB error bypasses all limits
+- Dev-only CORS origins must be gated on `NODE_ENV` — wildcard regex patterns are especially dangerous
+- Payment flows must be atomic — a crash between "record payment" and "grant access" loses money
+- Response logging needs an exclusion list from day one — tokens and medical data should never appear in log aggregators
+
+### References
+
+- Commits: `cb1fc6a` through `03f0485` (6 commits)
+- New patterns added: `docs/patterns/database.md` (TOCTOU, CASE/WHEN batch, CHECK constraint), `docs/patterns/api.md` (env validation, AI guard, graceful shutdown), `docs/patterns/security.md` (fail-closed, sensitive logging, generic 5xx), `docs/patterns/client-state.md` (smart retry)
 
 ---
 

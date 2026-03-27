@@ -464,3 +464,37 @@ const queueRef = useRef<{ id: string; barcode: string }[]>([]);
 **References:**
 
 - `client/context/BatchScanContext.tsx` — ref-based items with reducer counts
+
+### TanStack Query Smart Retry for Transient Errors
+
+Configure the global QueryClient to skip retries for client errors (4xx) while retrying up to 2 times for transient/server errors (5xx, network failures). This avoids hammering the server with requests that will always fail (validation errors, 404s) while recovering from temporary issues.
+
+```typescript
+export const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: (failureCount, error) => {
+        // Don't retry client errors (4xx) — only retry transient/server errors
+        if (error instanceof Error && /^4\d\d:/.test(error.message))
+          return false;
+        return failureCount < 2;
+      },
+    },
+    mutations: {
+      retry: false, // Mutations should not retry (risk of duplicate side effects)
+    },
+  },
+});
+```
+
+**Key elements:**
+
+1. **Pattern match on error message prefix** — the `apiRequest()` helper formats errors as `"<status>: <message>"`, so `^4\d\d:` catches all 4xx responses
+2. **`failureCount < 2`** — retries twice (3 total attempts) for 5xx/network errors
+3. **Mutations never retry** — retrying a POST could create duplicate resources
+
+**When to use:** Global QueryClient configuration. Individual queries can override with their own `retry` option.
+
+**References:**
+
+- `client/lib/query-client.ts` — global retry configuration

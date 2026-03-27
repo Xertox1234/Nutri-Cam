@@ -783,3 +783,88 @@ app.get("/api/admin/resource", requireAuth, async (req, res) => {
 - `server/routes/admin-api-keys.ts` — API key CRUD (4 endpoints)
 - `server/routes/verification.ts` — reformulation flag review/resolve (2 endpoints)
 - Environment variable: `ADMIN_USER_IDS` (comma-separated user IDs)
+
+### Rate Limiter Fail-Closed on Error
+
+When a rate limiter's backing store (Redis, database, in-memory Map) throws an error, reject the request with 503 instead of letting it through. Fail-open is the default in many libraries but creates an exploitable bypass.
+
+```typescript
+// ✅ GOOD: Fail closed — reject when we can't verify limits
+try {
+  currentCount = await storage.getApiKeyUsage(apiKeyId, yearMonth);
+} catch (err) {
+  console.error("Rate limit check error:", err);
+  sendError(res, 503, "Service temporarily unavailable", "SERVICE_UNAVAILABLE");
+  return;
+}
+
+// ❌ BAD: Fail open — attacker can trigger store errors to bypass limits
+try {
+  currentCount = await storage.getApiKeyUsage(apiKeyId, yearMonth);
+} catch (err) {
+  console.error("Rate limit check error:", err);
+  next(); // Let the request through!
+  return;
+}
+```
+
+**When to use:** Any custom rate limiter or usage counter where the backing store can fail. This includes API key monthly usage checks, per-user daily quotas, and any middleware that reads counts from a database.
+
+**When NOT to use:** `express-rate-limit` with its default in-memory store (which cannot fail). If you use `express-rate-limit` with an external store (Redis), configure its `handler` option for fail-closed behavior.
+
+**Why 503 (not 429):** The request is not over the limit — we simply cannot verify whether it is. 503 signals a temporary service issue, and clients with retry logic will back off.
+
+**References:**
+
+- `server/middleware/api-rate-limit.ts` — fail-closed on DB error
+
+### Sensitive Path Logging Exclusion
+
+Exclude response bodies for routes that return tokens, passwords, or medical data from request logging. Match by path prefix to catch sub-routes.
+
+```typescript
+const SENSITIVE_PATHS = [
+  "/api/auth/login",
+  "/api/auth/register",
+  "/api/auth/account",
+  "/api/medication",
+];
+
+function isSensitivePath(reqPath: string): boolean {
+  return SENSITIVE_PATHS.some(
+    (p) => reqPath === p || reqPath.startsWith(p + "/"),
+  );
+}
+
+// In request logger:
+if (capturedJsonResponse && !isSensitivePath(reqPath)) {
+  logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+}
+```
+
+**Why:** Request logs often end up in log aggregators, monitoring dashboards, and error tracking tools. Logging JWT tokens, hashed passwords, or medical data (medication names, dosages) in response bodies violates security best practices and may violate privacy regulations (HIPAA, GDPR).
+
+**References:**
+
+- `server/index.ts` — `setupRequestLogging()` with `isSensitivePath()` check
+
+### Generic Error Messages for 5xx Responses
+
+The global error handler returns the actual error message for 4xx (client errors) but a generic `"Internal Server Error"` for 5xx. This prevents leaking stack traces, SQL errors, or internal service details to clients.
+
+```typescript
+// Global error handler
+const status = error.status || error.statusCode || 500;
+
+// Only expose error messages for client errors (4xx)
+const message =
+  status < 500 ? error.message || "Bad Request" : "Internal Server Error";
+
+return res.status(status).json({ error: message });
+```
+
+**Why:** A 500 error message like `"relation \"users\" does not exist"` or `"ECONNREFUSED 127.0.0.1:5432"` reveals database technology and network topology. Always log the real error server-side (`console.error`) and return a generic message to the client.
+
+**References:**
+
+- `server/index.ts` — `setupErrorHandler()`
