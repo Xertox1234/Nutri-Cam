@@ -1571,3 +1571,168 @@ process.on("unhandledRejection", (reason) => {
 **References:**
 
 - `server/index.ts` — lines 8-15
+
+### Centralized Environment Validation with Zod Schema
+
+Instead of scattered `if (!process.env.X) throw` checks across modules, define a single Zod schema for all environment variables and validate it once at server startup. This surfaces all missing variables at once (not one at a time) and provides typed access to validated values.
+
+```typescript
+// server/lib/env.ts
+import { z } from "zod";
+
+const envSchema = z.object({
+  // Required — server will not start without these
+  DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
+  JWT_SECRET: z.string().min(1, "JWT_SECRET is required"),
+
+  // Optional with defaults
+  PORT: z.string().default("3000"),
+  NODE_ENV: z.string().default("development"),
+
+  // Optional — features degrade gracefully
+  AI_INTEGRATIONS_OPENAI_API_KEY: z.string().optional(),
+  SPOONACULAR_API_KEY: z.string().optional(),
+  // ... other optional vars
+});
+
+type Env = z.infer<typeof envSchema>;
+let validated: Env | null = null;
+
+export function validateEnv(): Env {
+  const result = envSchema.safeParse(process.env);
+  if (!result.success) {
+    const issues = result.error.issues
+      .map((i) => `  - ${i.path.join(".")}: ${i.message}`)
+      .join("\n");
+    throw new Error(`Environment validation failed:\n${issues}`);
+  }
+  validated = result.data;
+
+  // Warn about missing optional vars
+  if (!validated.AI_INTEGRATIONS_OPENAI_API_KEY) {
+    console.warn(
+      "[env] AI_INTEGRATIONS_OPENAI_API_KEY not set — AI features disabled",
+    );
+  }
+  return validated;
+}
+
+export function getEnv(): Env {
+  if (!validated)
+    throw new Error("validateEnv() must be called before getEnv()");
+  return validated;
+}
+```
+
+```typescript
+// server/index.ts — call as the very first thing
+import { validateEnv } from "./lib/env";
+validateEnv();
+```
+
+**Key elements:**
+
+1. **Required vs optional** — required vars use `.min(1)` (not just `.string()`) to reject empty strings
+2. **Defaults** — `PORT` and `NODE_ENV` get sensible defaults via `.default()`
+3. **All-at-once errors** — `safeParse` collects all failures, not just the first
+4. **Warning for degraded features** — optional vars log warnings so operators know what is disabled
+5. **Typed access** — `getEnv()` returns a fully typed object, no more `process.env.X!` assertions
+
+**When to use:** Every Express server startup. Call `validateEnv()` before any other module initialization.
+
+**Relation to existing pattern:** This supersedes the simpler "Fail-Fast Environment Validation" pattern above for projects with many env vars. Small projects with 1-2 required vars can still use inline checks.
+
+**References:**
+
+- `server/lib/env.ts` — full schema and validation
+- `server/index.ts` — `validateEnv()` called at top of main IIFE
+
+### Service Availability Guard (`checkAiConfigured`)
+
+When a route depends on an optional external service (OpenAI, Spoonacular, etc.), use a guard function that returns `false` and sends a 503 response when the service is not configured. This prevents cryptic errors deep in service code.
+
+```typescript
+// server/routes/_helpers.ts
+import { isAiConfigured } from "../lib/openai";
+
+export function checkAiConfigured(res: Response): boolean {
+  if (!isAiConfigured) {
+    sendError(
+      res,
+      503,
+      "AI features are not available. Please try again later.",
+      "AI_NOT_CONFIGURED",
+    );
+    return false;
+  }
+  return true;
+}
+
+// Usage in route handler — early return before any AI work
+app.post(
+  "/api/photos/analyze",
+  requireAuth,
+  photoRateLimit,
+  upload.single("photo"),
+  async (req: Request, res: Response) => {
+    if (!checkAiConfigured(res)) return;
+    // ... proceed with AI analysis
+  },
+);
+```
+
+**Key elements:**
+
+1. **503 (Service Unavailable)**, not 500 — signals the feature is temporarily unavailable, not a bug
+2. **Boolean return** — allows clean `if (!check) return;` pattern in handlers
+3. **Machine-readable code** — `"AI_NOT_CONFIGURED"` for client-side handling
+4. **Module-level boolean** — `isAiConfigured` is evaluated once at import time, not per-request
+
+**When to use:** Any route that calls OpenAI or another optional external service. Check before doing any expensive work (file processing, Zod validation of large payloads).
+
+**When NOT to use:** Required services (database, auth) — those should fail at startup via `validateEnv()`.
+
+**References:**
+
+- `server/routes/_helpers.ts` — `checkAiConfigured()`
+- `server/lib/openai.ts` — `isAiConfigured` export
+- `server/routes/photos.ts` — usage example
+
+### Graceful Shutdown with Resource Cleanup
+
+Register `SIGTERM` and `SIGINT` handlers that stop accepting new connections, clear periodic jobs, and close the database pool. Add a forced-exit timeout to prevent hangs.
+
+```typescript
+// Start periodic jobs
+const cacheCleanupInterval = startCacheCleanupJob();
+
+// Graceful shutdown
+function shutdown(signal: string) {
+  log(`${signal} received, shutting down gracefully`);
+  clearInterval(cacheCleanupInterval); // 1. Stop periodic jobs
+  server.close(() => {
+    // 2. Stop accepting new connections, finish in-flight
+    pool.end().then(() => {
+      // 3. Close DB pool after all requests drain
+      process.exit(0);
+    });
+  });
+  setTimeout(() => process.exit(1), 10_000); // 4. Force exit if stuck
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
+```
+
+**Shutdown order matters:**
+
+1. **Clear intervals** — prevent new background work from starting
+2. **`server.close()`** — stops accepting new TCP connections, waits for in-flight requests to complete
+3. **`pool.end()`** — releases all database connections (must be after server.close so in-flight queries finish)
+4. **Forced exit** — 10-second safety net for stuck connections (e.g., long-polling, WebSocket keepalive)
+
+**When to use:** Every production Express server. Without graceful shutdown, `SIGTERM` from Docker/Kubernetes kills in-flight requests and can corrupt database state.
+
+**References:**
+
+- `server/index.ts` — shutdown handler with cache cleanup + pool.end
