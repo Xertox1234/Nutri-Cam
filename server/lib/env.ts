@@ -18,6 +18,7 @@ const envSchema = z.object({
 
   // Optional — features degrade gracefully without these
   AI_INTEGRATIONS_OPENAI_API_KEY: z.string().optional(),
+  AI_INTEGRATIONS_OPENAI_BASE_URL: z.string().optional(),
   SPOONACULAR_API_KEY: z.string().optional(),
   USDA_API_KEY: z.string().optional(),
   API_NINJAS_KEY: z.string().optional(),

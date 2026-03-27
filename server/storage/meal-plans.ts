@@ -396,7 +396,7 @@ export async function reorderMealPlanItems(
   await db
     .update(mealPlanItems)
     .set({
-      sortOrder: sql`CASE ${sql.join(caseFragments, sql` `)} END`,
+      sortOrder: sql`CASE ${sql.join(caseFragments, sql` `)} ELSE ${mealPlanItems.sortOrder} END`,
     })
     .where(
       and(eq(mealPlanItems.userId, userId), inArray(mealPlanItems.id, ids)),
