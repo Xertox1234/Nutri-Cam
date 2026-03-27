@@ -14,6 +14,9 @@ if (!apiKey) {
   );
 }
 
+/** Whether OpenAI API is configured and AI features should work */
+export const isAiConfigured = !!apiKey;
+
 export const openai = new OpenAI({
   apiKey: apiKey ?? "",
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,

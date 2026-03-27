@@ -8,6 +8,7 @@ import {
   parsePositiveIntParam,
   parseQueryInt,
   checkPremiumFeature,
+  checkAiConfigured,
 } from "./_helpers";
 import { sendError } from "../lib/api-errors";
 import { ErrorCode } from "@shared/constants/error-codes";
@@ -151,6 +152,8 @@ export function register(app: Express): void {
           );
 
         // Premium gate — fail fast before DB queries
+        if (!checkAiConfigured(res)) return;
+
         const features = await checkPremiumFeature(
           req,
           res,

@@ -14,6 +14,7 @@ import {
 } from "@shared/types/premium";
 import { ErrorCode } from "@shared/constants/error-codes";
 import { insertUserProfileSchema, allergySchema } from "@shared/schema";
+import { isAiConfigured } from "../lib/openai";
 
 // ============================================================================
 // UTILITY FUNCTIONS
@@ -30,6 +31,23 @@ export async function getPremiumFeatures(
   const subscription = await storage.getSubscriptionStatus(req.userId!);
   const tier = subscription?.tier || "free";
   return TIER_FEATURES[isValidSubscriptionTier(tier) ? tier : "free"];
+}
+
+/**
+ * Guard that returns false (and sends 503) if AI features are not configured.
+ * Use at the top of route handlers that depend on OpenAI.
+ */
+export function checkAiConfigured(res: Response): boolean {
+  if (!isAiConfigured) {
+    sendError(
+      res,
+      503,
+      "AI features are not available. Please try again later.",
+      "AI_NOT_CONFIGURED",
+    );
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -352,7 +370,11 @@ export const registerSchema = z.object({
   password: z
     .string()
     .min(8, "Password must be at least 8 characters")
-    .max(200),
+    .max(200)
+    .regex(
+      /(?=.*[a-zA-Z])(?=.*\d)/,
+      "Password must contain at least one letter and one number",
+    ),
 });
 
 // Account deletion validation schema

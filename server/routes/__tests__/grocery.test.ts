@@ -382,7 +382,9 @@ describe("Grocery Routes", () => {
 
   describe("Error paths", () => {
     it("POST /api/meal-plan/grocery-lists returns 500 on storage error", async () => {
-      vi.mocked(storage.getUser).mockRejectedValue(new Error("DB error"));
+      vi.mocked(storage.getSubscriptionStatus).mockRejectedValue(
+        new Error("DB error"),
+      );
 
       const res = await request(app)
         .post("/api/meal-plan/grocery-lists")
@@ -510,8 +512,9 @@ describe("Grocery Routes", () => {
     });
 
     it("POST /api/meal-plan/grocery-lists enforces date range limit for free tier", async () => {
-      vi.mocked(storage.getUser).mockResolvedValue({
-        subscriptionTier: "free",
+      vi.mocked(storage.getSubscriptionStatus).mockResolvedValue({
+        tier: "free",
+        expiresAt: null,
       } as never);
       vi.mocked(storage.getGroceryLists).mockResolvedValue([] as never);
 

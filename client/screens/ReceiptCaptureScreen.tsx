@@ -225,7 +225,11 @@ export default function ReceiptCaptureScreen() {
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             {photos.map((uri, index) => (
               <View key={uri} style={styles.thumbnailWrapper}>
-                <Image source={{ uri }} style={styles.thumbnail} />
+                <Image
+                  source={{ uri }}
+                  style={styles.thumbnail}
+                  accessibilityLabel={`Receipt photo ${index + 1} of ${photos.length}`}
+                />
                 <Pressable
                   onPress={() => handleRemovePhoto(index)}
                   style={styles.removeBadge}

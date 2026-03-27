@@ -12,6 +12,7 @@ import {
   index,
   uniqueIndex,
   unique,
+  check,
   date,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
@@ -161,6 +162,11 @@ export const dailyLogs = pgTable(
     loggedAtIdx: index("daily_logs_logged_at_idx").on(table.loggedAt),
     mealPlanItemIdIdx: index("daily_logs_meal_plan_item_id_idx").on(
       table.mealPlanItemId,
+    ),
+    // Prevent ghost rows with no nutrition source
+    hasNutritionSource: check(
+      "daily_logs_has_source",
+      sql`scanned_item_id IS NOT NULL OR recipe_id IS NOT NULL`,
     ),
   }),
 );
@@ -1517,7 +1523,7 @@ export const apiKeys = pgTable(
     tier: text("tier").default("free").notNull(),
     status: text("status").default("active").notNull(),
     ownerId: varchar("owner_id").references(() => users.id, {
-      onDelete: "set null",
+      onDelete: "cascade",
     }),
     createdAt: timestamp("created_at")
       .default(sql`CURRENT_TIMESTAMP`)

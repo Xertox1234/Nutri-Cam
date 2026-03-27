@@ -14,7 +14,7 @@ const lightTheme = {
 };
 
 const darkTheme = {
-  error: "#EF5350",
+  error: "#F16360",
   link: "#A88BF5",
   buttonText: "#FFFFFF",
   backgroundSecondary: "#393948",
@@ -36,7 +36,7 @@ describe("getConfirmButtonStyle", () => {
 
   it("uses dark theme error color when destructive", () => {
     const result = getConfirmButtonStyle(true, darkTheme);
-    expect(result.backgroundColor).toBe("#EF5350");
+    expect(result.backgroundColor).toBe("#F16360");
   });
 });
 
