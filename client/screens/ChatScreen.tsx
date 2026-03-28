@@ -46,6 +46,7 @@ import {
   withOpacity,
 } from "@/constants/theme";
 import { pressSpringConfig } from "@/constants/animations";
+import { FLATLIST_DEFAULTS } from "@/constants/performance";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RouteProp } from "@react-navigation/native";
 import type { ChatStackParamList } from "@/navigation/ChatStackNavigator";
@@ -403,9 +404,7 @@ export default function ChatScreen() {
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.messagesContent}
           keyboardDismissMode="interactive"
-          removeClippedSubviews={true}
-          maxToRenderPerBatch={15}
-          windowSize={5}
+          {...FLATLIST_DEFAULTS}
           onContentSizeChange={() => {
             flatListRef.current?.scrollToEnd({ animated: true });
           }}

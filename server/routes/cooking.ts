@@ -92,6 +92,7 @@ const cookStore = createSessionStore<CookingSession>({
   maxPerUser: MAX_SESSIONS_PER_USER,
   maxGlobal: MAX_SESSIONS_GLOBAL,
   timeoutMs: COOK_SESSION_TIMEOUT,
+  label: "active cooking",
 });
 
 // Aliases for backward compatibility with route code and tests
@@ -197,16 +198,13 @@ export function register(app: Express): void {
         }
 
         const sessionId = cookStore.create({
-          id: "", // will be overwritten below
+          id: "", // auto-set by factory to match store key
           userId: req.userId!,
           ingredients: [],
           photos: [],
           createdAt: Date.now(),
         });
-
-        // Patch the session's id field to match the store key
         const session = cookStore.get(sessionId)!;
-        session.id = sessionId;
 
         res.status(201).json({
           id: sessionId,

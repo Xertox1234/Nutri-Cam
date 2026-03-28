@@ -69,6 +69,7 @@ const frontLabelStore = createSessionStore<FrontLabelSession>({
   maxPerUser: 3,
   maxGlobal: 500,
   timeoutMs: 15 * 60 * 1000, // 15 minutes
+  label: "active front-label",
 });
 
 // Exported for testing (grouped per docs/patterns/security.md Test Internals Export Pattern)

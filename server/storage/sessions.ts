@@ -23,6 +23,8 @@ export interface SessionStoreOptions {
   maxPerUser: number;
   maxGlobal: number;
   timeoutMs: number;
+  /** Domain label for error messages (e.g., "cooking", "front-label") */
+  label?: string;
 }
 
 export interface SessionStore<T extends { userId: string; createdAt: number }> {
@@ -52,6 +54,7 @@ export function createSessionStore<
   const store = new Map<string, T>();
   const timeouts = new Map<string, ReturnType<typeof setTimeout>>();
   const userCount = new Map<string, number>();
+  const label = opts.label ?? "active";
 
   function decrementCount(userId: string): void {
     const count = userCount.get(userId) ?? 0;
@@ -95,8 +98,7 @@ export function createSessionStore<
       if (count >= opts.maxPerUser) {
         return {
           allowed: false,
-          reason:
-            "Too many active sessions. Please confirm or wait for existing sessions to expire.",
+          reason: `Too many ${label} sessions. Please confirm or wait for existing sessions to expire.`,
           code: "USER_SESSION_LIMIT",
         };
       }
@@ -105,6 +107,10 @@ export function createSessionStore<
 
     create(data: T): string {
       const id = crypto.randomUUID();
+      // Auto-inject the store key into data.id if the type has one
+      if ("id" in data) {
+        (data as Record<string, unknown>).id = id;
+      }
       store.set(id, data);
       userCount.set(data.userId, (userCount.get(data.userId) ?? 0) + 1);
       const timeoutId = setTimeout(() => clearSession(id), opts.timeoutMs);
@@ -159,12 +165,14 @@ const analysisStore = createSessionStore<AnalysisSession>({
   maxPerUser: MAX_SESSIONS_PER_USER,
   maxGlobal: MAX_SESSIONS_GLOBAL,
   timeoutMs: SESSION_TIMEOUT,
+  label: "active analysis",
 });
 
 const labelStore = createSessionStore<LabelSession>({
   maxPerUser: MAX_SESSIONS_PER_USER,
   maxGlobal: MAX_SESSIONS_GLOBAL,
   timeoutMs: SESSION_TIMEOUT,
+  label: "active label",
 });
 
 // ── Public API (preserves existing function signatures) ───────────────
@@ -190,7 +198,7 @@ export function updateAnalysisSession(
   sessionId: string,
   result: AnalysisResult,
 ): void {
-  analysisStore.update(sessionId, { result } as Partial<AnalysisSession>);
+  analysisStore.update(sessionId, { result });
 }
 
 export function clearAnalysisSession(sessionId: string): void {
