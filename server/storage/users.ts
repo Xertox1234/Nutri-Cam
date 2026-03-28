@@ -105,6 +105,43 @@ export async function updateUserProfile(
   return profile || undefined;
 }
 
+/**
+ * Atomically upserts a user profile and marks onboarding as complete.
+ * Used by the POST /api/user/dietary-profile onboarding endpoint.
+ */
+export async function upsertProfileWithOnboarding(
+  userId: string,
+  profileData: Omit<InsertUserProfile, "userId">,
+): Promise<UserProfile> {
+  return db.transaction(async (tx) => {
+    const [existing] = await tx
+      .select()
+      .from(userProfiles)
+      .where(eq(userProfiles.userId, userId));
+
+    let result: UserProfile;
+    if (existing) {
+      [result] = await tx
+        .update(userProfiles)
+        .set({ ...profileData, updatedAt: new Date() })
+        .where(eq(userProfiles.userId, userId))
+        .returning();
+    } else {
+      [result] = await tx
+        .insert(userProfiles)
+        .values({ ...profileData, userId })
+        .returning();
+    }
+
+    await tx
+      .update(users)
+      .set({ onboardingCompleted: true })
+      .where(eq(users.id, userId));
+
+    return result;
+  });
+}
+
 // ============================================================================
 // SUBSCRIPTION
 // ============================================================================

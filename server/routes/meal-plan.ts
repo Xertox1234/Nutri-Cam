@@ -15,12 +15,6 @@ import {
   parseQueryString,
 } from "./_helpers";
 import { generateMealPlanFromPantry } from "../services/pantry-meal-plan";
-import { db } from "../db";
-import {
-  mealPlanRecipes,
-  recipeIngredients,
-  mealPlanItems,
-} from "@shared/schema";
 import { inferMealTypes } from "../services/meal-type-inference";
 
 // Zod schemas for meal plan endpoints
@@ -721,67 +715,46 @@ export function register(app: Express): void {
         }
 
         // Create all recipes and plan items atomically
-        const createdItems = await db.transaction(async (tx) => {
-          const items: { recipeId: number; mealPlanItemId: number }[] = [];
+        const meals = parsed.data.meals.map((meal) => {
+          const mealTypes = inferMealTypes(
+            meal.title,
+            meal.ingredients.map((i) => i.name),
+          );
 
-          for (const meal of parsed.data.meals) {
-            const mealTypes = inferMealTypes(
-              meal.title,
-              meal.ingredients.map((i) => i.name),
-            );
-
-            const [recipe] = await tx
-              .insert(mealPlanRecipes)
-              .values({
-                userId: req.userId!,
-                title: meal.title,
-                description: meal.description ?? null,
-                difficulty: meal.difficulty ?? null,
-                servings: meal.servings,
-                prepTimeMinutes: meal.prepTimeMinutes,
-                cookTimeMinutes: meal.cookTimeMinutes,
-                instructions: meal.instructions ?? null,
-                dietTags: meal.dietTags ?? [],
-                caloriesPerServing: String(meal.caloriesPerServing),
-                proteinPerServing: String(meal.proteinPerServing),
-                carbsPerServing: String(meal.carbsPerServing),
-                fatPerServing: String(meal.fatPerServing),
-                sourceType: "ai_suggestion",
-                mealTypes,
-              })
-              .returning();
-
-            if (meal.ingredients.length > 0) {
-              await tx.insert(recipeIngredients).values(
-                meal.ingredients.map((ing, idx) => ({
-                  recipeId: recipe.id,
-                  name: ing.name,
-                  quantity: ing.quantity ?? null,
-                  unit: ing.unit ?? null,
-                  displayOrder: idx,
-                })),
-              );
-            }
-
-            const [mealPlanItem] = await tx
-              .insert(mealPlanItems)
-              .values({
-                userId: req.userId!,
-                recipeId: recipe.id,
-                plannedDate: meal.plannedDate,
-                mealType: meal.mealType,
-                servings: String(meal.servings),
-              })
-              .returning();
-
-            items.push({
-              recipeId: recipe.id,
-              mealPlanItemId: mealPlanItem.id,
-            });
-          }
-
-          return items;
+          return {
+            recipe: {
+              userId: req.userId!,
+              title: meal.title,
+              description: meal.description ?? null,
+              difficulty: meal.difficulty ?? null,
+              servings: meal.servings,
+              prepTimeMinutes: meal.prepTimeMinutes,
+              cookTimeMinutes: meal.cookTimeMinutes,
+              instructions: meal.instructions ?? null,
+              dietTags: meal.dietTags ?? [],
+              caloriesPerServing: String(meal.caloriesPerServing),
+              proteinPerServing: String(meal.proteinPerServing),
+              carbsPerServing: String(meal.carbsPerServing),
+              fatPerServing: String(meal.fatPerServing),
+              sourceType: "ai_suggestion" as const,
+              mealTypes,
+            },
+            ingredients: meal.ingredients.map((ing, idx) => ({
+              name: ing.name,
+              quantity: ing.quantity ?? null,
+              unit: ing.unit ?? null,
+              displayOrder: idx,
+            })),
+            planItem: {
+              userId: req.userId!,
+              plannedDate: meal.plannedDate,
+              mealType: meal.mealType,
+              servings: String(meal.servings),
+            },
+          };
         });
+
+        const createdItems = await storage.createMealPlanFromSuggestions(meals);
 
         res.status(201).json({
           saved: createdItems.length,

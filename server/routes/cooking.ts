@@ -39,10 +39,8 @@ import {
   parseUserAllergies,
   type AllergenMatch,
 } from "@shared/constants/allergens";
-import { scannedItems, dailyLogs } from "@shared/schema";
 import { storage } from "../storage";
 import { createSessionStore } from "../storage/sessions";
-import { db } from "../db";
 
 // ============================================================================
 // MULTER CONFIG (5MB for ingredient photos)
@@ -728,29 +726,18 @@ export function register(app: Express): void {
         const productName = session.ingredients.map((i) => i.name).join(", ");
 
         // Log as single composite scannedItem + dailyLog
-        const [scannedItem] = await db.transaction(async (tx) => {
-          const [item] = await tx
-            .insert(scannedItems)
-            .values({
-              userId: req.userId!,
-              productName,
-              calories: Math.round(totals.calories).toString(),
-              protein: Math.round(totals.protein).toString(),
-              carbs: Math.round(totals.carbs).toString(),
-              fat: Math.round(totals.fat).toString(),
-              sourceType: "cook_session",
-            })
-            .returning();
-
-          await tx.insert(dailyLogs).values({
+        const scannedItem = await storage.createScannedItemWithLog(
+          {
             userId: req.userId!,
-            scannedItemId: item.id,
-            servings: "1",
-            mealType: parsed.data.mealType || null,
-          });
-
-          return [item];
-        });
+            productName,
+            calories: Math.round(totals.calories).toString(),
+            protein: Math.round(totals.protein).toString(),
+            carbs: Math.round(totals.carbs).toString(),
+            fat: Math.round(totals.fat).toString(),
+            sourceType: "cook_session",
+          },
+          { mealType: parsed.data.mealType || null },
+        );
 
         // Clean up session after successful log
         clearCookSession(session.id);

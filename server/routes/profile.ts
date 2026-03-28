@@ -1,13 +1,10 @@
 import type { Express, Request, Response } from "express";
 import { ZodError } from "zod";
-import { eq } from "drizzle-orm";
 import { storage } from "../storage";
-import { db } from "../db";
 import { requireAuth } from "../middleware/auth";
 import { sendError } from "../lib/api-errors";
 import { fireAndForget } from "../lib/fire-and-forget";
 import { ErrorCode } from "@shared/constants/error-codes";
-import { userProfiles, users } from "@shared/schema";
 import {
   formatZodError,
   userProfileInputSchema,
@@ -67,34 +64,11 @@ export function register(app: Express): void {
           cookingTimeAvailable: validated.cookingTimeAvailable,
         };
 
-        // Transaction: create/update profile + mark onboarding complete
-        const profile = await db.transaction(async (tx) => {
-          const [existing] = await tx
-            .select()
-            .from(userProfiles)
-            .where(eq(userProfiles.userId, req.userId!));
-
-          let result;
-          if (existing) {
-            [result] = await tx
-              .update(userProfiles)
-              .set({ ...profileData, updatedAt: new Date() })
-              .where(eq(userProfiles.userId, req.userId!))
-              .returning();
-          } else {
-            [result] = await tx
-              .insert(userProfiles)
-              .values({ ...profileData, userId: req.userId! })
-              .returning();
-          }
-
-          await tx
-            .update(users)
-            .set({ onboardingCompleted: true })
-            .where(eq(users.id, req.userId!));
-
-          return result;
-        });
+        // Upsert profile + mark onboarding complete atomically
+        const profile = await storage.upsertProfileWithOnboarding(
+          req.userId!,
+          profileData,
+        );
 
         res.status(201).json(profile);
       } catch (error) {

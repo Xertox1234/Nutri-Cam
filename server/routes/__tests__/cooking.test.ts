@@ -13,6 +13,7 @@ vi.mock("../../storage", () => ({
   storage: {
     getSubscriptionStatus: vi.fn(),
     getUserProfile: vi.fn(),
+    createScannedItemWithLog: vi.fn(),
   },
 }));
 
@@ -60,12 +61,6 @@ vi.mock("../../services/recipe-generation", () => ({
 
 vi.mock("../../services/ingredient-substitution", () => ({
   getSubstitutions: vi.fn(),
-}));
-
-vi.mock("../../db", () => ({
-  db: {
-    transaction: vi.fn(),
-  },
 }));
 
 const { mockFileBuffer } = vi.hoisted(() => ({
@@ -708,7 +703,6 @@ describe("Cooking Routes", () => {
 
   describe("POST /api/cooking/sessions/:id/log", () => {
     it("logs a meal and clears the session", async () => {
-      const { db } = await import("../../db");
       const sessionId = "log-session";
       _testInternals.cookSessionStore.set(sessionId, {
         id: sessionId,
@@ -738,16 +732,9 @@ describe("Cooking Routes", () => {
         sourceType: "cook_session",
       };
 
-      vi.mocked(db.transaction).mockImplementation(async (cb) => {
-        const fakeTx = {
-          insert: () => ({
-            values: () => ({
-              returning: () => Promise.resolve([mockItem]),
-            }),
-          }),
-        };
-        return cb(fakeTx as never);
-      });
+      vi.mocked(storage.createScannedItemWithLog).mockResolvedValue(
+        mockItem as never,
+      );
 
       const res = await request(app)
         .post(`/api/cooking/sessions/${sessionId}/log`)
@@ -788,7 +775,6 @@ describe("Cooking Routes", () => {
     });
 
     it("returns 500 when database transaction fails", async () => {
-      const { db } = await import("../../db");
       const sessionId = "log-error-session";
       _testInternals.cookSessionStore.set(sessionId, {
         id: sessionId,
@@ -799,7 +785,9 @@ describe("Cooking Routes", () => {
       });
 
       vi.mocked(batchNutritionLookup).mockResolvedValue(new Map() as never);
-      vi.mocked(db.transaction).mockRejectedValue(new Error("DB error"));
+      vi.mocked(storage.createScannedItemWithLog).mockRejectedValue(
+        new Error("DB error"),
+      );
 
       const res = await request(app)
         .post(`/api/cooking/sessions/${sessionId}/log`)

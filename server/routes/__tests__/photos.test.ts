@@ -28,6 +28,7 @@ vi.mock("../../storage", async () => {
       getDailyScanCount: vi.fn(),
       createScannedItem: vi.fn(),
       createDailyLog: vi.fn(),
+      createScannedItemWithLog: vi.fn(),
       // Session functions use real in-memory implementation (no DB)
       canCreateAnalysisSession: sessions.canCreateAnalysisSession,
       createAnalysisSession: sessions.createAnalysisSession,
@@ -52,12 +53,6 @@ vi.mock("../../services/photo-analysis", () => ({
 
 vi.mock("../../services/nutrition-lookup", () => ({
   batchNutritionLookup: vi.fn(),
-}));
-
-vi.mock("../../db", () => ({
-  db: {
-    transaction: vi.fn(),
-  },
 }));
 
 vi.mock("../../middleware/auth");
@@ -278,8 +273,7 @@ describe("Photos Routes", () => {
       expect(res.status).toBe(400);
     });
 
-    it("creates scanned item and daily log via transaction", async () => {
-      const { db } = await import("../../db");
+    it("creates scanned item and daily log via storage", async () => {
       const mockItem = {
         id: 42,
         userId: "1",
@@ -291,16 +285,9 @@ describe("Photos Routes", () => {
         sourceType: "photo",
       };
 
-      vi.mocked(db.transaction).mockImplementation(async (cb) => {
-        const fakeTx = {
-          insert: () => ({
-            values: () => ({
-              returning: () => Promise.resolve([mockItem]),
-            }),
-          }),
-        };
-        return cb(fakeTx as never);
-      });
+      vi.mocked(storage.createScannedItemWithLog).mockResolvedValue(
+        mockItem as never,
+      );
 
       const res = await request(app)
         .post("/api/photos/confirm")
@@ -324,9 +311,10 @@ describe("Photos Routes", () => {
       expect(res.body.productName).toBe("Apple");
     });
 
-    it("returns 500 when transaction fails", async () => {
-      const { db } = await import("../../db");
-      vi.mocked(db.transaction).mockRejectedValue(new Error("DB error"));
+    it("returns 500 when storage call fails", async () => {
+      vi.mocked(storage.createScannedItemWithLog).mockRejectedValue(
+        new Error("DB error"),
+      );
 
       const res = await request(app)
         .post("/api/photos/confirm")

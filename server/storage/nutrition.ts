@@ -270,6 +270,32 @@ export async function createDailyLog(log: InsertDailyLog): Promise<DailyLog> {
   return dailyLog;
 }
 
+/**
+ * Atomically creates a scanned item and its associated daily log entry.
+ * Used by nutrition, photos, cooking, and beverages routes.
+ */
+export async function createScannedItemWithLog(
+  item: InsertScannedItem,
+  logOverrides?: Partial<Pick<InsertDailyLog, "mealType" | "source">>,
+): Promise<ScannedItem> {
+  return db.transaction(async (tx) => {
+    const [scannedItem] = await tx
+      .insert(scannedItems)
+      .values(item)
+      .returning();
+
+    await tx.insert(dailyLogs).values({
+      userId: item.userId,
+      scannedItemId: scannedItem.id,
+      servings: "1",
+      mealType: logOverrides?.mealType ?? null,
+      source: logOverrides?.source,
+    });
+
+    return scannedItem;
+  });
+}
+
 export async function getDailySummary(
   userId: string,
   date: Date,

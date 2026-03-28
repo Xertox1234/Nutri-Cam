@@ -1,11 +1,10 @@
 import type { Express, Request, Response } from "express";
 import { z, ZodError } from "zod";
-import { db } from "../db";
 import { requireAuth } from "../middleware/auth";
 import { sendError } from "../lib/api-errors";
 import { ErrorCode } from "@shared/constants/error-codes";
 import { formatZodError } from "./_helpers";
-import { scannedItems, dailyLogs } from "@shared/schema";
+import { storage } from "../storage";
 import { lookupNutrition } from "../services/nutrition-lookup";
 import {
   BEVERAGE_TYPES,
@@ -125,35 +124,23 @@ export function register(app: Express): void {
           customName,
         );
 
-        // Create scanned item + daily log in a single transaction
-        const [scannedItem] = await db.transaction(async (tx) => {
-          const [item] = await tx
-            .insert(scannedItems)
-            .values({
-              userId: req.userId!,
-              productName,
-              servingSize,
-              calories: calories.toString(),
-              protein: protein.toString(),
-              carbs: carbs.toString(),
-              fat: fat.toString(),
-              fiber: fiber.toString(),
-              sugar: sugar.toString(),
-              sodium: sodium.toString(),
-              sourceType: "beverage",
-            })
-            .returning();
-
-          await tx.insert(dailyLogs).values({
+        // Create scanned item + daily log atomically via storage layer
+        const scannedItem = await storage.createScannedItemWithLog(
+          {
             userId: req.userId!,
-            scannedItemId: item.id,
-            servings: "1",
-            source: "beverage",
-            mealType: validated.mealType || null,
-          });
-
-          return [item];
-        });
+            productName,
+            servingSize,
+            calories: calories.toString(),
+            protein: protein.toString(),
+            carbs: carbs.toString(),
+            fat: fat.toString(),
+            fiber: fiber.toString(),
+            sugar: sugar.toString(),
+            sodium: sodium.toString(),
+            sourceType: "beverage",
+          },
+          { source: "beverage", mealType: validated.mealType || null },
+        );
 
         res.status(201).json(scannedItem);
       } catch (error) {

@@ -3,11 +3,9 @@ import crypto from "crypto";
 import { MAX_IMAGE_SIZE_BYTES } from "../storage/sessions";
 import { z, ZodError } from "zod";
 import { storage } from "../storage";
-import { db } from "../db";
 import { requireAuth } from "../middleware/auth";
 import { sendError } from "../lib/api-errors";
 import { ErrorCode } from "@shared/constants/error-codes";
-import { scannedItems, dailyLogs } from "@shared/schema";
 import {
   photoIntentSchema,
   INTENT_CONFIG,
@@ -397,32 +395,21 @@ export function register(app: Express): void {
         const confidence = session?.result?.overallConfidence;
 
         // Create scanned item with photo source
-        const [scannedItem] = await db.transaction(async (tx) => {
-          const [item] = await tx
-            .insert(scannedItems)
-            .values({
-              userId: req.userId!,
-              productName: validated.foods.map((f) => f.name).join(", "),
-              calories: totals.calories.toString(),
-              protein: totals.protein.toString(),
-              carbs: totals.carbs.toString(),
-              fat: totals.fat.toString(),
-              sourceType: "photo",
-              aiConfidence: confidence?.toString(),
-              preparationMethods: validated.preparationMethods || null,
-              analysisIntent: validated.analysisIntent || null,
-            })
-            .returning();
-
-          await tx.insert(dailyLogs).values({
+        const scannedItem = await storage.createScannedItemWithLog(
+          {
             userId: req.userId!,
-            scannedItemId: item.id,
-            servings: "1",
-            mealType: validated.mealType || null,
-          });
-
-          return [item];
-        });
+            productName: validated.foods.map((f) => f.name).join(", "),
+            calories: totals.calories.toString(),
+            protein: totals.protein.toString(),
+            carbs: totals.carbs.toString(),
+            fat: totals.fat.toString(),
+            sourceType: "photo",
+            aiConfidence: confidence?.toString(),
+            preparationMethods: validated.preparationMethods || null,
+            analysisIntent: validated.analysisIntent || null,
+          },
+          { mealType: validated.mealType || null },
+        );
 
         // Clean up session and its timeout to prevent memory leaks
         storage.clearAnalysisSession(validated.sessionId);
@@ -615,35 +602,24 @@ export function register(app: Express): void {
 
         const productName = labelData.productName || "Nutrition label scan";
 
-        const [scannedItem] = await db.transaction(async (tx) => {
-          const [item] = await tx
-            .insert(scannedItems)
-            .values({
-              userId: req.userId!,
-              barcode: barcode || null,
-              productName,
-              servingSize: labelData.servingSize || null,
-              calories: scaledCalories.toString(),
-              protein: scaledProtein.toString(),
-              carbs: scaledCarbs.toString(),
-              fat: scaledFat.toString(),
-              fiber: scaledFiber.toString(),
-              sugar: scaledSugar.toString(),
-              sodium: scaledSodium.toString(),
-              sourceType: "label",
-              aiConfidence: labelData.confidence.toString(),
-            })
-            .returning();
-
-          await tx.insert(dailyLogs).values({
+        const scannedItem = await storage.createScannedItemWithLog(
+          {
             userId: req.userId!,
-            scannedItemId: item.id,
-            servings: "1",
-            mealType: validated.mealType || null,
-          });
-
-          return [item];
-        });
+            barcode: barcode || null,
+            productName,
+            servingSize: labelData.servingSize || null,
+            calories: scaledCalories.toString(),
+            protein: scaledProtein.toString(),
+            carbs: scaledCarbs.toString(),
+            fat: scaledFat.toString(),
+            fiber: scaledFiber.toString(),
+            sugar: scaledSugar.toString(),
+            sodium: scaledSodium.toString(),
+            sourceType: "label",
+            aiConfidence: labelData.confidence.toString(),
+          },
+          { mealType: validated.mealType || null },
+        );
 
         // Silent cache seeding: if barcode was provided and NO cache entry
         // exists yet, seed the cache with label data. Never overwrite existing

@@ -10,6 +10,7 @@ vi.mock("../../storage", () => ({
     getUserProfile: vi.fn(),
     updateUserProfile: vi.fn(),
     createUserProfile: vi.fn(),
+    upsertProfileWithOnboarding: vi.fn(),
     invalidateSuggestionCacheForUser: vi.fn().mockResolvedValue(undefined),
   },
 }));
@@ -17,13 +18,6 @@ vi.mock("../../storage", () => ({
 vi.mock("../../middleware/auth");
 
 vi.mock("express-rate-limit");
-
-// Mock db for transaction-based endpoints
-vi.mock("../../db", () => ({
-  db: {
-    transaction: vi.fn(),
-  },
-}));
 
 function createApp() {
   const app = express();
@@ -174,28 +168,9 @@ describe("Profile Routes", () => {
 
   describe("POST /api/user/dietary-profile", () => {
     it("creates profile via transaction and returns 201", async () => {
-      const { db } = await import("../../db");
-      vi.mocked(db.transaction).mockImplementation(async (cb) => {
-        // Mock the transaction callback with a fake tx
-        const fakeTx = {
-          select: () => ({
-            from: () => ({
-              where: () => Promise.resolve([]),
-            }),
-          }),
-          insert: () => ({
-            values: () => ({
-              returning: () => Promise.resolve([mockProfile]),
-            }),
-          }),
-          update: () => ({
-            set: () => ({
-              where: () => Promise.resolve(),
-            }),
-          }),
-        };
-        return cb(fakeTx as never);
-      });
+      vi.mocked(storage.upsertProfileWithOnboarding).mockResolvedValue(
+        mockProfile as never,
+      );
 
       const res = await request(app)
         .post("/api/user/dietary-profile")
@@ -226,8 +201,9 @@ describe("Profile Routes", () => {
     });
 
     it("returns 500 when transaction fails", async () => {
-      const { db } = await import("../../db");
-      vi.mocked(db.transaction).mockRejectedValue(new Error("TX error"));
+      vi.mocked(storage.upsertProfileWithOnboarding).mockRejectedValue(
+        new Error("TX error"),
+      );
 
       const res = await request(app)
         .post("/api/user/dietary-profile")
