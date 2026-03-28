@@ -22,6 +22,7 @@ import { useAccessibility } from "@/hooks/useAccessibility";
 import { useSavedItems, useSavedItemCount } from "@/hooks/useSavedItems";
 import { usePremiumContext } from "@/context/PremiumContext";
 import { Spacing, BorderRadius, withOpacity } from "@/constants/theme";
+import { FLATLIST_DEFAULTS } from "@/constants/performance";
 import type { SavedItem } from "@shared/schema";
 
 const ITEM_SEPARATOR_HEIGHT = Spacing.md;
@@ -198,9 +199,7 @@ export default function SavedItemsScreen() {
           />
         }
         showsVerticalScrollIndicator={false}
-        removeClippedSubviews={true}
-        maxToRenderPerBatch={15}
-        windowSize={5}
+        {...FLATLIST_DEFAULTS}
       />
     </ThemedView>
   );

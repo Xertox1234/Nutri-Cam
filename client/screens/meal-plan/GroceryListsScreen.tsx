@@ -16,6 +16,7 @@ import {
   FontFamily,
   withOpacity,
 } from "@/constants/theme";
+import { FLATLIST_DEFAULTS } from "@/constants/performance";
 import {
   useGroceryLists,
   useCreateGroceryList,
@@ -142,9 +143,7 @@ export default function GroceryListsScreen() {
         data={lists || []}
         keyExtractor={(item) => String(item.id)}
         renderItem={renderItem}
-        removeClippedSubviews={true}
-        maxToRenderPerBatch={15}
-        windowSize={5}
+        {...FLATLIST_DEFAULTS}
         contentContainerStyle={{
           paddingTop: headerHeight + Spacing.md,
           paddingHorizontal: Spacing.lg,
