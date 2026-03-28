@@ -2,7 +2,6 @@ import type { Express, Request, Response } from "express";
 import { requireAuth } from "../middleware/auth";
 import { sendError } from "../lib/api-errors";
 import { ErrorCode } from "@shared/constants/error-codes";
-import { type FoodCategory } from "@shared/constants/preparation";
 import {
   formatZodError,
   checkPremiumFeature,
@@ -16,22 +15,18 @@ import {
   nutritionRequestSchema,
   logRequestSchema,
   substitutionRequestSchema,
-  photoAnalysisResponseSchema,
   type CookingSessionIngredient,
-  type CookSessionNutritionItem,
-  type CookSessionNutritionSummary,
 } from "@shared/types/cook-session";
 import {
   mergeDetectedIngredients,
   MAX_INGREDIENTS_PER_SESSION,
 } from "../lib/cook-session-merge";
-import { openai, OPENAI_TIMEOUT_HEAVY_MS } from "../lib/openai";
-import { SYSTEM_PROMPT_BOUNDARY } from "../lib/ai-safety";
-import { batchNutritionLookup } from "../services/nutrition-lookup";
 import {
-  calculateCookedNutrition,
-  preparationToCookingMethod,
-} from "../services/cooking-adjustment";
+  analyzeIngredientPhoto,
+  IngredientAnalysisError,
+  calculateSessionNutrition,
+  calculateSessionMacros,
+} from "../services/cooking-session";
 import { generateRecipeContent } from "../services/recipe-generation";
 import { getSubstitutions } from "../services/ingredient-substitution";
 import {
@@ -94,7 +89,6 @@ const cookStore = createSessionStore<CookingSession>({
 });
 
 // Aliases for backward compatibility with route code and tests
-const cookSessionStore = cookStore._internals.store;
 const clearCookSession = cookStore.clear;
 const resetSessionTimeout = cookStore.resetTimeout;
 
@@ -118,40 +112,6 @@ function getSessionForUser(
   }
   return session;
 }
-
-// ============================================================================
-// INGREDIENT ANALYSIS PROMPT
-// ============================================================================
-
-const INGREDIENT_ANALYSIS_PROMPT = `You are a nutrition assistant analyzing photos of raw cooking ingredients.
-
-Identify each distinct ingredient visible in the photo(s). For each ingredient provide:
-1. Name (specific: "chicken breast" not "chicken")
-2. Estimated quantity in a numeric value
-3. Unit (e.g., "g", "oz", "cup", "piece", "medium")
-4. Your confidence level (0-1)
-5. Food category: one of "protein", "vegetable", "grain", "fruit", "dairy", "beverage", "other"
-
-Rules:
-- Focus on RAW INGREDIENTS, not prepared dishes
-- Use metric or US standard units
-- If quantity is uncertain, provide your best estimate with lower confidence
-- Be specific with cuts and forms (e.g., "diced onion", "boneless chicken thigh")
-
-${SYSTEM_PROMPT_BOUNDARY}
-
-Respond with JSON only matching this schema:
-{
-  "ingredients": [
-    {
-      "name": "ingredient name",
-      "quantity": 200,
-      "unit": "g",
-      "confidence": 0.85,
-      "category": "protein"
-    }
-  ]
-}`;
 
 // ============================================================================
 // TEST INTERNALS
@@ -291,79 +251,23 @@ export function register(app: Express): void {
         const imageBase64 = req.file.buffer.toString("base64");
         const photoId = crypto.randomUUID();
 
-        // Call GPT-4o Vision to detect ingredients
-        const completion = await openai.chat.completions.create(
-          {
-            model: "gpt-4o",
-            messages: [
-              { role: "system", content: INGREDIENT_ANALYSIS_PROMPT },
-              {
-                role: "user",
-                content: [
-                  {
-                    type: "image_url",
-                    image_url: {
-                      url: `data:${req.file.mimetype};base64,${imageBase64}`,
-                      detail: session.photos.length >= 4 ? "low" : "high",
-                    },
-                  },
-                ],
-              },
-            ],
-            response_format: { type: "json_object" },
-            max_tokens: 1000,
-          },
-          { timeout: OPENAI_TIMEOUT_HEAVY_MS },
-        );
-
-        const rawContent = completion.choices[0]?.message?.content;
-        if (!rawContent) {
-          return sendError(
-            res,
-            500,
-            "No response from ingredient analysis",
-            ErrorCode.INTERNAL_ERROR,
-          );
-        }
-
-        let parsed: unknown;
+        let newIngredients: CookingSessionIngredient[];
         try {
-          parsed = JSON.parse(rawContent);
-        } catch {
-          return sendError(
-            res,
-            500,
-            "Invalid JSON from ingredient analysis",
-            ErrorCode.INTERNAL_ERROR,
+          newIngredients = await analyzeIngredientPhoto(
+            imageBase64,
+            req.file.mimetype,
+            session.photos.length,
           );
+          // Set the real photoId on each detected ingredient
+          for (const ingredient of newIngredients) {
+            ingredient.photoId = photoId;
+          }
+        } catch (error) {
+          if (error instanceof IngredientAnalysisError) {
+            return sendError(res, 500, error.message, ErrorCode.INTERNAL_ERROR);
+          }
+          throw error;
         }
-
-        const validated = photoAnalysisResponseSchema.safeParse(parsed);
-        if (!validated.success) {
-          console.error(
-            "Ingredient analysis validation failed:",
-            validated.error.format(),
-          );
-          return sendError(
-            res,
-            500,
-            "Unexpected response format from ingredient analysis",
-            ErrorCode.INTERNAL_ERROR,
-          );
-        }
-
-        // Merge detected ingredients into session
-        const newIngredients: CookingSessionIngredient[] =
-          validated.data.ingredients.map((detected) => ({
-            id: crypto.randomUUID(),
-            name: detected.name,
-            quantity: detected.quantity,
-            unit: detected.unit,
-            confidence: detected.confidence,
-            category: detected.category as FoodCategory,
-            photoId,
-            userEdited: false,
-          }));
 
         session.ingredients = mergeDetectedIngredients(
           session.ingredients,
@@ -541,125 +445,10 @@ export function register(app: Express): void {
           );
         }
 
-        const globalCookingMethod = parsed.data.cookingMethod;
-
-        // Build lookup queries: "quantity unit name"
-        const lookupQueries = session.ingredients.map(
-          (i) => `${i.quantity} ${i.unit} ${i.name}`,
+        const summary = await calculateSessionNutrition(
+          session.ingredients,
+          parsed.data.cookingMethod,
         );
-
-        const nutritionMap = await batchNutritionLookup(lookupQueries);
-
-        const items: CookSessionNutritionItem[] = [];
-        const total = {
-          calories: 0,
-          protein: 0,
-          carbs: 0,
-          fat: 0,
-          fiber: 0,
-          sugar: 0,
-          sodium: 0,
-        };
-
-        for (let i = 0; i < session.ingredients.length; i++) {
-          const ingredient = session.ingredients[i];
-          const query = lookupQueries[i];
-          const nutrition = nutritionMap.get(query);
-
-          if (!nutrition) {
-            items.push({
-              ingredientId: ingredient.id,
-              name: ingredient.name,
-              calories: 0,
-              protein: 0,
-              carbs: 0,
-              fat: 0,
-              fiber: 0,
-              sugar: 0,
-              sodium: 0,
-              servingSize: `${ingredient.quantity} ${ingredient.unit}`,
-            });
-            continue;
-          }
-
-          // Apply cooking method adjustment if specified
-          const methodStr = ingredient.preparationMethod || globalCookingMethod;
-          let finalNutrition = {
-            calories: nutrition.calories,
-            protein: nutrition.protein,
-            carbs: nutrition.carbs,
-            fat: nutrition.fat,
-            fiber: nutrition.fiber,
-            sugar: nutrition.sugar,
-            sodium: nutrition.sodium,
-          };
-
-          let appliedMethod: string | undefined;
-          if (methodStr && methodStr !== "raw" && methodStr !== "As Served") {
-            const cookingMethod = preparationToCookingMethod(methodStr);
-            const cooked = calculateCookedNutrition(
-              {
-                calories: nutrition.calories,
-                protein: nutrition.protein,
-                carbs: nutrition.carbs,
-                fat: nutrition.fat,
-                fiber: nutrition.fiber,
-                sugar: nutrition.sugar,
-                sodium: nutrition.sodium,
-              },
-              ingredient.quantity,
-              ingredient.category,
-              cookingMethod,
-            );
-
-            if (cooked.adjustmentApplied) {
-              finalNutrition = {
-                calories: cooked.calories,
-                protein: cooked.protein,
-                carbs: cooked.carbs,
-                fat: cooked.fat,
-                fiber: cooked.fiber,
-                sugar: cooked.sugar,
-                sodium: cooked.sodium,
-              };
-              appliedMethod = cookingMethod;
-            }
-          }
-
-          const item: CookSessionNutritionItem = {
-            ingredientId: ingredient.id,
-            name: ingredient.name,
-            calories: finalNutrition.calories,
-            protein: finalNutrition.protein,
-            carbs: finalNutrition.carbs,
-            fat: finalNutrition.fat,
-            fiber: finalNutrition.fiber,
-            sugar: finalNutrition.sugar,
-            sodium: finalNutrition.sodium,
-            servingSize: `${ingredient.quantity} ${ingredient.unit}`,
-            cookingMethodApplied: appliedMethod,
-          };
-          items.push(item);
-
-          total.calories += item.calories;
-          total.protein += item.protein;
-          total.carbs += item.carbs;
-          total.fat += item.fat;
-          total.fiber += item.fiber;
-          total.sugar += item.sugar;
-          total.sodium += item.sodium;
-        }
-
-        // Round totals
-        total.calories = Math.round(total.calories);
-        total.protein = Math.round(total.protein * 10) / 10;
-        total.carbs = Math.round(total.carbs * 10) / 10;
-        total.fat = Math.round(total.fat * 10) / 10;
-        total.fiber = Math.round(total.fiber * 10) / 10;
-        total.sugar = Math.round(total.sugar * 10) / 10;
-        total.sodium = Math.round(total.sodium);
-
-        const summary: CookSessionNutritionSummary = { total, items };
         res.json(summary);
       } catch (error) {
         console.error("Nutrition summary error:", error);
@@ -706,21 +495,7 @@ export function register(app: Express): void {
         }
 
         // Get nutrition data for totals
-        const lookupQueries = session.ingredients.map(
-          (i) => `${i.quantity} ${i.unit} ${i.name}`,
-        );
-        const nutritionMap = await batchNutritionLookup(lookupQueries);
-
-        const totals = { calories: 0, protein: 0, carbs: 0, fat: 0 };
-        for (let i = 0; i < session.ingredients.length; i++) {
-          const nutrition = nutritionMap.get(lookupQueries[i]);
-          if (nutrition) {
-            totals.calories += nutrition.calories;
-            totals.protein += nutrition.protein;
-            totals.carbs += nutrition.carbs;
-            totals.fat += nutrition.fat;
-          }
-        }
+        const totals = await calculateSessionMacros(session.ingredients);
 
         // Composite product name (like photos.ts line 430)
         const productName = session.ingredients.map((i) => i.name).join(", ");

@@ -7,6 +7,10 @@ import { register, _testInternals } from "../cooking";
 import { batchNutritionLookup } from "../../services/nutrition-lookup";
 import { generateRecipeContent } from "../../services/recipe-generation";
 import { getSubstitutions } from "../../services/ingredient-substitution";
+import {
+  analyzeIngredientPhoto,
+  IngredientAnalysisError,
+} from "../../services/cooking-session";
 import type { CookingSessionIngredient } from "@shared/types/cook-session";
 
 vi.mock("../../storage", () => ({
@@ -22,20 +26,25 @@ vi.mock("../../middleware/auth");
 vi.mock("express-rate-limit");
 
 vi.mock("../../lib/openai", () => ({
-  openai: {
-    chat: {
-      completions: {
-        create: vi.fn(),
-      },
-    },
-  },
   isAiConfigured: true,
-  OPENAI_TIMEOUT_HEAVY_MS: 30000,
 }));
 
-vi.mock("../../lib/ai-safety", () => ({
-  SYSTEM_PROMPT_BOUNDARY: "--- SYSTEM BOUNDARY ---",
-}));
+// Mock only analyzeIngredientPhoto; let calculateSessionNutrition and
+// calculateSessionMacros call through to real implementations (which use
+// the mocked batchNutritionLookup and cooking-adjustment modules).
+vi.mock("../../services/cooking-session", async () => {
+  const actual = await vi.importActual("../../services/cooking-session");
+  return {
+    ...actual,
+    analyzeIngredientPhoto: vi.fn(),
+    IngredientAnalysisError: class IngredientAnalysisError extends Error {
+      constructor(message: string) {
+        super(message);
+        this.name = "IngredientAnalysisError";
+      }
+    },
+  };
+});
 
 vi.mock("../../services/nutrition-lookup", () => ({
   batchNutritionLookup: vi.fn(),
@@ -267,7 +276,6 @@ describe("Cooking Routes", () => {
 
   describe("POST /api/cooking/sessions/:id/photos", () => {
     it("analyzes a photo and adds detected ingredients", async () => {
-      const { openai } = await import("../../lib/openai");
       const sessionId = "photo-session";
       _testInternals.cookSessionStore.set(sessionId, {
         id: sessionId,
@@ -277,25 +285,18 @@ describe("Cooking Routes", () => {
         createdAt: Date.now(),
       });
 
-      vi.mocked(openai.chat.completions.create).mockResolvedValue({
-        choices: [
-          {
-            message: {
-              content: JSON.stringify({
-                ingredients: [
-                  {
-                    name: "chicken breast",
-                    quantity: 200,
-                    unit: "g",
-                    confidence: 0.9,
-                    category: "protein",
-                  },
-                ],
-              }),
-            },
-          },
-        ],
-      } as never);
+      vi.mocked(analyzeIngredientPhoto).mockResolvedValue([
+        {
+          id: "detected-1",
+          name: "chicken breast",
+          quantity: 200,
+          unit: "g",
+          confidence: 0.9,
+          category: "protein",
+          photoId: "",
+          userEdited: false,
+        },
+      ]);
 
       vi.mocked(storage.getUserProfile).mockResolvedValue(null as never);
 
@@ -345,8 +346,7 @@ describe("Cooking Routes", () => {
       expect(res.status).toBe(400);
     });
 
-    it("returns 500 when OpenAI returns no content", async () => {
-      const { openai } = await import("../../lib/openai");
+    it("returns 500 when analysis returns no content", async () => {
       const sessionId = "no-content-session";
       _testInternals.cookSessionStore.set(sessionId, {
         id: sessionId,
@@ -356,9 +356,9 @@ describe("Cooking Routes", () => {
         createdAt: Date.now(),
       });
 
-      vi.mocked(openai.chat.completions.create).mockResolvedValue({
-        choices: [{ message: { content: null } }],
-      } as never);
+      vi.mocked(analyzeIngredientPhoto).mockRejectedValue(
+        new IngredientAnalysisError("No response from ingredient analysis"),
+      );
 
       const res = await request(app)
         .post(`/api/cooking/sessions/${sessionId}/photos`)
@@ -368,8 +368,7 @@ describe("Cooking Routes", () => {
       expect(res.status).toBe(500);
     });
 
-    it("returns 500 when OpenAI returns invalid JSON", async () => {
-      const { openai } = await import("../../lib/openai");
+    it("returns 500 when analysis returns invalid JSON", async () => {
       const sessionId = "bad-json-session";
       _testInternals.cookSessionStore.set(sessionId, {
         id: sessionId,
@@ -379,9 +378,9 @@ describe("Cooking Routes", () => {
         createdAt: Date.now(),
       });
 
-      vi.mocked(openai.chat.completions.create).mockResolvedValue({
-        choices: [{ message: { content: "not json" } }],
-      } as never);
+      vi.mocked(analyzeIngredientPhoto).mockRejectedValue(
+        new IngredientAnalysisError("Invalid JSON from ingredient analysis"),
+      );
 
       const res = await request(app)
         .post(`/api/cooking/sessions/${sessionId}/photos`)
@@ -392,7 +391,6 @@ describe("Cooking Routes", () => {
     });
 
     it("returns allergen warnings when user has allergies", async () => {
-      const { openai } = await import("../../lib/openai");
       const sessionId = "allergen-session";
       _testInternals.cookSessionStore.set(sessionId, {
         id: sessionId,
@@ -402,25 +400,18 @@ describe("Cooking Routes", () => {
         createdAt: Date.now(),
       });
 
-      vi.mocked(openai.chat.completions.create).mockResolvedValue({
-        choices: [
-          {
-            message: {
-              content: JSON.stringify({
-                ingredients: [
-                  {
-                    name: "peanut butter",
-                    quantity: 30,
-                    unit: "g",
-                    confidence: 0.95,
-                    category: "other",
-                  },
-                ],
-              }),
-            },
-          },
-        ],
-      } as never);
+      vi.mocked(analyzeIngredientPhoto).mockResolvedValue([
+        {
+          id: "detected-2",
+          name: "peanut butter",
+          quantity: 30,
+          unit: "g",
+          confidence: 0.95,
+          category: "other",
+          photoId: "",
+          userEdited: false,
+        },
+      ]);
 
       vi.mocked(storage.getUserProfile).mockResolvedValue({
         allergies: "peanuts",
