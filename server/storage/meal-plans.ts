@@ -137,6 +137,53 @@ export async function createMealPlanRecipe(
   return created;
 }
 
+export interface MealPlanSuggestionInput {
+  recipe: InsertMealPlanRecipe;
+  ingredients: Omit<InsertRecipeIngredient, "recipeId">[];
+  planItem: Omit<InsertMealPlanItem, "recipeId">;
+}
+
+/**
+ * Atomically creates multiple meal plan recipes with their ingredients
+ * and plan items. Used when saving AI-suggested meal plans.
+ */
+export async function createMealPlanFromSuggestions(
+  meals: MealPlanSuggestionInput[],
+): Promise<{ recipeId: number; mealPlanItemId: number }[]> {
+  return db.transaction(async (tx) => {
+    const items: { recipeId: number; mealPlanItemId: number }[] = [];
+
+    for (const meal of meals) {
+      const [recipe] = await tx
+        .insert(mealPlanRecipes)
+        .values(meal.recipe)
+        .returning();
+
+      if (meal.ingredients.length > 0) {
+        await tx.insert(recipeIngredients).values(
+          meal.ingredients.map((ing, idx) => ({
+            ...ing,
+            recipeId: recipe.id,
+            displayOrder: ing.displayOrder ?? idx,
+          })),
+        );
+      }
+
+      const [mealPlanItem] = await tx
+        .insert(mealPlanItems)
+        .values({ ...meal.planItem, recipeId: recipe.id })
+        .returning();
+
+      items.push({
+        recipeId: recipe.id,
+        mealPlanItemId: mealPlanItem.id,
+      });
+    }
+
+    return items;
+  });
+}
+
 export async function updateMealPlanRecipe(
   id: number,
   userId: string,

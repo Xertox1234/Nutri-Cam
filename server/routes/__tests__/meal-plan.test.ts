@@ -3,7 +3,6 @@ import express from "express";
 import request from "supertest";
 
 import { storage } from "../../storage";
-import { db } from "../../db";
 import { register } from "../meal-plan";
 
 import { generateMealPlanFromPantry } from "../../services/pantry-meal-plan";
@@ -28,12 +27,7 @@ vi.mock("../../storage", () => ({
     getUserProfile: vi.fn(),
     getUser: vi.fn(),
     reorderMealPlanItems: vi.fn(),
-  },
-}));
-
-vi.mock("../../db", () => ({
-  db: {
-    transaction: vi.fn(),
+    createMealPlanFromSuggestions: vi.fn(),
   },
 }));
 
@@ -784,23 +778,9 @@ describe("Meal Plan Routes", () => {
     };
 
     it("creates recipes and plan items", async () => {
-      let insertCount = 0;
-      vi.mocked(db.transaction).mockImplementation(async (cb) => {
-        const fakeTx = {
-          insert: () => ({
-            values: () => ({
-              returning: () => {
-                insertCount++;
-                // 1st insert = recipe, 2nd = ingredients (no returning), 3rd = plan item
-                if (insertCount === 1)
-                  return Promise.resolve([{ id: 10, userId: "1" }]);
-                return Promise.resolve([{ id: 20 }]);
-              },
-            }),
-          }),
-        };
-        return cb(fakeTx as never);
-      });
+      vi.mocked(storage.createMealPlanFromSuggestions).mockResolvedValue([
+        { recipeId: 10, mealPlanItemId: 20 },
+      ]);
 
       const res = await request(app)
         .post("/api/meal-plan/save-generated")
@@ -812,6 +792,27 @@ describe("Meal Plan Routes", () => {
       expect(res.body.items).toHaveLength(1);
       expect(res.body.items[0].recipeId).toBe(10);
       expect(res.body.items[0].mealPlanItemId).toBe(20);
+
+      // Verify storage was called with correctly shaped data
+      expect(storage.createMealPlanFromSuggestions).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          expect.objectContaining({
+            recipe: expect.objectContaining({
+              userId: "1",
+              title: "Chicken Rice",
+              sourceType: "ai_suggestion",
+            }),
+            ingredients: expect.arrayContaining([
+              expect.objectContaining({ name: "Chicken" }),
+            ]),
+            planItem: expect.objectContaining({
+              userId: "1",
+              plannedDate: "2026-03-15",
+              mealType: "lunch",
+            }),
+          }),
+        ]),
+      );
     });
 
     it("returns 400 for empty meals array", async () => {

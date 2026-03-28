@@ -11,9 +11,9 @@ vi.mock("../../services/nutrition-lookup", () => ({
   lookupNutrition: vi.fn(),
 }));
 
-vi.mock("../../db", () => {
-  const mockReturning = vi.fn().mockResolvedValue([
-    {
+vi.mock("../../storage", () => ({
+  storage: {
+    createScannedItemWithLog: vi.fn().mockResolvedValue({
       id: 1,
       userId: "1",
       productName: "Coffee (Medium)",
@@ -22,22 +22,9 @@ vi.mock("../../db", () => {
       carbs: "0",
       fat: "0",
       sourceType: "beverage",
-    },
-  ]);
-
-  const mockValues = vi.fn().mockReturnValue({ returning: mockReturning });
-  const mockInsert = vi.fn().mockReturnValue({ values: mockValues });
-
-  return {
-    db: {
-      transaction: vi.fn().mockImplementation(async (fn) => {
-        return fn({
-          insert: mockInsert,
-        });
-      }),
-    },
-  };
-});
+    }),
+  },
+}));
 
 function createApp() {
   const app = express();

@@ -3,7 +3,6 @@ import express from "express";
 import request from "supertest";
 
 import { storage } from "../../storage";
-import { db } from "../../db";
 import {
   lookupNutrition,
   lookupBarcode,
@@ -21,6 +20,7 @@ vi.mock("../../storage", () => ({
     getConfirmedMealPlanItemIds: vi.fn(),
     getPlannedNutritionSummary: vi.fn(),
     getVerification: vi.fn().mockResolvedValue(null),
+    createScannedItemWithLog: vi.fn(),
   },
 }));
 
@@ -31,13 +31,6 @@ vi.mock("express-rate-limit");
 vi.mock("../../services/nutrition-lookup", () => ({
   lookupNutrition: vi.fn(),
   lookupBarcode: vi.fn(),
-}));
-
-// Mock db to prevent actual DB connection
-vi.mock("../../db", () => ({
-  db: {
-    transaction: vi.fn(),
-  },
 }));
 
 function createApp() {
@@ -288,17 +281,10 @@ describe("Nutrition Routes", () => {
   });
 
   describe("POST /api/scanned-items", () => {
-    it("creates a scanned item with daily log via transaction", async () => {
-      const mockInsert = vi.fn().mockReturnValue({
-        values: vi.fn().mockReturnValue({
-          returning: vi.fn().mockResolvedValue([mockScannedItem]),
-        }),
-      });
-      vi.mocked(db.transaction).mockImplementation(async (fn) => {
-        return fn({
-          insert: mockInsert,
-        } as any);
-      });
+    it("creates a scanned item with daily log via storage", async () => {
+      vi.mocked(storage.createScannedItemWithLog).mockResolvedValue(
+        mockScannedItem as never,
+      );
 
       const res = await request(app)
         .post("/api/scanned-items")
@@ -325,8 +311,10 @@ describe("Nutrition Routes", () => {
       expect(res.status).toBe(400);
     });
 
-    it("returns 500 when transaction throws", async () => {
-      vi.mocked(db.transaction).mockRejectedValue(new Error("TX error"));
+    it("returns 500 when storage throws", async () => {
+      vi.mocked(storage.createScannedItemWithLog).mockRejectedValue(
+        new Error("Storage error"),
+      );
 
       const res = await request(app)
         .post("/api/scanned-items")

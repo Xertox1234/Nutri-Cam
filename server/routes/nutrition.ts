@@ -1,15 +1,10 @@
 import type { Express, Request, Response } from "express";
 import { z, ZodError } from "zod";
 import { storage } from "../storage";
-import { db } from "../db";
 import { requireAuth } from "../middleware/auth";
 import { sendError } from "../lib/api-errors";
 import { ErrorCode } from "@shared/constants/error-codes";
-import {
-  insertScannedItemSchema,
-  scannedItems,
-  dailyLogs,
-} from "@shared/schema";
+import { insertScannedItemSchema } from "@shared/schema";
 import { lookupNutrition, lookupBarcode } from "../services/nutrition-lookup";
 import {
   nutritionLookupRateLimit,
@@ -234,35 +229,20 @@ export function register(app: Express): void {
           userId: req.userId!,
         });
 
-        // Transaction: create scanned item + daily log together
-        const item = await db.transaction(async (tx) => {
-          const [scannedItem] = await tx
-            .insert(scannedItems)
-            .values({
-              userId: validated.userId,
-              barcode: validated.barcode,
-              productName: validated.productName,
-              brandName: validated.brandName,
-              servingSize: validated.servingSize,
-              calories: validated.calories,
-              protein: validated.protein,
-              carbs: validated.carbs,
-              fat: validated.fat,
-              fiber: validated.fiber,
-              sugar: validated.sugar,
-              sodium: validated.sodium,
-              imageUrl: validated.imageUrl,
-            })
-            .returning();
-
-          await tx.insert(dailyLogs).values({
-            userId: req.userId!,
-            scannedItemId: scannedItem.id,
-            servings: "1",
-            mealType: null,
-          });
-
-          return scannedItem;
+        const item = await storage.createScannedItemWithLog({
+          userId: validated.userId,
+          barcode: validated.barcode,
+          productName: validated.productName,
+          brandName: validated.brandName,
+          servingSize: validated.servingSize,
+          calories: validated.calories,
+          protein: validated.protein,
+          carbs: validated.carbs,
+          fat: validated.fat,
+          fiber: validated.fiber,
+          sugar: validated.sugar,
+          sodium: validated.sodium,
+          imageUrl: validated.imageUrl,
         });
 
         res.status(201).json(item);
