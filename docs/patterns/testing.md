@@ -424,6 +424,27 @@ The pre-commit hook (`.husky/pre-commit`) runs three stages in sequence:
 | `client/**/*.tsx` | `check-accessibility.js`, `check-hardcoded-colors.js` |
 | `*.{js,md}`       | `prettier --write`                                    |
 
+### ESLint Ban on `as never` in Tests
+
+The `no-restricted-syntax` rule in `eslint.config.js` blocks `as never` casts in all `*.test.{ts,tsx}` files:
+
+```javascript
+{
+  files: ["**/*.test.{ts,tsx}"],
+  rules: {
+    "no-restricted-syntax": [
+      "error",
+      {
+        selector: "TSAsExpression > TSNeverKeyword",
+        message: "Do not use 'as never' in tests. Use typed mock factories from server/__tests__/factories instead.",
+      },
+    ],
+  },
+},
+```
+
+This technique — using `TSAsExpression > TSNeverKeyword` AST selector — can be reused to ban other unsafe casts. The selector targets any `x as never` expression in the code.
+
 ### Custom ESLint Rules (`eslint-plugin-ocrecipes`)
 
 Three custom rules in `eslint-plugin-ocrecipes/index.js` enforce server-side patterns. They apply to `server/routes/**/*.ts` via `eslint.config.js`:
@@ -615,6 +636,100 @@ formData.append("photos", {
 **When to use:** Any `FormData` file upload in React Native.
 
 **Why:** React Native's network layer serializes `{ uri, type, name }` objects as multipart file parts, but TypeScript expects `Blob | string`. The cast is unavoidable — the comment explains why.
+
+### Typed Mock Factories for Test Data
+
+Use typed factory functions from `server/__tests__/factories/` to create mock data in tests. Each factory returns a complete schema-compliant object and accepts `Partial<T>` overrides. This replaces unsafe `as never` casts, which are now banned by ESLint.
+
+```typescript
+// server/__tests__/factories/user.ts
+import type { User } from "@shared/schema";
+
+const userDefaults: User = {
+  id: "1",
+  username: "testuser",
+  password: "$2b$10$hashedpassword",
+  // ... all required fields with sensible defaults
+};
+
+export function createMockUser(overrides: Partial<User> = {}): User {
+  return { ...userDefaults, ...overrides };
+}
+```
+
+```typescript
+// Usage in tests
+import {
+  createMockUser,
+  createMockUserProfile,
+} from "../../__tests__/factories";
+
+// Full default User — all schema fields present
+vi.mocked(storage.getUser).mockResolvedValue(createMockUser());
+
+// Override specific fields for the test case
+vi.mocked(storage.getUser).mockResolvedValue(
+  createMockUser({ subscriptionTier: "premium", dailyCalorieGoal: 2500 }),
+);
+
+// "Not found" returns — use undefined (not null) for T | undefined storage functions
+vi.mocked(storage.getUser).mockResolvedValue(undefined);
+```
+
+```typescript
+// ❌ BAD: as never — bypasses type checking, hides schema mismatches
+vi.mocked(storage.getUser).mockResolvedValue({
+  id: 1,
+  username: "test",
+} as never);
+
+// ❌ BAD: null for "not found" when storage returns T | undefined
+vi.mocked(storage.getUser).mockResolvedValue(null as never);
+```
+
+**Available factories:** `server/__tests__/factories/index.ts` re-exports all factories organized by domain:
+
+| File              | Factories                                                                                                                                                                                                                       |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `user.ts`         | `createMockUser`, `createMockUserProfile`                                                                                                                                                                                       |
+| `nutrition.ts`    | `createMockScannedItem`, `createMockDailyLog`, `createMockNutritionData`, `createMockCookedNutrition`, `createMockChatCompletion`, `createMockNutritionCache`, `createMockMicronutrientCache`, `createMockFavouriteScannedItem` |
+| `recipes.ts`      | `createMockMealPlanRecipe`, `createMockRecipeIngredient`, `createMockMealPlanItem`, `createMockCommunityRecipe`, `createMockRecipeGenerationLog`, `createMockCookbook`, `createMockCookbookRecipe`                              |
+| `grocery.ts`      | `createMockGroceryList`, `createMockGroceryListItem`, `createMockPantryItem`                                                                                                                                                    |
+| `chat.ts`         | `createMockChatConversation`, `createMockChatMessage`                                                                                                                                                                           |
+| `health.ts`       | `createMockWeightLog`, `createMockHealthKitSync`, `createMockFastingSchedule`, `createMockFastingLog`, `createMockMedicationLog`, `createMockGoalAdjustmentLog`                                                                 |
+| `subscription.ts` | `createMockTransaction`                                                                                                                                                                                                         |
+| `scan.ts`         | `createMockMenuScan`, `createMockReceiptScan`                                                                                                                                                                                   |
+| `verification.ts` | `createMockBarcodeVerification`, `createMockVerificationHistory`, `createMockReformulationFlag`, `createMockApiKey`, `createMockApiKeyUsage`, `createMockBarcodeNutrition`                                                      |
+| `cache.ts`        | `createMockSuggestionCache`, `createMockInstructionCache`, `createMockMealSuggestionCache`                                                                                                                                      |
+| `saved-item.ts`   | `createMockSavedItem`                                                                                                                                                                                                           |
+
+**When to use:** Any test that mocks a storage function or service returning a domain object.
+
+**When NOT to use:** Mocking simple primitives (`true`, `0`, `[]`) or `undefined` — these don't need a factory.
+
+**Why this matters:** When a schema column is added, renamed, or removed, the factory's defaults produce a compile error — the single place to fix. Without factories, 583+ mock sites silently pass with incomplete objects, and type mismatches only surface in production.
+
+**Adding a new factory:** When a new table is added to `shared/schema.ts`, add a factory to the appropriate domain file (or create a new file) and re-export from `index.ts`. Fill in all required fields with sensible defaults.
+
+### Storage Return Types: `undefined` for "Not Found"
+
+Storage functions that look up a single record return `T | undefined` (not `T | null`) when the record doesn't exist. This is enforced by Drizzle's `result[0]` pattern which yields `undefined` for empty results.
+
+```typescript
+// Storage implementation
+export async function getUser(id: string): Promise<User | undefined> {
+  const [user] = await db.select().from(users).where(eq(users.id, id));
+  return user; // undefined if not found
+}
+
+// ✅ Test mock: undefined for "not found"
+vi.mocked(storage.getUser).mockResolvedValue(undefined);
+
+// ❌ Wrong: null — doesn't match the return type
+vi.mocked(storage.getUser).mockResolvedValue(null);
+```
+
+**Exceptions:** Some storage functions explicitly return `null` for business-logic reasons (e.g., `createGroceryListWithLimitCheck` returns `null` when the limit is exceeded, `getApiKey` returns `T | null`). Check the storage function's return type before choosing `undefined` vs `null` in your mock.
 
 ## Adding New Patterns
 
