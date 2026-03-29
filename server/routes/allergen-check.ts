@@ -16,6 +16,7 @@ import type {
 } from "@shared/types/allergen-check";
 import { getSubstitutions } from "../services/ingredient-substitution";
 import type { CookingSessionIngredient } from "@shared/types/cook-session";
+import { logger } from "../lib/logger";
 
 export function register(app: Express): void {
   /**
@@ -104,7 +105,10 @@ export function register(app: Express): void {
         const result: AllergenCheckResult = { matches, substitutions };
         res.json(result);
       } catch (error) {
-        console.error("Allergen check error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "allergen check error",
+        );
         sendError(
           res,
           500,

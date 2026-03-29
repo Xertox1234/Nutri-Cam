@@ -3,6 +3,7 @@ import { z } from "zod";
 import { storage } from "../storage";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/auth";
 import { sendError } from "../lib/api-errors";
+import { logger } from "../lib/logger";
 import { ErrorCode } from "@shared/constants/error-codes";
 import {
   pantryRateLimit,
@@ -57,7 +58,10 @@ export function register(app: Express): void {
         const items = await storage.getPantryItems(req.userId, limit);
         res.json(items);
       } catch (error) {
-        console.error("Get pantry items error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "get pantry items error",
+        );
         sendError(
           res,
           500,
@@ -104,7 +108,10 @@ export function register(app: Express): void {
         });
         res.status(201).json(item);
       } catch (error) {
-        console.error("Create pantry item error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "create pantry item error",
+        );
         sendError(
           res,
           500,
@@ -163,7 +170,10 @@ export function register(app: Express): void {
         }
         res.json(updated);
       } catch (error) {
-        console.error("Update pantry item error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "update pantry item error",
+        );
         sendError(
           res,
           500,
@@ -207,7 +217,10 @@ export function register(app: Express): void {
         }
         res.status(204).send();
       } catch (error) {
-        console.error("Delete pantry item error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "delete pantry item error",
+        );
         sendError(
           res,
           500,
@@ -236,7 +249,10 @@ export function register(app: Express): void {
         const items = await storage.getExpiringPantryItems(req.userId, 3);
         res.json(items);
       } catch (error) {
-        console.error("Get expiring pantry items error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "get expiring pantry items error",
+        );
         sendError(
           res,
           500,

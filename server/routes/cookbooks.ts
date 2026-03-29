@@ -10,6 +10,7 @@ import {
   parsePositiveIntParam,
   parseQueryInt,
 } from "./_helpers";
+import { logger } from "../lib/logger";
 
 const createCookbookSchema = z.object({
   name: z.string().min(1, "Name is required").max(200),
@@ -43,7 +44,10 @@ export function register(app: Express): void {
         const cookbooks = await storage.getUserCookbooks(req.userId, limit);
         res.json(cookbooks);
       } catch (error) {
-        console.error("Get cookbooks error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "failed to fetch cookbooks",
+        );
         sendError(
           res,
           500,
@@ -80,7 +84,10 @@ export function register(app: Express): void {
         });
         res.status(201).json(cookbook);
       } catch (error) {
-        console.error("Create cookbook error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "failed to create cookbook",
+        );
         sendError(
           res,
           500,
@@ -121,7 +128,10 @@ export function register(app: Express): void {
         );
         res.json({ ...cookbook, recipes });
       } catch (error) {
-        console.error("Get cookbook error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "failed to fetch cookbook",
+        );
         sendError(
           res,
           500,
@@ -172,7 +182,10 @@ export function register(app: Express): void {
         }
         res.json(updated);
       } catch (error) {
-        console.error("Update cookbook error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "failed to update cookbook",
+        );
         sendError(
           res,
           500,
@@ -208,7 +221,10 @@ export function register(app: Express): void {
         }
         res.status(204).send();
       } catch (error) {
-        console.error("Delete cookbook error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "failed to delete cookbook",
+        );
         sendError(
           res,
           500,
@@ -271,7 +287,10 @@ export function register(app: Express): void {
         }
         res.status(201).json(added);
       } catch (error) {
-        console.error("Add recipe to cookbook error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "failed to add recipe to cookbook",
+        );
         sendError(
           res,
           500,
@@ -334,7 +353,10 @@ export function register(app: Express): void {
         }
         res.status(204).send();
       } catch (error) {
-        console.error("Remove recipe from cookbook error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "failed to remove recipe from cookbook",
+        );
         sendError(
           res,
           500,

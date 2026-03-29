@@ -19,6 +19,7 @@ import {
   CatalogQuotaError,
 } from "../services/recipe-catalog";
 import { importRecipeFromUrl } from "../services/recipe-import";
+import { logger } from "../lib/logger";
 import {
   recipeGenerationRateLimit,
   instructionsRateLimit,
@@ -113,7 +114,10 @@ export function register(app: Express): void {
         const recipes = await storage.getFeaturedRecipes(limit, offset);
         res.json(stripAuthorId(recipes));
       } catch (error) {
-        console.error("Get featured recipes error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "get featured recipes failed",
+        );
         sendError(
           res,
           500,
@@ -162,7 +166,10 @@ export function register(app: Express): void {
           frequent,
         });
       } catch (error) {
-        console.error("Browse recipes error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "browse recipes failed",
+        );
         sendError(
           res,
           500,
@@ -200,7 +207,10 @@ export function register(app: Express): void {
 
         res.json(stripAuthorId(recipes));
       } catch (error) {
-        console.error("Get community recipes error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "get community recipes failed",
+        );
         sendError(
           res,
           500,
@@ -232,7 +242,10 @@ export function register(app: Express): void {
             generationsToday < features.dailyRecipeGenerations,
         });
       } catch (error) {
-        console.error("Get generation status error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "get generation status failed",
+        );
         sendError(
           res,
           500,
@@ -350,7 +363,10 @@ export function register(app: Express): void {
           );
           return;
         }
-        console.error("Recipe generation error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "recipe generation failed",
+        );
         sendError(
           res,
           500,
@@ -402,7 +418,10 @@ export function register(app: Express): void {
 
         res.json(recipe);
       } catch (error) {
-        console.error("Recipe share error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "recipe share failed",
+        );
         sendError(
           res,
           500,
@@ -422,7 +441,10 @@ export function register(app: Express): void {
         const recipes = await storage.getUserRecipes(req.userId);
         res.json(recipes);
       } catch (error) {
-        console.error("Get user recipes error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "get user recipes failed",
+        );
         sendError(
           res,
           500,
@@ -461,7 +483,10 @@ export function register(app: Express): void {
         const { authorId: _, ...safeRecipe } = recipe;
         res.json(safeRecipe);
       } catch (error) {
-        console.error("Get recipe error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "get recipe failed",
+        );
         sendError(res, 500, "Failed to fetch recipe", ErrorCode.INTERNAL_ERROR);
       }
     },
@@ -496,7 +521,10 @@ export function register(app: Express): void {
 
         res.status(204).send();
       } catch (error) {
-        console.error("Delete recipe error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "delete recipe failed",
+        );
         sendError(
           res,
           500,
@@ -543,7 +571,10 @@ export function register(app: Express): void {
           sendError(res, 402, error.message, "CATALOG_QUOTA_EXCEEDED");
           return;
         }
-        console.error("Catalog search error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "catalog search failed",
+        );
         sendError(
           res,
           500,
@@ -584,7 +615,10 @@ export function register(app: Express): void {
           sendError(res, 402, error.message, "CATALOG_QUOTA_EXCEEDED");
           return;
         }
-        console.error("Catalog detail error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "catalog detail failed",
+        );
         sendError(
           res,
           500,
@@ -649,7 +683,10 @@ export function register(app: Express): void {
           sendError(res, 402, error.message, "CATALOG_QUOTA_EXCEEDED");
           return;
         }
-        console.error("Catalog save error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "catalog save failed",
+        );
         sendError(
           res,
           500,
@@ -735,7 +772,10 @@ export function register(app: Express): void {
 
         res.status(201).json(recipe);
       } catch (error) {
-        console.error("URL import error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "URL import failed",
+        );
         sendError(
           res,
           500,

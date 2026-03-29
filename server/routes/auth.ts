@@ -25,6 +25,7 @@ import {
   profileUpdateSchema,
   upload,
 } from "./_helpers";
+import { logger } from "../lib/logger";
 
 const AVATAR_DIR = path.resolve(process.cwd(), "uploads/avatars");
 fs.mkdirSync(AVATAR_DIR, { recursive: true });
@@ -84,7 +85,10 @@ export function register(app: Express): void {
             ErrorCode.VALIDATION_ERROR,
           );
         }
-        console.error("Registration error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "registration error",
+        );
         sendError(
           res,
           500,
@@ -148,7 +152,10 @@ export function register(app: Express): void {
             ErrorCode.VALIDATION_ERROR,
           );
         }
-        console.error("Login error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "login error",
+        );
         sendError(res, 500, "Failed to login", ErrorCode.INTERNAL_ERROR);
       }
     },
@@ -174,7 +181,10 @@ export function register(app: Express): void {
 
         res.json({ success: true });
       } catch (error) {
-        console.error("Logout error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "logout error",
+        );
         sendError(res, 500, "Failed to logout", ErrorCode.INTERNAL_ERROR);
       }
     },
@@ -248,7 +258,10 @@ export function register(app: Express): void {
             ErrorCode.VALIDATION_ERROR,
           );
         }
-        console.error("Profile update error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "profile update error",
+        );
         sendError(
           res,
           500,
@@ -305,7 +318,10 @@ export function register(app: Express): void {
             ErrorCode.VALIDATION_ERROR,
           );
         }
-        console.error("Account deletion error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "account deletion error",
+        );
         sendError(
           res,
           500,
@@ -370,7 +386,10 @@ export function register(app: Express): void {
 
         res.json({ avatarUrl: user.avatarUrl });
       } catch (error) {
-        console.error("Avatar upload error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "avatar upload error",
+        );
         sendError(
           res,
           500,
@@ -400,7 +419,10 @@ export function register(app: Express): void {
 
         res.json({ success: true });
       } catch (error) {
-        console.error("Avatar delete error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "avatar delete error",
+        );
         sendError(
           res,
           500,

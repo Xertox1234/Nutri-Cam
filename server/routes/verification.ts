@@ -5,6 +5,7 @@ import { createSessionStore } from "../storage/sessions";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/auth";
 import { sendError } from "../lib/api-errors";
 import { ErrorCode } from "@shared/constants/error-codes";
+import { logger } from "../lib/logger";
 import { detectImageMimeType } from "../lib/image-mime";
 import {
   compareWithVerifications,
@@ -248,8 +249,13 @@ export function register(app: Express): void {
             );
 
             if (detection.shouldFlag) {
-              console.warn(
-                `[REFORMULATION] Product ${barcode} flagged: ${detection.divergentCount} divergent scans from ${detection.distinctUsers} users`,
+              logger.info(
+                {
+                  barcode,
+                  divergentCount: detection.divergentCount,
+                  distinctUsers: detection.distinctUsers,
+                },
+                "product flagged for reformulation",
               );
               await storage.flagReformulation(
                 barcode,
@@ -283,7 +289,10 @@ export function register(app: Express): void {
             ErrorCode.VALIDATION_ERROR,
           );
         }
-        console.error("Verification submit error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "verification submit failed",
+        );
         sendError(
           res,
           500,
@@ -365,7 +374,10 @@ export function register(app: Express): void {
 
         res.json({ sessionId, data });
       } catch (error) {
-        console.error("Front label analysis error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "front label analysis failed",
+        );
         sendError(
           res,
           500,
@@ -436,7 +448,10 @@ export function register(app: Express): void {
         // Validate with Zod before storing
         const parsed = frontLabelDataSchema.safeParse(frontLabelData);
         if (!parsed.success) {
-          console.error("Front label data validation failed:", parsed.error);
+          logger.warn(
+            { zodErrors: parsed.error.flatten() },
+            "front label data validation failed",
+          );
           return sendError(
             res,
             500,
@@ -461,7 +476,10 @@ export function register(app: Express): void {
             ErrorCode.VALIDATION_ERROR,
           );
         }
-        console.error("Front label confirm error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "front label confirm failed",
+        );
         sendError(
           res,
           500,
@@ -509,7 +527,10 @@ export function register(app: Express): void {
 
         res.json({ flags, total: totalCount, limit, offset });
       } catch (error) {
-        console.error("Reformulation flags error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "get reformulation flags failed",
+        );
         sendError(
           res,
           500,
@@ -560,7 +581,10 @@ export function register(app: Express): void {
 
         res.json({ success: true });
       } catch (error) {
-        console.error("Resolve reformulation flag error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "resolve reformulation flag failed",
+        );
         sendError(
           res,
           500,
@@ -583,7 +607,10 @@ export function register(app: Express): void {
         const stats = await storage.getUserVerificationStats(req.userId);
         res.json(stats);
       } catch (error) {
-        console.error("User verification stats error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "get user verification stats failed",
+        );
         sendError(
           res,
           500,
@@ -642,7 +669,10 @@ export function register(app: Express): void {
           hasFrontLabelData: verification.frontLabelData != null,
         });
       } catch (error) {
-        console.error("Verification status error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "get verification status failed",
+        );
         sendError(
           res,
           500,

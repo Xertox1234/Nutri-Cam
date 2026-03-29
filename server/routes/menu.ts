@@ -13,6 +13,7 @@ import {
   parseQueryInt,
 } from "./_helpers";
 import { detectImageMimeType } from "../lib/image-mime";
+import { logger } from "../lib/logger";
 
 const menuUpload = createImageUpload(5 * 1024 * 1024);
 
@@ -67,7 +68,10 @@ export function register(app: Express): void {
 
         res.json({ ...result, id: saved.id });
       } catch (error) {
-        console.error("Menu scan error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "menu scan error",
+        );
         sendError(res, 500, "Failed to analyze menu", ErrorCode.INTERNAL_ERROR);
       }
     },
@@ -91,7 +95,10 @@ export function register(app: Express): void {
         const scans = await storage.getMenuScans(req.userId, limit);
         res.json(scans);
       } catch (error) {
-        console.error("Get menu history error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "get menu history error",
+        );
         sendError(
           res,
           500,
@@ -127,7 +134,10 @@ export function register(app: Express): void {
           );
         res.status(204).send();
       } catch (error) {
-        console.error("Delete menu scan error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "delete menu scan error",
+        );
         sendError(
           res,
           500,

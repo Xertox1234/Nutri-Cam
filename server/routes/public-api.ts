@@ -13,6 +13,7 @@ import type {
   PaidProductResponse,
 } from "@shared/types/public-api";
 import type { FrontLabelData } from "@shared/types/front-label";
+import { logger } from "../lib/logger";
 
 const BARCODE_PATTERN = /^\d{8,14}$/;
 
@@ -137,7 +138,10 @@ export function register(app: Express): void {
 
       sendError(res, 404, "Product not found", "NOT_FOUND");
     } catch (err) {
-      console.error("Public API error:", err);
+      logger.error(
+        { err: err instanceof Error ? err : new Error(String(err)) },
+        "public API error",
+      );
       sendError(res, 500, "Internal server error", "INTERNAL_ERROR");
     }
   });

@@ -2,6 +2,7 @@ import type { Express, Response } from "express";
 import { storage } from "../storage";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/auth";
 import { sendError } from "../lib/api-errors";
+import { logger } from "../lib/logger";
 import { ErrorCode } from "@shared/constants/error-codes";
 import { createSavedItemSchema } from "@shared/schemas/saved-items";
 import {
@@ -25,7 +26,10 @@ export function register(app: Express): void {
         const items = await storage.getSavedItems(req.userId, limit);
         res.json(items);
       } catch (error) {
-        console.error("Get saved items error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "get saved items error",
+        );
         sendError(
           res,
           500,
@@ -45,7 +49,10 @@ export function register(app: Express): void {
         const count = await storage.getSavedItemCount(req.userId);
         res.json({ count });
       } catch (error) {
-        console.error("Get saved items count error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "get saved items count error",
+        );
         sendError(
           res,
           500,
@@ -86,7 +93,10 @@ export function register(app: Express): void {
 
         res.status(201).json(item);
       } catch (error) {
-        console.error("Create saved item error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "create saved item error",
+        );
         sendError(
           res,
           500,
@@ -118,7 +128,10 @@ export function register(app: Express): void {
 
         res.status(204).send();
       } catch (error) {
-        console.error("Delete saved item error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "delete saved item error",
+        );
         sendError(
           res,
           500,

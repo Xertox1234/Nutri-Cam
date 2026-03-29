@@ -13,6 +13,7 @@ import {
   RestoreRequestSchema,
 } from "@shared/schemas/subscription";
 import { sendError } from "../lib/api-errors";
+import { logger } from "../lib/logger";
 import { ErrorCode } from "@shared/constants/error-codes";
 import { subscriptionRateLimit } from "./_helpers";
 
@@ -52,7 +53,10 @@ export function register(app: Express): void {
 
         res.json(response);
       } catch (error) {
-        console.error("Error fetching subscription status:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "error fetching subscription status",
+        );
         sendError(
           res,
           500,
@@ -71,7 +75,10 @@ export function register(app: Express): void {
         const count = await storage.getDailyScanCount(req.userId, new Date());
         res.json({ count });
       } catch (error) {
-        console.error("Error fetching scan count:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "error fetching scan count",
+        );
         sendError(
           res,
           500,
@@ -150,7 +157,10 @@ export function register(app: Express): void {
           expiresAt: expiresAt?.toISOString() || null,
         });
       } catch (error) {
-        console.error("Error processing upgrade:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "error processing upgrade",
+        );
         sendError(
           res,
           500,
@@ -208,7 +218,10 @@ export function register(app: Express): void {
           expiresAt: expiresAt?.toISOString() || null,
         });
       } catch (error) {
-        console.error("Error restoring purchases:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "error restoring purchases",
+        );
         sendError(
           res,
           500,

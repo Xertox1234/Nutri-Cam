@@ -10,6 +10,7 @@ import {
   crudRateLimit,
 } from "./_helpers";
 import { sendError } from "../lib/api-errors";
+import { logger } from "../lib/logger";
 import { ErrorCode } from "@shared/constants/error-codes";
 import { calculateWeightTrend } from "../services/weight-trend";
 
@@ -50,7 +51,10 @@ export function register(app: Express): void {
         });
         res.json(logs);
       } catch (error) {
-        console.error("Get weight logs error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "get weight logs error",
+        );
         sendError(
           res,
           500,
@@ -92,7 +96,10 @@ export function register(app: Express): void {
 
         res.json({ ...trend, goalWeight });
       } catch (error) {
-        console.error("Get weight trend error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "get weight trend error",
+        );
         sendError(
           res,
           500,
@@ -130,7 +137,10 @@ export function register(app: Express): void {
             ErrorCode.VALIDATION_ERROR,
           );
         }
-        console.error("Create weight log error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "create weight log error",
+        );
         sendError(res, 500, "Failed to log weight", ErrorCode.INTERNAL_ERROR);
       }
     },
@@ -163,7 +173,10 @@ export function register(app: Express): void {
         }
         res.status(204).send();
       } catch (error) {
-        console.error("Delete weight log error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "delete weight log error",
+        );
         sendError(
           res,
           500,
@@ -198,7 +211,10 @@ export function register(app: Express): void {
             ErrorCode.VALIDATION_ERROR,
           );
         }
-        console.error("Set goal weight error:", error);
+        logger.error(
+          { err: error instanceof Error ? error : new Error(String(error)) },
+          "set goal weight error",
+        );
         sendError(
           res,
           500,
