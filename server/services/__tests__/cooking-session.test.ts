@@ -407,7 +407,7 @@ describe("calculateSessionNutrition", () => {
         ],
       ]),
     );
-    vi.mocked(preparationToCookingMethod).mockReturnValue("deep_fried");
+    vi.mocked(preparationToCookingMethod).mockReturnValue("deep-fried");
     vi.mocked(calculateCookedNutrition).mockReturnValue(
       createMockCookedNutrition({
         calories: 400,
@@ -428,7 +428,7 @@ describe("calculateSessionNutrition", () => {
 
     // Should have called with the per-ingredient method, not the global one
     expect(preparationToCookingMethod).toHaveBeenCalledWith("fried");
-    expect(result.items[0].cookingMethodApplied).toBe("deep_fried");
+    expect(result.items[0].cookingMethodApplied).toBe("deep-fried");
   });
 
   it("handles mixed found and missing nutrition data", async () => {
