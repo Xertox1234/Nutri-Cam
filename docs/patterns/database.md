@@ -1157,6 +1157,57 @@ await db
 - `server/services/nutrition-lookup.ts` -- `cacheNutritionIfAbsent()` guards label-confirm cache seeding
 - Security finding from PR #14 code review
 
+### Unique Index + `onConflictDoUpdate` for AI Cache Dedup
+
+When an AI cache table stores generated content keyed by `(scannedItemId, userId, profileHash)` (or similar composite key), the table **must** have a unique index on that composite key and the insert **must** use `onConflictDoUpdate`. Without this, concurrent requests that miss the cache simultaneously each insert a new row, leaving the table with duplicate entries for the same logical key.
+
+```typescript
+// shared/schema.ts -- unique index declaration
+export const suggestionCache = pgTable(
+  "suggestion_cache",
+  {
+    id: serial("id").primaryKey(),
+    scannedItemId: integer("scanned_item_id").notNull(),
+    userId: text("user_id").notNull(),
+    profileHash: text("profile_hash").notNull(),
+    suggestions: jsonb("suggestions").notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+  },
+  (table) => ({
+    itemUserProfileIdx: uniqueIndex(
+      "suggestion_cache_item_user_profile_idx",
+    ).on(table.scannedItemId, table.userId, table.profileHash),
+  }),
+);
+
+// server/storage/cache.ts -- insert uses onConflictDoUpdate
+await db
+  .insert(suggestionCache)
+  .values({ scannedItemId, userId, profileHash, suggestions, expiresAt })
+  .onConflictDoUpdate({
+    target: [
+      suggestionCache.scannedItemId,
+      suggestionCache.userId,
+      suggestionCache.profileHash,
+    ],
+    set: { suggestions, expiresAt },
+  });
+```
+
+**Contrast with `onConflictDoNothing`** (see "Defensive Cache Writes" pattern above):
+
+- **`onConflictDoUpdate`** — correct for AI-generated cache where a concurrent race should refresh the entry rather than silently drop the newer result.
+- **`onConflictDoNothing`** — correct for user-seeded cache (e.g., label scan data) where the first insert wins and later inserts must not overwrite it (anti-poisoning defense).
+
+**When to use:** Any cache table whose key is a composite of system-generated identifiers (item ID + user ID + content hash) and where a concurrent duplicate should refresh the entry.
+
+**References:**
+
+- `shared/schema.ts` -- `suggestion_cache_item_user_profile_idx` unique index
+- `server/storage/cache.ts` -- `createSuggestionCache()` with `onConflictDoUpdate`
+
+---
+
 ### Streak Calculation from Time-Series Data
 
 Calculate activity streaks by querying distinct UTC dates and walking backwards:
