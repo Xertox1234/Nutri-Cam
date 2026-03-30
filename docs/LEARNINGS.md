@@ -4,6 +4,8 @@ This document captures key learnings, gotchas, and architectural decisions disco
 
 ## Table of Contents
 
+- [CHECK Constraint vs ON DELETE SET NULL Conflict (2026-03-29)](#check-constraint-vs-on-delete-set-null-conflict-2026-03-29)
+- [Avoid Re-Querying After Insert — Build History In-Memory (2026-03-29)](#avoid-re-querying-after-insert--build-history-in-memory-2026-03-29)
 - [PostgreSQL Session Timezone + Drizzle UTC Mismatch (2026-03-27)](#postgresql-session-timezone--drizzle-utc-mismatch-2026-03-27)
 - [JWT Types in Shared Code Bundle Into React Native Client (2026-03-27)](#jwt-types-in-shared-code-bundle-into-react-native-client-2026-03-27)
 - [Launch Readiness Audit — Security and Data Integrity Findings (2026-03-27)](#launch-readiness-audit--security-and-data-integrity-findings-2026-03-27)
@@ -35,6 +37,71 @@ This document captures key learnings, gotchas, and architectural decisions disco
 - [Testing & Tooling Learnings](#testing--tooling-learnings)
 - [Database Migration Gotchas](#database-migration-gotchas)
 - [TypeScript Safety Learnings](#typescript-safety-learnings)
+
+---
+
+## [2026-03-29] CHECK Constraint vs ON DELETE SET NULL Conflict
+
+**Category:** Gotcha
+
+### Context
+
+Tables `dailyLogs` and `mealPlanItems` use a CHECK constraint requiring at least one of two nullable FK columns to be non-null (e.g., `CHECK(scannedItemId IS NOT NULL OR mealPlanRecipeId IS NOT NULL)`). The FK columns also had `ON DELETE SET NULL` referential actions.
+
+### Problem
+
+When the referenced parent row is deleted, PostgreSQL fires `ON DELETE SET NULL` first, setting the FK column to `NULL`. Then the CHECK constraint evaluates and rejects the mutation because both columns are now `NULL`. This means deleting a parent row (e.g., a meal plan recipe or scanned item) fails with a CHECK violation -- which also blocks user account deletion (GDPR concern) if the cascade chain passes through these tables.
+
+The conflict is non-obvious because SET NULL and CHECK are evaluated at different stages of the same statement, and neither the FK definition nor the CHECK constraint is wrong in isolation.
+
+### Solution
+
+Changed the affected FK columns from `ON DELETE SET NULL` to `ON DELETE CASCADE`. When the parent is deleted, the child row is removed entirely rather than having its FK nulled, so the CHECK constraint is never violated.
+
+### Takeaways
+
+- When a table has a CHECK constraint involving nullable FK columns, `ON DELETE SET NULL` on those FKs can conflict with the CHECK. Prefer `ON DELETE CASCADE` or `ON DELETE RESTRICT` instead.
+- Always trace the full cascade chain when adding CHECK constraints to tables with FKs -- test what happens when each referenced parent is deleted.
+- This class of bug is invisible in normal CRUD testing; it only surfaces when a parent row is deleted while child rows reference it.
+
+**Audit ref:** 2026-03-29-full H3, H4
+
+---
+
+## [2026-03-29] Avoid Re-Querying After Insert -- Build History In-Memory
+
+**Category:** Performance Gotcha
+
+### Context
+
+The verification submit route needed the full verification history (including the just-inserted row) to detect reformulations. The original code called `getVerificationHistory()` twice: once before the insert (for pre-checks) and once after (to include the new row).
+
+### Problem
+
+The second query is redundant -- the only difference is the row that was just inserted, which the route already has in memory. This wastes a DB round-trip and doubles the query load for every verification submission.
+
+### Solution
+
+Construct the full history in-memory by prepending the newly inserted row to the first query's result:
+
+```typescript
+// Before: two DB queries
+const historyBefore = await storage.getVerificationHistory(barcode);
+await storage.insertVerification(newEntry);
+const historyAfter = await storage.getVerificationHistory(barcode); // redundant!
+
+// After: one DB query + in-memory construction
+const historyBefore = await storage.getVerificationHistory(barcode);
+const inserted = await storage.insertVerification(newEntry);
+const fullHistory = [inserted, ...historyBefore];
+```
+
+### Takeaways
+
+- When you need "all rows including the one I just inserted", build the result in-memory from the pre-insert query + the returned insert row. Don't re-query.
+- This pattern applies any time a route reads, writes, then reads again with the only difference being the written row. The insert's RETURNING clause gives you the new row for free.
+
+**Audit ref:** 2026-03-29-full M10
 
 ---
 
