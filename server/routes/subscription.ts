@@ -21,6 +21,7 @@ export function register(app: Express): void {
   app.get(
     "/api/subscription/status",
     requireAuth,
+    subscriptionRateLimit,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const subscriptionData = await storage.getSubscriptionStatus(
@@ -70,6 +71,7 @@ export function register(app: Express): void {
   app.get(
     "/api/subscription/scan-count",
     requireAuth,
+    subscriptionRateLimit,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const count = await storage.getDailyScanCount(req.userId, new Date());

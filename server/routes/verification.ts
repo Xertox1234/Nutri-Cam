@@ -23,6 +23,7 @@ import {
 } from "@shared/types/front-label";
 import {
   checkAiConfigured,
+  crudRateLimit,
   createImageUpload,
   createRateLimiter,
   isAdmin,
@@ -226,9 +227,12 @@ export function register(app: Express): void {
           const existingFlag = await storage.getReformulationFlag(barcode);
 
           if (consensusParsed.success && !existingFlag) {
-            // Get full history including this new scan
-            const fullHistory = await storage.getVerificationHistory(barcode);
-            const historyForDetection = fullHistory.map((h) => {
+            // Build full history from existing + new entry (avoids duplicate DB query)
+            const mapHistoryEntry = (h: {
+              extractedNutrition: unknown;
+              userId: string;
+              isMatch: boolean | null;
+            }) => {
               const n = h.extractedNutrition as Record<string, unknown>;
               return {
                 extractedNutrition: {
@@ -241,7 +245,15 @@ export function register(app: Express): void {
                 userId: h.userId,
                 isMatch: h.isMatch ?? true,
               };
-            });
+            };
+            const historyForDetection = [
+              ...existingHistory.map(mapHistoryEntry),
+              mapHistoryEntry({
+                extractedNutrition: extracted,
+                userId: req.userId,
+                isMatch: comparison.isMatch,
+              }),
+            ];
 
             const detection = detectReformulation(
               consensusParsed.data,
@@ -389,6 +401,7 @@ export function register(app: Express): void {
   app.post(
     "/api/verification/front-label/confirm",
     requireAuth,
+    crudRateLimit,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const validated = frontLabelConfirmSchema.parse(req.body);
@@ -590,6 +603,7 @@ export function register(app: Express): void {
   app.get(
     "/api/verification/user-count",
     requireAuth,
+    crudRateLimit,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const stats = await storage.getUserVerificationStats(req.userId);
@@ -615,6 +629,7 @@ export function register(app: Express): void {
   app.get(
     "/api/verification/:barcode",
     requireAuth,
+    crudRateLimit,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const barcode =

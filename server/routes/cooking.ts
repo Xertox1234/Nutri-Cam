@@ -3,6 +3,7 @@ import { requireAuth, type AuthenticatedRequest } from "../middleware/auth";
 import { sendError } from "../lib/api-errors";
 import { ErrorCode } from "@shared/constants/error-codes";
 import {
+  crudRateLimit,
   formatZodError,
   checkPremiumFeature,
   checkAiConfigured,
@@ -187,6 +188,7 @@ export function register(app: Express): void {
   app.get(
     "/api/cooking/sessions/:id",
     requireAuth,
+    crudRateLimit,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const session = getSessionForUser(
@@ -316,6 +318,7 @@ export function register(app: Express): void {
   app.patch(
     "/api/cooking/sessions/:id/ingredients/:ingredientId",
     requireAuth,
+    crudRateLimit,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const session = getSessionForUser(
@@ -376,6 +379,7 @@ export function register(app: Express): void {
   app.delete(
     "/api/cooking/sessions/:id/ingredients/:ingredientId",
     requireAuth,
+    crudRateLimit,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const session = getSessionForUser(
@@ -418,6 +422,7 @@ export function register(app: Express): void {
   app.post(
     "/api/cooking/sessions/:id/nutrition",
     requireAuth,
+    crudRateLimit,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const session = getSessionForUser(
@@ -467,6 +472,7 @@ export function register(app: Express): void {
   app.post(
     "/api/cooking/sessions/:id/log",
     requireAuth,
+    crudRateLimit,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const session = getSessionForUser(

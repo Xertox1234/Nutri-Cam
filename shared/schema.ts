@@ -151,7 +151,7 @@ export const dailyLogs = pgTable(
       { onDelete: "cascade" },
     ),
     recipeId: integer("recipe_id").references(() => mealPlanRecipes.id, {
-      onDelete: "set null",
+      onDelete: "cascade",
     }),
     mealPlanItemId: integer("meal_plan_item_id").references(
       () => mealPlanItems.id,
@@ -173,6 +173,10 @@ export const dailyLogs = pgTable(
     mealPlanItemIdIdx: index("daily_logs_meal_plan_item_id_idx").on(
       table.mealPlanItemId,
     ),
+    // Prevent duplicate meal plan confirmations
+    uniqueMealPlanConfirm: uniqueIndex("daily_logs_unique_meal_plan_confirm")
+      .on(table.userId, table.mealPlanItemId)
+      .where(sql`meal_plan_item_id IS NOT NULL`),
     // Prevent ghost rows with no nutrition source
     hasNutritionSource: check(
       "daily_logs_has_source",
@@ -655,11 +659,11 @@ export const mealPlanItems = pgTable(
       .references(() => users.id, { onDelete: "cascade" })
       .notNull(),
     recipeId: integer("recipe_id").references(() => mealPlanRecipes.id, {
-      onDelete: "set null",
+      onDelete: "cascade",
     }),
     scannedItemId: integer("scanned_item_id").references(
       () => scannedItems.id,
-      { onDelete: "set null" },
+      { onDelete: "cascade" },
     ),
     plannedDate: date("planned_date").notNull(),
     mealType: text("meal_type").notNull(),
@@ -673,6 +677,10 @@ export const mealPlanItems = pgTable(
     userDateIdx: index("meal_plan_items_user_date_idx").on(
       table.userId,
       table.plannedDate,
+    ),
+    mealTypeCreatedIdx: index("meal_plan_items_meal_type_created_idx").on(
+      table.mealType,
+      table.createdAt,
     ),
     // Prevent orphan items with no nutrition source
     hasNutritionSource: check(

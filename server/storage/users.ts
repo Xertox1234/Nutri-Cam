@@ -275,15 +275,31 @@ export async function createWeightLogAndUpdateUser(
   });
 }
 
+/** Delete weight log and update user's current weight to the latest remaining log */
 export async function deleteWeightLog(
   id: number,
   userId: string,
 ): Promise<boolean> {
-  const result = await db
-    .delete(weightLogs)
-    .where(and(eq(weightLogs.id, id), eq(weightLogs.userId, userId)))
-    .returning({ id: weightLogs.id });
-  return result.length > 0;
+  return db.transaction(async (tx) => {
+    const result = await tx
+      .delete(weightLogs)
+      .where(and(eq(weightLogs.id, id), eq(weightLogs.userId, userId)))
+      .returning({ id: weightLogs.id });
+    if (result.length === 0) return false;
+
+    // Revert users.weight to the latest remaining log (or null if none)
+    const [latest] = await tx
+      .select({ weight: weightLogs.weight })
+      .from(weightLogs)
+      .where(eq(weightLogs.userId, userId))
+      .orderBy(desc(weightLogs.loggedAt))
+      .limit(1);
+    await tx
+      .update(users)
+      .set({ weight: latest?.weight ?? null })
+      .where(eq(users.id, userId));
+    return true;
+  });
 }
 
 export async function getLatestWeight(

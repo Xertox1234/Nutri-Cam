@@ -13,6 +13,7 @@ import {
 import { deductPantryFromGrocery } from "../services/pantry-deduction";
 import { parseUserAllergies } from "@shared/constants/allergens";
 import {
+  crudRateLimit,
   mealPlanRateLimit,
   pantryRateLimit,
   checkPremiumFeature,
@@ -185,6 +186,7 @@ export function register(app: Express): void {
   app.get(
     "/api/meal-plan/grocery-lists",
     requireAuth,
+    crudRateLimit,
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       try {
         const limit = parseQueryInt(req.query.limit, { default: 50, max: 100 });
@@ -206,6 +208,7 @@ export function register(app: Express): void {
   app.get(
     "/api/meal-plan/grocery-lists/:id",
     requireAuth,
+    crudRateLimit,
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       try {
         const id = parsePositiveIntParam(req.params.id);
@@ -263,6 +266,7 @@ export function register(app: Express): void {
   app.put(
     "/api/meal-plan/grocery-lists/:id/items/:itemId",
     requireAuth,
+    crudRateLimit,
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       try {
         const listId = parsePositiveIntParam(req.params.id);
@@ -369,18 +373,19 @@ export function register(app: Express): void {
           return;
         }
 
-        // Create pantry item from grocery item data
-        const pantryItem = await storage.createPantryItem({
-          userId: req.userId,
-          name: groceryItem.name,
-          quantity: groceryItem.quantity,
-          unit: groceryItem.unit || null,
-          category: groceryItem.category || "other",
-          expiresAt: null,
-        });
-
-        // Flag grocery item as added to pantry
-        await storage.updateGroceryListItemPantryFlag(itemId, listId, true);
+        // Atomically create pantry item and flag grocery item
+        const pantryItem = await storage.addGroceryItemToPantryAtomically(
+          {
+            userId: req.userId,
+            name: groceryItem.name,
+            quantity: groceryItem.quantity,
+            unit: groceryItem.unit || null,
+            category: groceryItem.category || "other",
+            expiresAt: null,
+          },
+          itemId,
+          listId,
+        );
 
         res.status(201).json(pantryItem);
       } catch (error) {
@@ -402,6 +407,7 @@ export function register(app: Express): void {
   app.post(
     "/api/meal-plan/grocery-lists/:id/items",
     requireAuth,
+    crudRateLimit,
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       try {
         const listId = parsePositiveIntParam(req.params.id);
@@ -458,6 +464,7 @@ export function register(app: Express): void {
   app.delete(
     "/api/meal-plan/grocery-lists/:id",
     requireAuth,
+    crudRateLimit,
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       try {
         const id = parsePositiveIntParam(req.params.id);

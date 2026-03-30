@@ -6,9 +6,11 @@ import { openai } from "../lib/openai";
  */
 export async function transcribeAudio(
   buffer: Buffer,
-  filename: string = "audio.m4a",
+  _filename: string = "audio.m4a",
 ): Promise<string> {
-  const file = await toFile(buffer, filename, { type: "audio/m4a" });
+  // Use a safe static filename — client-provided names are untrusted
+  const safeFilename = `audio-${Date.now()}.m4a`;
+  const file = await toFile(buffer, safeFilename, { type: "audio/m4a" });
   const transcription = await openai.audio.transcriptions.create({
     file,
     model: "whisper-1",

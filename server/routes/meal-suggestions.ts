@@ -82,19 +82,19 @@ export function register(app: Express): void {
           return;
         }
 
-        // Build cache key
-        const userProfile = await storage.getUserProfile(req.userId);
-        const user = await storage.getUser(req.userId);
+        // Parallelize independent queries
+        const [userProfile, user, existingItems] = await Promise.all([
+          storage.getUserProfile(req.userId),
+          storage.getUser(req.userId),
+          storage.getMealPlanItems(
+            req.userId,
+            parsed.data.date,
+            parsed.data.date,
+          ),
+        ]);
         const profileHash = userProfile
           ? calculateProfileHash(userProfile)
           : "no-profile";
-
-        // Get existing meals for context
-        const existingItems = await storage.getMealPlanItems(
-          req.userId,
-          parsed.data.date,
-          parsed.data.date,
-        );
         const existingMeals = existingItems.map((item) => ({
           title:
             item.recipe?.title || item.scannedItem?.productName || "Unknown",

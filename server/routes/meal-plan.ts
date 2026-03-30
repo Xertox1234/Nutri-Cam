@@ -555,7 +555,18 @@ export function register(app: Express): void {
 
         res.status(201).json(dailyLog);
       } catch (error) {
-        logger.error({ err: toError(error) }, "meal confirmation failed");
+        // Catch unique constraint violation from concurrent confirms
+        const err = toError(error);
+        if (err.message?.includes("23505") || err.message?.includes("unique")) {
+          sendError(
+            res,
+            409,
+            "Meal plan item already confirmed",
+            "ALREADY_CONFIRMED",
+          );
+          return;
+        }
+        logger.error({ err }, "meal confirmation failed");
         sendError(res, 500, "Failed to confirm meal", ErrorCode.INTERNAL_ERROR);
       }
     },

@@ -57,11 +57,15 @@ export async function updateApiKeyTier(
 }
 
 /** List API keys, optionally filtered by owner */
-export async function listApiKeys(ownerId?: string) {
+export async function listApiKeys(ownerId?: string, limit = 100) {
   if (ownerId) {
-    return db.select().from(apiKeys).where(eq(apiKeys.ownerId, ownerId));
+    return db
+      .select()
+      .from(apiKeys)
+      .where(eq(apiKeys.ownerId, ownerId))
+      .limit(limit);
   }
-  return db.select().from(apiKeys);
+  return db.select().from(apiKeys).limit(limit);
 }
 
 /** Get a single API key by ID */

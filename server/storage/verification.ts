@@ -1,4 +1,4 @@
-import { eq, and, sql, inArray } from "drizzle-orm";
+import { eq, and, sql, inArray, desc } from "drizzle-orm";
 import { db } from "../db";
 import { barcodeVerifications, verificationHistory } from "@shared/schema";
 import type {
@@ -27,12 +27,14 @@ export async function getVerificationByBarcodes(variants: string[]) {
   return results[0] ?? null;
 }
 
-/** Get all verification history entries for a barcode */
+/** Get verification history entries for a barcode (most recent first, capped) */
 export async function getVerificationHistory(barcode: string) {
   return db
     .select()
     .from(verificationHistory)
-    .where(eq(verificationHistory.barcode, barcode));
+    .where(eq(verificationHistory.barcode, barcode))
+    .orderBy(desc(verificationHistory.createdAt))
+    .limit(200);
 }
 
 /** Check if a user has already verified a specific barcode */
@@ -80,7 +82,12 @@ export async function getUserVerificationStats(userId: string): Promise<{
         >`DATE(${verificationHistory.frontLabelScannedAt} AT TIME ZONE 'UTC')`,
       })
       .from(verificationHistory)
-      .where(eq(verificationHistory.userId, userId)),
+      .where(
+        and(
+          eq(verificationHistory.userId, userId),
+          sql`${verificationHistory.createdAt} >= NOW() - INTERVAL '90 days'`,
+        ),
+      ),
   ]);
 
   const count = countResult[0]?.count ?? 0;

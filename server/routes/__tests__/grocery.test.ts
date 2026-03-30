@@ -31,6 +31,7 @@ vi.mock("../../storage", () => ({
     deleteGroceryList: vi.fn(),
     getPantryItems: vi.fn(),
     createPantryItem: vi.fn(),
+    addGroceryItemToPantryAtomically: vi.fn(),
   },
 }));
 
@@ -565,11 +566,8 @@ describe("Grocery Routes", () => {
           }),
         ],
       });
-      vi.mocked(storage.createPantryItem).mockResolvedValue(
+      vi.mocked(storage.addGroceryItemToPantryAtomically).mockResolvedValue(
         createMockPantryItem({ name: "Milk" }),
-      );
-      vi.mocked(storage.updateGroceryListItemPantryFlag).mockResolvedValue(
-        createMockGroceryListItem(),
       );
 
       const res = await request(app)
@@ -632,7 +630,7 @@ describe("Grocery Routes", () => {
         ...mockList,
         items: [createMockGroceryListItem({ name: "Milk" })],
       });
-      vi.mocked(storage.createPantryItem).mockRejectedValue(
+      vi.mocked(storage.addGroceryItemToPantryAtomically).mockRejectedValue(
         new Error("DB error"),
       );
 
