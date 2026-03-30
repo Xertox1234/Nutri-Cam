@@ -15,6 +15,15 @@ Append-only history of all code audits performed on this project. Each entry lin
 
 ---
 
+## 2026-03-29 — Full Audit
+
+- **Trigger:** Periodic full codebase audit
+- **Manifest:** [docs/audits/2026-03-29-full.md](2026-03-29-full.md)
+- **Findings:** 0 critical, 4 high, 10 medium, 8 low (22 total)
+- **Resolved:** 20 verified, 1 deferred (M7 — JSONB validation), 1 false-positive (L4 — sequential loop)
+- **Commit:** `4a50a06` fix: resolve full audit findings (20 verified, 1 deferred)
+- **Note:** Architecture and code-quality agents hit rate limits (3/5 domains reported)
+
 ## 2026-03-27 — Full Audit
 
 - **Trigger:** Full codebase audit across all domains

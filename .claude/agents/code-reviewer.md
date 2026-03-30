@@ -214,7 +214,13 @@ if (cacheId) {
 }
 ```
 
-### 10. Code Quality
+### 10. Security: AI Services, Rate Limiting, and Schema Safety
+
+- [ ] **AI prompt sanitization** — Any new `server/services/*.ts` file that calls `openai.chat.completions.create` (or similar LLM API) must pass ALL user-sourced strings through `sanitizeUserInput()` from `server/lib/ai-safety.ts` before interpolating into prompts. This includes user profile fields (`dietType`, `foodDislikes`, `allergies`, `cuisinePreferences`, `cookingSkillLevel`, `primaryGoal`). System prompts must include `SYSTEM_PROMPT_BOUNDARY`. (Ref: `docs/patterns/security.md` "Sanitize ALL User Profile Fields in AI Prompts")
+- [ ] **Rate limiting on new routes** — Every new route file must have rate limiting middleware on all endpoints. Check for `rateLimit`, `crudRateLimit`, or equivalent on each `app.get/post/put/patch/delete` handler. (Ref: `docs/patterns/security.md` "Rate Limiting")
+- [ ] **CHECK constraint + ON DELETE conflict** — When reviewing schema changes that add or modify CHECK constraints on tables with FK columns, verify the CHECK does not conflict with `ON DELETE SET NULL` on any FK in the same table. Prefer `ON DELETE CASCADE` or `ON DELETE RESTRICT` when a CHECK references the FK column. (Ref: `docs/LEARNINGS.md` "CHECK Constraint vs ON DELETE SET NULL Conflict")
+
+### 11. Code Quality
 
 - [ ] No commented-out code (remove or explain with TODO)
 - [ ] Meaningful variable and function names
@@ -224,7 +230,7 @@ if (cacheId) {
 - [ ] ESLint rules followed
 - [ ] TypeScript strict mode compliance
 
-### 11. Documentation & Todos
+### 12. Documentation & Todos
 
 - [ ] Complex logic has explanatory comments
 - [ ] Todos follow template in `todos/TEMPLATE.md`
