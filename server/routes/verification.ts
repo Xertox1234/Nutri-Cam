@@ -247,12 +247,12 @@ export function register(app: Express): void {
               };
             };
             const historyForDetection = [
-              ...existingHistory.map(mapHistoryEntry),
               mapHistoryEntry({
                 extractedNutrition: extracted,
                 userId: req.userId,
                 isMatch: comparison.isMatch,
               }),
+              ...existingHistory.map(mapHistoryEntry),
             ];
 
             const detection = detectReformulation(
