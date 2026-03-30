@@ -534,6 +534,44 @@ function ToastProvider({ children }: { children: ReactNode }) {
 
 - `client/context/ToastContext.tsx` — `useMemo` on provider value object
 
+### Cap `FadeInDown.delay` Index for List Animations
+
+When animating list items with `FadeInDown.delay(index * N)`, always cap the index with `MAX_ANIMATED_INDEX` before multiplying. Without a cap, long lists accumulate delay linearly — a list with 50 items reaches a 2.5-second delay on the last visible item, making the UI feel broken.
+
+```typescript
+// Good: cap prevents runaway delay on long lists
+const MAX_ANIMATED_INDEX = 10;
+
+const renderItem = ({ item, index }: ListRenderItemInfo<Conversation>) => (
+  <Animated.View
+    entering={
+      reducedMotion
+        ? undefined
+        : FadeInDown.delay(Math.min(index, MAX_ANIMATED_INDEX) * 50)
+    }
+  >
+    <ConversationItem item={item} />
+  </Animated.View>
+);
+
+// Bad: delay grows unbounded — item 50 waits 2500ms
+entering={FadeInDown.delay(index * 50)}
+```
+
+**Value:** Set `MAX_ANIMATED_INDEX` to the number of items that fit on screen at once (typically 8–12). Items beyond this index are off-screen on load and don't need an entry animation delay.
+
+**Existing uses:** `HistoryScreen`, `SavedItemsScreen`, `ChatListScreen` — all use `MAX_ANIMATED_INDEX = 10`.
+
+**When to use:** Any `FlatList` or `ScrollView` that animates items with index-based delay on mount.
+
+**References:**
+
+- `client/screens/HistoryScreen.tsx` — `MAX_ANIMATED_INDEX = 10`
+- `client/screens/SavedItemsScreen.tsx` — `MAX_ANIMATED_INDEX = 10`
+- `client/screens/ChatListScreen.tsx` — `MAX_ANIMATED_INDEX = 10`
+
+---
+
 ### Shared FlatList Virtualization Defaults
 
 When multiple FlatList screens need the same virtualization tuning (which they almost always do), import a shared constant instead of duplicating props across screens. This ensures consistent behavior and makes it easy to tune all lists from one place.

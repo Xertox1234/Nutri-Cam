@@ -49,6 +49,10 @@ export function isAccessTokenPayload(
 - [ ] Multi-mutation client actions use a single atomic server endpoint
 - [ ] Routes calling OpenAI (directly or via service) have `checkAiConfigured()` guard before the AI call
 - [ ] Image upload routes use `createImageUpload()` factory from `_helpers.ts` — no inline multer configs
+- [ ] `catch` blocks in route handlers use `handleRouteError(res, err, "context label")` from `_helpers.ts` — no inline `ZodError` instanceof checks
+- [ ] `sendError()` calls pass an `ErrorCode.*` constant (from `@shared/constants/error-codes.ts`) — no ad-hoc string literals for codes that belong in `ErrorCode`
+- [ ] Route body schemas with numeric string fields use `numericStringField` / `nullableNumericStringField` from `_helpers.ts` — no repeated `z.union([z.string(), z.number()]).optional().transform(...)` inline
+- [ ] When 2+ handlers in a route file return the same object shape, a `serializeX()` helper extracts the mapping — no copy-pasted field lists across handlers
 
 **Pattern Reference:**
 
@@ -169,6 +173,8 @@ const insets = useSafeAreaInsets();
 - [ ] useEffect cleanup functions prevent memory leaks
 - [ ] Animations run on UI thread (Reanimated worklets)
 - [ ] Avoid unnecessary re-renders (React.memo, useMemo, useCallback)
+- [ ] `FlatList` screens with >20 items spread `{...FLATLIST_DEFAULTS}` from `@/constants/performance` (Ref: `docs/patterns/performance.md` "Shared FlatList Virtualization Defaults")
+- [ ] `FadeInDown.delay(index * N)` animations use `Math.min(index, MAX_ANIMATED_INDEX)` to cap delay — no unbounded index multiplication (Ref: `docs/patterns/performance.md` "Cap FadeInDown.delay Index")
 
 ### 8. Error Handling
 
@@ -219,6 +225,7 @@ if (cacheId) {
 - [ ] **AI prompt sanitization** — Any new `server/services/*.ts` file that calls `openai.chat.completions.create` (or similar LLM API) must pass ALL user-sourced strings through `sanitizeUserInput()` from `server/lib/ai-safety.ts` before interpolating into prompts. This includes user profile fields (`dietType`, `foodDislikes`, `allergies`, `cuisinePreferences`, `cookingSkillLevel`, `primaryGoal`). System prompts must include `SYSTEM_PROMPT_BOUNDARY`. (Ref: `docs/patterns/security.md` "Sanitize ALL User Profile Fields in AI Prompts")
 - [ ] **Rate limiting on new routes** — Every new route file must have rate limiting middleware on all endpoints. Check for `rateLimit`, `crudRateLimit`, or equivalent on each `app.get/post/put/patch/delete` handler. (Ref: `docs/patterns/security.md` "Rate Limiting")
 - [ ] **CHECK constraint + ON DELETE conflict** — When reviewing schema changes that add or modify CHECK constraints on tables with FK columns, verify the CHECK does not conflict with `ON DELETE SET NULL` on any FK in the same table. Prefer `ON DELETE CASCADE` or `ON DELETE RESTRICT` when a CHECK references the FK column. (Ref: `docs/LEARNINGS.md` "CHECK Constraint vs ON DELETE SET NULL Conflict")
+- [ ] **AI cache dedup** — Cache tables keyed by `(scannedItemId, userId, profileHash)` or similar composite key must have a `uniqueIndex` on that composite and use `onConflictDoUpdate` on insert. Plain `INSERT` allows duplicate cache rows under concurrent load. (Ref: `docs/patterns/database.md` "Unique Index + onConflictDoUpdate for AI Cache Dedup")
 
 ### 11. Code Quality
 

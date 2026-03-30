@@ -539,6 +539,219 @@ export function parseStringParam(
 - `server/routes/_helpers.ts` -- implementation
 - `server/routes/photos.ts` -- consumer
 
+### `handleRouteError` -- Centralized Route Error Handler
+
+All route handler `catch` blocks must use the `handleRouteError` helper from `server/routes/_helpers.ts` instead of duplicating `ZodError` branching inline. The helper maps `ZodError` → 400 and anything else → 500 with structured logging.
+
+```typescript
+import { handleRouteError } from "./_helpers";
+
+// Good: uniform catch with context label
+app.post("/api/items", requireAuth, async (req, res) => {
+  try {
+    const parsed = ItemSchema.parse(req.body);
+    const item = await storage.createItem(req.userId!, parsed);
+    res.status(201).json(item);
+  } catch (err) {
+    handleRouteError(res, err, "create item");
+  }
+});
+
+// Bad: manual ZodError check duplicated in every catch block
+} catch (err) {
+  if (err instanceof ZodError) {
+    sendError(res, 400, formatZodError(err), "VALIDATION_ERROR");
+    return;
+  }
+  logger.error({ err }, "create item error");
+  sendError(res, 500, "Failed to create item", "INTERNAL_ERROR");
+}
+```
+
+**Implementation:**
+
+```typescript
+// server/routes/_helpers.ts
+export function handleRouteError(
+  res: Response,
+  error: unknown,
+  context: string,
+): void {
+  if (error instanceof ZodError) {
+    sendError(res, 400, formatZodError(error), ErrorCode.VALIDATION_ERROR);
+    return;
+  }
+  logger.error({ err: toError(error) }, `${context} error`);
+  sendError(res, 500, `Failed to ${context}`, ErrorCode.INTERNAL_ERROR);
+}
+```
+
+**When to use:** Every `catch` block in every route handler — no route should contain inline `ZodError` branching.
+
+**Context label:** Pass a lowercase verb phrase: `"create item"`, `"fetch daily log"`, `"update profile"`. It appears in both the logged error and the 500 response body.
+
+**When NOT to use:** Handlers that need to catch specific domain errors (e.g., a 409 for a known conflict) should handle those cases before calling `handleRouteError`, or use a custom catch block.
+
+**References:**
+
+- `server/routes/_helpers.ts` -- implementation
+- All 13 route files that replaced inline `ZodError` catch blocks with `handleRouteError`
+
+---
+
+### `numericStringField` / `nullableNumericStringField` -- Zod Numeric String Coercion
+
+When a request body field accepts both string and number representations of a numeric value (common with `multipart/form-data` and form submissions), use the shared Zod schema helpers instead of repeating the union transform inline.
+
+```typescript
+import { numericStringField, nullableNumericStringField } from "./_helpers";
+
+// Good: reusable helpers
+const ItemSchema = z.object({
+  calories: numericStringField, // string | number → string | undefined
+  fat: nullableNumericStringField, // string | number → string | null
+  protein: numericStringField,
+});
+
+// Bad: 15 repetitions of the same union transform
+const ItemSchema = z.object({
+  calories: z
+    .union([z.string(), z.number()])
+    .optional()
+    .transform((v) => v?.toString()),
+  fat: z
+    .union([z.string(), z.number()])
+    .optional()
+    .nullable()
+    .transform((v) => v?.toString() ?? null),
+  // ...repeated for every numeric field
+});
+```
+
+**Implementation:**
+
+```typescript
+// server/routes/_helpers.ts
+
+/** Accepts string or number, coerces to string. Returns undefined if absent. */
+export const numericStringField = z
+  .union([z.string(), z.number()])
+  .optional()
+  .transform((v) => v?.toString());
+
+/** Accepts string or number, coerces to string. Returns null if absent. */
+export const nullableNumericStringField = z
+  .union([z.string(), z.number()])
+  .optional()
+  .nullable()
+  .transform((v) => v?.toString() ?? null);
+```
+
+**When to use:**
+
+- Route body schemas for nutrition values, quantities, measurements — any numeric field that arrives as a string from `multipart/form-data`
+- Use `numericStringField` when the field is fully optional and absent means "not provided"
+- Use `nullableNumericStringField` when absent or null should be stored as `null` in the DB
+
+**When NOT to use:**
+
+- Fields that must be validated as actual numbers (use `z.number()`)
+- Fields that are always strings (use `z.string()`)
+
+**References:**
+
+- `server/routes/_helpers.ts` -- implementation
+- `server/routes/nutrition.ts` (7x), `meal-plan.ts` (6x), `pantry.ts`, `grocery.ts` -- consumers
+
+---
+
+### `ErrorCode` Constants -- Machine-Readable Error Codes
+
+All `sendError()` calls must pass an `ErrorCode` constant from `@shared/constants/error-codes.ts` instead of an ad-hoc string literal. This ensures a stable, searchable set of error codes that clients can match on.
+
+```typescript
+import { ErrorCode } from "@shared/constants/error-codes";
+
+// Good: constant from shared file
+sendError(res, 404, "Item not found", ErrorCode.NOT_FOUND);
+sendError(res, 429, "Daily limit reached", ErrorCode.DAILY_LIMIT_REACHED);
+sendError(res, 409, "Username already taken", ErrorCode.CONFLICT);
+
+// Bad: ad-hoc string literals
+sendError(res, 404, "Item not found", "ITEM_NOT_FOUND"); // not in ErrorCode
+sendError(res, 429, "Daily limit reached", "DAILY_LIMIT"); // inconsistent spelling
+```
+
+**Adding a new code:** Add it to `shared/constants/error-codes.ts` first, then use `ErrorCode.NEW_CODE` at the call site. Never introduce a string literal that belongs in the constant.
+
+**When NOT to use `ErrorCode`:** Highly domain-specific codes that will never be used elsewhere (e.g., `CATALOG_QUOTA_EXCEEDED`) may remain as string literals directly in `sendError()`, but these are the exception, not the rule.
+
+**References:**
+
+- `shared/constants/error-codes.ts` -- the constant definition + `ErrorCode` type
+- All route files under `server/routes/` -- consumers
+
+---
+
+### Response Serializer Functions
+
+When multiple route handlers in the same file return the same object shape (auth endpoints returning user objects, admin endpoints returning sanitized records), extract a `serializeX()` function to avoid repeating the field list and normalization logic.
+
+```typescript
+// Good: single serializer used across register/login/refresh/me handlers
+function serializeUser(user: {
+  id: string;
+  username: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+  dailyCalorieGoal: number | null;
+  onboardingCompleted: boolean | null;
+  subscriptionTier: string | null;
+}) {
+  return {
+    id: user.id,
+    username: user.username,
+    displayName: user.displayName,
+    avatarUrl: user.avatarUrl,
+    dailyCalorieGoal: user.dailyCalorieGoal,
+    onboardingCompleted: user.onboardingCompleted,
+    subscriptionTier: user.subscriptionTier || "free",
+  };
+}
+
+// Usage in route handler
+res.status(201).json({ user: serializeUser(user), token });
+res.json({ user: serializeUser(user), token });
+```
+
+```typescript
+// Bad: field list + normalization logic duplicated across 4 handlers
+res.json({
+  user: {
+    id: user.id,
+    username: user.username,
+    displayName: user.displayName,
+    avatarUrl: user.avatarUrl,
+    dailyCalorieGoal: user.dailyCalorieGoal,
+    onboardingCompleted: user.onboardingCompleted,
+    subscriptionTier: user.subscriptionTier || "free", // normalization silently diverges
+  },
+  token,
+});
+```
+
+**When to use:** 2+ handlers in the same route file that return an object with the same shape. The serializer is file-local (not exported) unless the shape is needed across multiple route files.
+
+**Key benefit:** Normalizations (e.g., `|| "free"` fallback for `subscriptionTier`) are applied consistently. When the response shape changes, there is one place to update.
+
+**When NOT to use:** One-off responses unique to a single handler.
+
+**References:**
+
+- `server/routes/auth.ts` -- `serializeUser()` used by register, login, refresh, and getMe handlers
+
+---
+
 ### `createRateLimiter` -- Rate Limiter Factory
 
 Factory function that creates `express-rate-limit` middleware with consistent defaults. Eliminates the 6-line boilerplate that was previously duplicated in every rate limiter definition. Supports a `keyByUser` option (defaults to `true`) that uses `req.userId` for authenticated routes, falling back to IP.
