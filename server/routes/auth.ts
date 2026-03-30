@@ -18,6 +18,7 @@ import {
   loginLimiter,
   avatarRateLimit,
   accountDeletionLimiter,
+  crudRateLimit,
   formatZodError,
   loginSchema,
   registerSchema,
@@ -57,10 +58,25 @@ export function register(app: Express): void {
         }
 
         const hashedPassword = await bcrypt.hash(validated.password, 12);
-        const user = await storage.createUser({
-          username: validated.username,
-          password: hashedPassword,
-        });
+        let user;
+        try {
+          user = await storage.createUser({
+            username: validated.username,
+            password: hashedPassword,
+          });
+        } catch (err) {
+          // Catch unique constraint violation from concurrent registrations
+          const msg = toError(err).message;
+          if (msg.includes("23505") || msg.includes("unique")) {
+            return sendError(
+              res,
+              409,
+              "Username already exists",
+              ErrorCode.CONFLICT,
+            );
+          }
+          throw err;
+        }
 
         const token = generateToken(user.id.toString(), user.tokenVersion);
 
@@ -158,6 +174,7 @@ export function register(app: Express): void {
   app.post(
     "/api/auth/logout",
     requireAuth,
+    crudRateLimit,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const user = await storage.getUser(req.userId);
@@ -184,6 +201,7 @@ export function register(app: Express): void {
   app.get(
     "/api/auth/me",
     requireAuth,
+    crudRateLimit,
     async (req: AuthenticatedRequest, res: Response) => {
       const user = await storage.getUser(req.userId);
       if (!user) {
@@ -205,6 +223,7 @@ export function register(app: Express): void {
   app.put(
     "/api/auth/profile",
     requireAuth,
+    crudRateLimit,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const validated = profileUpdateSchema.parse(req.body);
@@ -386,6 +405,7 @@ export function register(app: Express): void {
   app.delete(
     "/api/user/avatar",
     requireAuth,
+    crudRateLimit,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const currentUser = await storage.getUser(req.userId);

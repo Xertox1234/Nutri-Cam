@@ -641,6 +641,29 @@ export async function createPantryItem(
 }
 
 /**
+ * Atomically create a pantry item from a grocery item and flag it as added.
+ */
+export async function addGroceryItemToPantryAtomically(
+  item: InsertPantryItem,
+  groceryItemId: number,
+  groceryListId: number,
+): Promise<PantryItem> {
+  return db.transaction(async (tx) => {
+    const [created] = await tx.insert(pantryItems).values(item).returning();
+    await tx
+      .update(groceryListItems)
+      .set({ addedToPantry: true })
+      .where(
+        and(
+          eq(groceryListItems.id, groceryItemId),
+          eq(groceryListItems.groceryListId, groceryListId),
+        ),
+      );
+    return created;
+  });
+}
+
+/**
  * Batch insert pantry items (used by receipt scanner).
  */
 export async function createPantryItems(

@@ -5,7 +5,7 @@ import { sendError } from "../lib/api-errors";
 import { logger, toError } from "../lib/logger";
 import { z } from "zod";
 import { API_TIERS } from "@shared/constants/api-tiers";
-import { isAdmin } from "./_helpers";
+import { isAdmin, crudRateLimit } from "./_helpers";
 
 const createKeySchema = z.object({
   name: z.string().min(1).max(100),
@@ -21,6 +21,7 @@ export function register(app: Express): void {
   app.post(
     "/api/admin/api-keys",
     requireAuth,
+    crudRateLimit,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         if (!isAdmin(req.userId)) {
@@ -92,6 +93,7 @@ export function register(app: Express): void {
   app.delete(
     "/api/admin/api-keys/:id",
     requireAuth,
+    crudRateLimit,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         if (!isAdmin(req.userId)) {
@@ -124,6 +126,7 @@ export function register(app: Express): void {
   app.patch(
     "/api/admin/api-keys/:id",
     requireAuth,
+    crudRateLimit,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         if (!isAdmin(req.userId)) {

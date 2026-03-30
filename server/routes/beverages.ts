@@ -3,7 +3,7 @@ import { z, ZodError } from "zod";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/auth";
 import { sendError } from "../lib/api-errors";
 import { ErrorCode } from "@shared/constants/error-codes";
-import { formatZodError } from "./_helpers";
+import { crudRateLimit, formatZodError } from "./_helpers";
 import { storage } from "../storage";
 import { lookupNutrition } from "../services/nutrition-lookup";
 import { logger, toError } from "../lib/logger";
@@ -69,6 +69,7 @@ export function register(app: Express): void {
   app.post(
     "/api/beverages/log",
     requireAuth,
+    crudRateLimit,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const validated = logBeverageSchema.parse(req.body);

@@ -158,15 +158,17 @@ export function determineReason(
 export async function computeAdaptiveGoals(
   userId: string,
 ): Promise<AdaptiveGoalRecommendation | null> {
-  const user = await storage.getUser(userId);
-  if (!user) return null;
-
-  // Get weight logs from last 28 days
   const fourWeeksAgo = new Date();
   fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
-  const weightLogs = await storage.getWeightLogs(userId, {
-    from: fourWeeksAgo,
-  });
+
+  // Parallelize independent DB queries
+  const [user, weightLogs, profile] = await Promise.all([
+    storage.getUser(userId),
+    storage.getWeightLogs(userId, { from: fourWeeksAgo }),
+    storage.getUserProfile(userId),
+  ]);
+
+  if (!user) return null;
 
   if (weightLogs.length < 4) return null; // Need at least 4 entries over 2+ weeks
 
@@ -198,8 +200,6 @@ export async function computeAdaptiveGoals(
   // Estimated actual TDEE
   const tdee = estimateTDEE(currentCalories, weightChange, daySpan);
 
-  // Get user's goal
-  const profile = await storage.getUserProfile(userId);
   const goal = profile?.primaryGoal || "maintain";
 
   // Determine target deficit/surplus

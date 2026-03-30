@@ -93,6 +93,7 @@ export const storage = {
   getPantryItem: mealPlans.getPantryItem,
   createPantryItem: mealPlans.createPantryItem,
   createPantryItems: mealPlans.createPantryItems,
+  addGroceryItemToPantryAtomically: mealPlans.addGroceryItemToPantryAtomically,
   updatePantryItem: mealPlans.updatePantryItem,
   deletePantryItem: mealPlans.deletePantryItem,
   getExpiringPantryItems: mealPlans.getExpiringPantryItems,

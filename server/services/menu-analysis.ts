@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { storage } from "../storage";
 import { openai } from "../lib/openai";
+import { sanitizeUserInput, SYSTEM_PROMPT_BOUNDARY } from "../lib/ai-safety";
 import { createServiceLogger, toError } from "../lib/logger";
 import {
   detectAllergens,
@@ -88,14 +89,20 @@ export async function analyzeMenuPhoto(
         parts.push(`Daily calorie goal: ${user.dailyCalorieGoal}`);
       if (user.dailyProteinGoal)
         parts.push(`Daily protein goal: ${user.dailyProteinGoal}g`);
-      if (profile?.dietType) parts.push(`Diet type: ${profile.dietType}`);
-      if (profile?.primaryGoal) parts.push(`Goal: ${profile.primaryGoal}`);
+      if (profile?.dietType)
+        parts.push(`Diet type: ${sanitizeUserInput(profile.dietType)}`);
+      if (profile?.primaryGoal)
+        parts.push(`Goal: ${sanitizeUserInput(profile.primaryGoal)}`);
       if (userAllergies.length > 0) {
-        parts.push(`Allergies: ${userAllergies.map((a) => a.name).join(", ")}`);
+        parts.push(
+          `Allergies: ${userAllergies.map((a) => sanitizeUserInput(a.name)).join(", ")}`,
+        );
       }
       const dislikes = profile?.foodDislikes as string[] | null | undefined;
       if (dislikes?.length) {
-        parts.push(`Food dislikes: ${dislikes.join(", ")}`);
+        parts.push(
+          `Food dislikes: ${dislikes.map((d) => sanitizeUserInput(String(d))).join(", ")}`,
+        );
       }
       if (parts.length > 0) {
         userContext = `\n\nUser context for personalized recommendations:\n${parts.join("\n")}`;
@@ -112,7 +119,11 @@ export async function analyzeMenuPhoto(
       messages: [
         {
           role: "system",
-          content: MENU_ANALYSIS_PROMPT + userContext,
+          content:
+            MENU_ANALYSIS_PROMPT +
+            userContext +
+            "\n\n" +
+            SYSTEM_PROMPT_BOUNDARY,
         },
         {
           role: "user",

@@ -5,6 +5,7 @@ import type { MealSuggestion } from "@shared/types/meal-suggestions";
 import { ALLERGEN_INGREDIENT_MAP } from "@shared/constants/allergens";
 import type { AllergenId } from "@shared/constants/allergens";
 import { openai, OPENAI_TIMEOUT_HEAVY_MS } from "../lib/openai";
+import { sanitizeUserInput } from "../lib/ai-safety";
 import { createServiceLogger, toError } from "../lib/logger";
 
 const log = createServiceLogger("meal-suggestions");
@@ -87,26 +88,34 @@ function buildDietaryContext(userProfile: UserProfile | null): string {
           `${severity.toUpperCase()} (${severity === "severe" ? "life-threatening" : severity === "moderate" ? "noticeable reaction" : "slight discomfort"}): ${def.label} — avoid: ${examples}`,
         );
       } else {
-        allergyLines.push(`${severity.toUpperCase()}: ${allergy.name}`);
+        allergyLines.push(
+          `${severity.toUpperCase()}: ${sanitizeUserInput(allergy.name)}`,
+        );
       }
     }
     parts.push(`CRITICAL ALLERGY RESTRICTIONS:\n${allergyLines.join("\n")}`);
   }
   if (userProfile.dietType) {
-    parts.push(`Diet type: ${userProfile.dietType}`);
+    parts.push(`Diet type: ${sanitizeUserInput(userProfile.dietType)}`);
   }
   if (
     userProfile.foodDislikes &&
     Array.isArray(userProfile.foodDislikes) &&
     userProfile.foodDislikes.length > 0
   ) {
-    parts.push(`Dislikes: ${userProfile.foodDislikes.join(", ")}`);
+    parts.push(
+      `Dislikes: ${userProfile.foodDislikes.map((d) => sanitizeUserInput(String(d))).join(", ")}`,
+    );
   }
   if (userProfile.cookingSkillLevel) {
-    parts.push(`Cooking skill: ${userProfile.cookingSkillLevel}`);
+    parts.push(
+      `Cooking skill: ${sanitizeUserInput(userProfile.cookingSkillLevel)}`,
+    );
   }
   if (userProfile.cookingTimeAvailable) {
-    parts.push(`Preferred cooking time: ${userProfile.cookingTimeAvailable}`);
+    parts.push(
+      `Preferred cooking time: ${sanitizeUserInput(userProfile.cookingTimeAvailable)}`,
+    );
   }
   if (
     userProfile.cuisinePreferences &&
@@ -114,7 +123,7 @@ function buildDietaryContext(userProfile: UserProfile | null): string {
     userProfile.cuisinePreferences.length > 0
   ) {
     parts.push(
-      `Cuisine preferences: ${userProfile.cuisinePreferences.join(", ")}`,
+      `Cuisine preferences: ${userProfile.cuisinePreferences.map((c) => sanitizeUserInput(String(c))).join(", ")}`,
     );
   }
 

@@ -56,8 +56,14 @@ function setupCors(app: express.Application) {
     const origin = req.header("origin");
 
     if (isAllowedOrigin(origin)) {
-      res.header("Access-Control-Allow-Origin", origin || "*");
-      res.header("Access-Control-Allow-Credentials", "true");
+      // Only reflect a specific origin when credentials are enabled.
+      // Browsers reject Access-Control-Allow-Origin: * with credentials.
+      // For no-origin requests (mobile apps, curl), omit the header entirely
+      // rather than sending "*" which is incompatible with credentials.
+      if (origin) {
+        res.header("Access-Control-Allow-Origin", origin);
+        res.header("Access-Control-Allow-Credentials", "true");
+      }
     }
 
     res.header(

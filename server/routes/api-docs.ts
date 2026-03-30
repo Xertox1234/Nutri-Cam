@@ -1,4 +1,5 @@
 import type { Express } from "express";
+import { crudRateLimit } from "./_helpers";
 
 const DOCS_HTML = `<!DOCTYPE html>
 <html lang="en">
@@ -148,7 +149,7 @@ print(data["calories"])  # 120</code></pre>
 </html>`;
 
 export function register(app: Express): void {
-  app.get("/api/v1/docs", (_req, res) => {
+  app.get("/api/v1/docs", crudRateLimit, (_req, res) => {
     res.type("html").send(DOCS_HTML);
   });
 }
