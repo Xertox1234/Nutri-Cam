@@ -83,7 +83,7 @@ export default function HomeScreen() {
             refreshing={isRefetching}
             onRefresh={() => {
               queryClient.invalidateQueries({
-                queryKey: ["/api/recipes/carousel"],
+                queryKey: ["/api/carousel"],
               });
               refetch().then(() => haptics.impact());
             }}

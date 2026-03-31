@@ -57,7 +57,7 @@ describe("Carousel Routes", () => {
     app = createApp();
   });
 
-  describe("GET /api/recipes/carousel", () => {
+  describe("GET /api/carousel", () => {
     it("returns carousel cards", async () => {
       vi.mocked(storage.getSubscriptionStatus).mockResolvedValue({
         tier: "free",
@@ -66,7 +66,7 @@ describe("Carousel Routes", () => {
       vi.mocked(storage.getUserProfile).mockResolvedValue(undefined);
       vi.mocked(buildCarousel).mockResolvedValue(mockCards);
 
-      const res = await request(app).get("/api/recipes/carousel");
+      const res = await request(app).get("/api/carousel");
 
       expect(res.status).toBe(200);
       expect(res.body.cards).toHaveLength(2);
@@ -82,7 +82,7 @@ describe("Carousel Routes", () => {
       vi.mocked(storage.getUserProfile).mockResolvedValue(undefined);
       vi.mocked(buildCarousel).mockResolvedValue([]);
 
-      await request(app).get("/api/recipes/carousel");
+      await request(app).get("/api/carousel");
 
       expect(buildCarousel).toHaveBeenCalledWith("1", null, true);
     });
@@ -95,14 +95,14 @@ describe("Carousel Routes", () => {
       vi.mocked(storage.getUserProfile).mockResolvedValue(undefined);
       vi.mocked(buildCarousel).mockResolvedValue([]);
 
-      const res = await request(app).get("/api/recipes/carousel");
+      const res = await request(app).get("/api/carousel");
 
       expect(res.status).toBe(200);
       expect(res.body.cards).toEqual([]);
     });
   });
 
-  describe("POST /api/recipes/carousel/save", () => {
+  describe("POST /api/carousel/save", () => {
     it("saves a recipe to saved items", async () => {
       vi.mocked(storage.createSavedItem).mockResolvedValue({
         id: 1,
@@ -118,7 +118,7 @@ describe("Carousel Routes", () => {
         createdAt: new Date(),
       });
 
-      const res = await request(app).post("/api/recipes/carousel/save").send({
+      const res = await request(app).post("/api/carousel/save").send({
         recipeId: "community:1",
         source: "community",
         title: "Pasta Primavera",
@@ -137,7 +137,7 @@ describe("Carousel Routes", () => {
 
     it("returns 400 for missing required fields", async () => {
       const res = await request(app)
-        .post("/api/recipes/carousel/save")
+        .post("/api/carousel/save")
         .send({ source: "community" });
 
       expect(res.status).toBe(400);
@@ -147,7 +147,7 @@ describe("Carousel Routes", () => {
     it("returns 403 when saved items limit reached", async () => {
       vi.mocked(storage.createSavedItem).mockResolvedValue(null);
 
-      const res = await request(app).post("/api/recipes/carousel/save").send({
+      const res = await request(app).post("/api/carousel/save").send({
         recipeId: "community:1",
         source: "community",
         title: "Pasta Primavera",
@@ -157,16 +157,14 @@ describe("Carousel Routes", () => {
     });
   });
 
-  describe("POST /api/recipes/carousel/dismiss", () => {
+  describe("POST /api/carousel/dismiss", () => {
     it("dismisses a recipe", async () => {
       vi.mocked(storage.dismissRecipe).mockResolvedValue(undefined);
 
-      const res = await request(app)
-        .post("/api/recipes/carousel/dismiss")
-        .send({
-          recipeId: "community:1",
-          source: "community",
-        });
+      const res = await request(app).post("/api/carousel/dismiss").send({
+        recipeId: "community:1",
+        source: "community",
+      });
 
       expect(res.status).toBe(204);
       expect(storage.dismissRecipe).toHaveBeenCalledWith(
@@ -177,19 +175,17 @@ describe("Carousel Routes", () => {
     });
 
     it("returns 400 for invalid source", async () => {
-      const res = await request(app)
-        .post("/api/recipes/carousel/dismiss")
-        .send({
-          recipeId: "community:1",
-          source: "invalid",
-        });
+      const res = await request(app).post("/api/carousel/dismiss").send({
+        recipeId: "community:1",
+        source: "invalid",
+      });
 
       expect(res.status).toBe(400);
     });
 
     it("returns 400 for missing recipeId", async () => {
       const res = await request(app)
-        .post("/api/recipes/carousel/dismiss")
+        .post("/api/carousel/dismiss")
         .send({ source: "community" });
 
       expect(res.status).toBe(400);

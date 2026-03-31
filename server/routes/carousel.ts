@@ -27,9 +27,9 @@ const saveSchema = z.object({
 });
 
 export function register(app: Express): void {
-  // ── GET /api/recipes/carousel ────────────────────────────────────
+  // ── GET /api/carousel ────────────────────────────────────
   app.get(
-    "/api/recipes/carousel",
+    "/api/carousel",
     requireAuth,
     crudRateLimit,
     async (req: AuthenticatedRequest, res) => {
@@ -48,9 +48,9 @@ export function register(app: Express): void {
     },
   );
 
-  // ── POST /api/recipes/carousel/save ──────────────────────────────
+  // ── POST /api/carousel/save ──────────────────────────────
   app.post(
-    "/api/recipes/carousel/save",
+    "/api/carousel/save",
     requireAuth,
     crudRateLimit,
     async (req: AuthenticatedRequest, res) => {
@@ -89,9 +89,9 @@ export function register(app: Express): void {
     },
   );
 
-  // ── POST /api/recipes/carousel/dismiss ───────────────────────────
+  // ── POST /api/carousel/dismiss ───────────────────────────
   app.post(
-    "/api/recipes/carousel/dismiss",
+    "/api/carousel/dismiss",
     requireAuth,
     crudRateLimit,
     async (req: AuthenticatedRequest, res) => {

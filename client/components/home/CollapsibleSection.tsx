@@ -99,10 +99,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.md,
     minHeight: 44,
   },
-  contentWrapper: {
-    position: "absolute" as const,
-    width: "100%" as const,
-  },
+  contentWrapper: {},
   title: {
     fontFamily: FontFamily.semiBold,
   },

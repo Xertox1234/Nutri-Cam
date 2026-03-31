@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/query-client";
 import type { CarouselSource, CarouselResponse } from "@shared/types/carousel";
 
-const CAROUSEL_KEY = ["/api/recipes/carousel"];
+const CAROUSEL_KEY = ["/api/carousel"];
 
 export function useCarouselRecipes() {
   return useQuery<CarouselResponse>({
@@ -24,11 +24,7 @@ export function useSaveCarouselRecipe() {
       difficulty?: string;
       timeEstimate?: string;
     }) => {
-      const res = await apiRequest(
-        "POST",
-        "/api/recipes/carousel/save",
-        params,
-      );
+      const res = await apiRequest("POST", "/api/carousel/save", params);
       if (!res.ok) {
         const text = await res.text();
         throw new Error(`${res.status}: ${text}`);
@@ -49,11 +45,7 @@ export function useDismissCarouselRecipe() {
       recipeId: string;
       source: CarouselSource;
     }) => {
-      const res = await apiRequest(
-        "POST",
-        "/api/recipes/carousel/dismiss",
-        params,
-      );
+      const res = await apiRequest("POST", "/api/carousel/dismiss", params);
       if (!res.ok) {
         const text = await res.text();
         throw new Error(`${res.status}: ${text}`);

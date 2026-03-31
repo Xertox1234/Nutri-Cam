@@ -272,10 +272,7 @@ export function MicronutrientSection({
 }
 
 const styles = StyleSheet.create({
-  contentWrapper: {
-    position: "absolute" as const,
-    width: "100%" as const,
-  },
+  contentWrapper: {},
   header: {
     flexDirection: "row",
     alignItems: "center",
