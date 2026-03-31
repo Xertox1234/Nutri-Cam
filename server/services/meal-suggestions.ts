@@ -30,7 +30,14 @@ const mealSuggestionSchema = z.object({
   ingredients: z.array(ingredientSchema).min(1),
   instructions: z
     .union([z.string(), z.array(z.string())])
-    .transform((val) => (Array.isArray(val) ? val.join("\n") : val)),
+    .transform((val): string[] =>
+      Array.isArray(val)
+        ? val.filter((s) => s.length > 0)
+        : val
+            .split("\n")
+            .map((s) => s.trim())
+            .filter((s) => s.length > 0),
+    ),
   dietTags: z.array(z.string()).default([]),
 });
 

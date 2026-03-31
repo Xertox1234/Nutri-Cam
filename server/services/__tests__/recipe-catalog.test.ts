@@ -148,10 +148,11 @@ describe("Recipe Catalog", () => {
       expect(recipe.description).toContain("Italian");
     });
 
-    it("strips HTML from instructions", () => {
+    it("strips HTML from instructions and returns string[]", () => {
       const { recipe } = mapToMealPlanRecipe(fullDetail, "user-1");
-      expect(recipe.instructions).not.toContain("<");
-      expect(recipe.instructions).toContain("Boil water");
+      expect(Array.isArray(recipe.instructions)).toBe(true);
+      expect(recipe.instructions!.join(" ")).not.toContain("<");
+      expect(recipe.instructions).toContain("Boil water. Cook pasta.");
     });
 
     it("extracts nutrition values", () => {

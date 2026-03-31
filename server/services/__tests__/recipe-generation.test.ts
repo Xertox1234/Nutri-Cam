@@ -110,7 +110,7 @@ describe("Recipe Generation", () => {
         description: "A light and healthy salad.",
         difficulty: "Easy",
         timeEstimate: "20 min",
-        instructions: "1. Grill chicken. 2. Toss salad. 3. Combine.",
+        instructions: "Grill chicken\nToss salad\nCombine",
         dietTags: ["high-protein", "low-carb"],
       };
 
@@ -127,6 +127,7 @@ describe("Recipe Generation", () => {
       expect(result.difficulty).toBe("Easy");
       expect(result.timeEstimate).toBe("20 min");
       expect(result.instructions).toContain("Grill chicken");
+      expect(result.instructions).toContain("Toss salad");
       expect(result.dietTags).toEqual(["high-protein", "low-carb"]);
     });
 
@@ -207,7 +208,7 @@ describe("Recipe Generation", () => {
         description: "Plant-based bowl",
         difficulty: "Easy",
         timeEstimate: "15 min",
-        instructions: "Mix ingredients together.",
+        instructions: "Mix ingredients together",
         dietTags: ["vegan"],
       };
 
@@ -336,7 +337,7 @@ describe("Recipe Generation", () => {
         description: "Delicious salmon",
         difficulty: "Medium",
         timeEstimate: "30 min",
-        instructions: "Grill the salmon.",
+        instructions: "Grill the salmon",
         dietTags: ["high-protein"],
       };
 
@@ -360,7 +361,7 @@ describe("Recipe Generation", () => {
         description: "Quick pasta dish",
         difficulty: "Easy",
         timeEstimate: "15 min",
-        instructions: "Cook pasta. Add sauce.",
+        instructions: "Cook pasta\nAdd sauce",
         dietTags: [],
       };
 

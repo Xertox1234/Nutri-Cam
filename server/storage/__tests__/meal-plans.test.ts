@@ -127,7 +127,7 @@ async function createTestCommunityRecipe(
     title: "Community Recipe",
     description: "Community test",
     normalizedProductName: "community food",
-    instructions: "Mix and serve",
+    instructions: ["Mix and serve"],
     isPublic: true,
     dietTags: [] as string[],
   };

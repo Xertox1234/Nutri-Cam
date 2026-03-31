@@ -89,7 +89,7 @@ export function useCreateMealPlanRecipe() {
       servings?: number;
       prepTimeMinutes?: number | null;
       cookTimeMinutes?: number | null;
-      instructions?: string | null;
+      instructions?: string[] | null;
       dietTags?: string[];
       sourceType?:
         | "user_created"

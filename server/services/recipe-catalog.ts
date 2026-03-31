@@ -173,8 +173,12 @@ function mapToMealPlanRecipe(
     cookTimeMinutes: detail.cookingMinutes ?? null,
     imageUrl: detail.image || null,
     instructions: detail.instructions
-      ? detail.instructions.replace(/<[^>]*>/g, "")
-      : null,
+      ? detail.instructions
+          .replace(/<[^>]*>/g, "")
+          .split(/\n/)
+          .map((s: string) => s.replace(/^\d+[\.\)\:\-]\s*/, "").trim())
+          .filter((s: string) => s.length > 0)
+      : undefined,
     dietTags: detail.diets || [],
     caloriesPerServing: findNutrient(nutrients, "Calories")?.toString() ?? null,
     proteinPerServing: findNutrient(nutrients, "Protein")?.toString() ?? null,

@@ -458,7 +458,7 @@ export const communityRecipes = pgTable(
     timeEstimate: text("time_estimate"),
     servings: integer("servings").default(2),
     dietTags: jsonb("diet_tags").$type<string[]>().default([]),
-    instructions: text("instructions").notNull(),
+    instructions: jsonb("instructions").$type<string[]>().notNull(),
     imageUrl: text("image_url"),
     isPublic: boolean("is_public").default(true),
     likeCount: integer("like_count").default(0),
@@ -561,7 +561,10 @@ export const mealPlanRecipes = pgTable(
     prepTimeMinutes: integer("prep_time_minutes"),
     cookTimeMinutes: integer("cook_time_minutes"),
     imageUrl: text("image_url"),
-    instructions: text("instructions"),
+    instructions: jsonb("instructions")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
     dietTags: jsonb("diet_tags").$type<string[]>().default([]),
     mealTypes: jsonb("meal_types").$type<string[]>().default([]),
     caloriesPerServing: decimal("calories_per_serving", {

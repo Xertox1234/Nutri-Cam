@@ -36,7 +36,7 @@ const baseRecipe = {
   dietTags: ["high-protein"],
   createdAt: new Date(),
   updatedAt: new Date(),
-  instructions: "1. Grill chicken\n2. Toss salad",
+  instructions: ["Grill chicken", "Toss salad"],
   barcode: null,
   timeEstimate: null,
   normalizedProductName: "grilled chicken salad",

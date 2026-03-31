@@ -9,7 +9,7 @@ export interface MealSuggestion {
   prepTimeMinutes: number;
   difficulty: "Easy" | "Medium" | "Hard";
   ingredients: { name: string; quantity?: string; unit?: string }[];
-  instructions: string;
+  instructions: string[];
   dietTags: string[];
 }
 

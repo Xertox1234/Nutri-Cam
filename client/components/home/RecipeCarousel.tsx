@@ -67,7 +67,7 @@ export const RecipeCarousel = React.memo(function RecipeCarousel() {
             : undefined,
         instructions:
           "instructions" in recipeData
-            ? ((recipeData.instructions as string) ?? undefined)
+            ? ((recipeData.instructions as string[]) ?? undefined)
             : undefined,
         difficulty:
           "difficulty" in recipeData

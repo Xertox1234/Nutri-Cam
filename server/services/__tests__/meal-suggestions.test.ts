@@ -171,7 +171,7 @@ describe("meal-suggestions", () => {
         prepTimeMinutes: 20,
         difficulty: "Easy",
         ingredients: [{ name: "chicken breast", quantity: "200", unit: "g" }],
-        instructions: "1. Cook chicken. 2. Add vegetables.",
+        instructions: ["Cook chicken", "Add vegetables"],
         dietTags: ["high-protein"],
       };
       expect(mealSuggestionSchema.parse(valid)).toEqual(valid);
@@ -190,7 +190,7 @@ describe("meal-suggestions", () => {
           prepTimeMinutes: 10,
           difficulty: "Easy",
           ingredients: [{ name: "rice" }],
-          instructions: "cook",
+          instructions: ["cook"],
           dietTags: [],
         }),
       ).toThrow();
@@ -209,7 +209,7 @@ describe("meal-suggestions", () => {
           prepTimeMinutes: 10,
           difficulty: "Super Easy",
           ingredients: [{ name: "rice" }],
-          instructions: "cook",
+          instructions: ["cook"],
           dietTags: [],
         }),
       ).toThrow();
@@ -229,7 +229,7 @@ describe("meal-suggestions", () => {
         prepTimeMinutes: 15,
         difficulty: "Easy" as const,
         ingredients: [{ name: "ingredient" }],
-        instructions: "cook it",
+        instructions: ["cook it"],
         dietTags: [],
       });
 
@@ -267,7 +267,7 @@ describe("meal-suggestions", () => {
       prepTimeMinutes: 25,
       difficulty: "Easy" as const,
       ingredients: [{ name: "chicken breast", quantity: "200", unit: "g" }],
-      instructions: "1. Grill chicken.",
+      instructions: ["Grill chicken"],
       dietTags: ["high-protein"],
     };
 

@@ -70,7 +70,7 @@ function normalizeToCommunityRecipe(card: CarouselRecipeCard): CommunityRecipe {
       : null,
     servings: null,
     dietTags: [],
-    instructions: "View full recipe for instructions.",
+    instructions: [],
     imageUrl: card.imageUrl,
     isPublic: true,
     likeCount: 0,

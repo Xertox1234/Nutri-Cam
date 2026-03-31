@@ -11,7 +11,7 @@ export interface RecipeContent {
   description: string;
   difficulty: "Easy" | "Medium" | "Hard";
   timeEstimate: string;
-  instructions: string;
+  instructions: string[];
   dietTags: string[];
 }
 

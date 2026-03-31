@@ -56,36 +56,36 @@ describe("Recipe Import", () => {
       expect(normalizeInstructions(undefined)).toBeNull();
     });
 
-    it("returns trimmed string for string input", () => {
-      expect(normalizeInstructions("Step 1. Cook.")).toBe("Step 1. Cook.");
+    it("returns array with trimmed string for string input", () => {
+      expect(normalizeInstructions("Step 1. Cook.")).toEqual(["Step 1. Cook."]);
     });
 
     it("strips HTML from string input", () => {
-      expect(normalizeInstructions("<p>Cook the <b>pasta</b></p>")).toBe(
+      expect(normalizeInstructions("<p>Cook the <b>pasta</b></p>")).toEqual([
         "Cook the pasta",
-      );
+      ]);
     });
 
-    it("formats HowToStep array with numbered steps", () => {
+    it("returns string[] from HowToStep array", () => {
       const steps = [
         { "@type": "HowToStep" as const, text: "Preheat oven" },
         { "@type": "HowToStep" as const, text: "Mix ingredients" },
       ];
       const result = normalizeInstructions(steps);
-      expect(result).toBe("1. Preheat oven\n2. Mix ingredients");
+      expect(result).toEqual(["Preheat oven", "Mix ingredients"]);
     });
 
     it("handles array of plain strings", () => {
       const steps = ["Preheat oven", "Mix ingredients"];
       const result = normalizeInstructions(steps);
-      expect(result).toBe("1. Preheat oven\n2. Mix ingredients");
+      expect(result).toEqual(["Preheat oven", "Mix ingredients"]);
     });
 
     it("strips HTML from HowToStep text", () => {
       const steps = [
         { "@type": "HowToStep" as const, text: "<p>Cook <b>pasta</b></p>" },
       ];
-      expect(normalizeInstructions(steps)).toBe("1. Cook pasta");
+      expect(normalizeInstructions(steps)).toEqual(["Cook pasta"]);
     });
   });
 
@@ -555,7 +555,7 @@ describe("Recipe Import", () => {
         expect(result.data.carbsPerServing).toBe("45");
         expect(result.data.fatPerServing).toBe("15");
         expect(result.data.imageUrl).toBe("https://example.com/img.jpg");
-        expect(result.data.instructions).toContain("1. Mix dry ingredients");
+        expect(result.data.instructions).toContain("Mix dry ingredients");
         expect(result.data.sourceUrl).toBe("https://example.com/full-recipe");
       }
     });

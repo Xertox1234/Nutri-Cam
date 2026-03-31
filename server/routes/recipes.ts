@@ -719,7 +719,7 @@ export function register(app: Express): void {
             prepTimeMinutes: data.prepTimeMinutes,
             cookTimeMinutes: data.cookTimeMinutes,
             imageUrl: data.imageUrl,
-            instructions: data.instructions,
+            instructions: data.instructions ?? undefined,
             dietTags: data.dietTags,
             mealTypes: inferMealTypes(
               data.title,

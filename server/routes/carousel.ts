@@ -21,7 +21,7 @@ const saveSchema = z.object({
   source: z.enum(["ai", "catalog", "community"]),
   title: z.string().min(1).max(200),
   description: z.string().max(2000).optional(),
-  instructions: z.string().max(10000).optional(),
+  instructions: z.array(z.string()).max(100).optional(),
   difficulty: z.string().max(50).optional(),
   timeEstimate: z.string().max(50).optional(),
 });
@@ -68,7 +68,9 @@ export function register(app: Express): void {
           type: "recipe",
           title,
           description,
-          instructions,
+          instructions: instructions
+            ? instructions.map((s, i) => `${i + 1}. ${s}`).join("\n")
+            : undefined,
           difficulty,
           timeEstimate,
         });

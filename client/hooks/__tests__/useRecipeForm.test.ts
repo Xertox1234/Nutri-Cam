@@ -118,7 +118,7 @@ describe("useRecipeForm", () => {
           { name: "flour", quantity: "2", unit: "cups" },
           { name: "sugar", quantity: "1", unit: "cup" },
         ],
-        instructions: "1. Mix\n2. Bake",
+        instructions: ["Mix", "Bake"],
         servings: 4,
         prepTimeMinutes: 10,
         cookTimeMinutes: 30,
@@ -383,7 +383,7 @@ describe("useRecipeForm", () => {
       expect(payload.cookTimeMinutes).toBe(30);
       expect(payload.cuisine).toBe("Italian");
       expect(payload.dietTags).toEqual(["Vegetarian"]);
-      expect(payload.instructions).toBe("1. Mix well");
+      expect(payload.instructions).toEqual(["Mix well"]);
       expect(payload.ingredients).toHaveLength(1);
       expect(payload.ingredients[0].name).toBe("flour");
     });

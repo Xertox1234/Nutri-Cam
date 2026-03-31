@@ -228,7 +228,7 @@ describe("Recipes Routes", () => {
         difficulty: "Easy",
         timeEstimate: "30 min",
         dietTags: [],
-        instructions: "Cook pasta...",
+        instructions: ["Cook pasta..."],
         imageUrl: null,
       });
       vi.mocked(storage.createRecipeWithLimitCheck).mockResolvedValue(
@@ -723,7 +723,7 @@ describe("Recipes Routes", () => {
           prepTimeMinutes: 10,
           cookTimeMinutes: 20,
           imageUrl: null,
-          instructions: "Cook it",
+          instructions: ["Cook it"],
           dietTags: [],
           caloriesPerServing: null,
           proteinPerServing: null,

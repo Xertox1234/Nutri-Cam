@@ -25,7 +25,7 @@ export interface CommunityRecipeSnapshot {
   timeEstimate: string | null;
   servings: number | null;
   dietTags: string[];
-  instructions: string;
+  instructions: string[];
 }
 
 export interface CarouselResponse {
@@ -37,7 +37,7 @@ export interface CarouselSaveRequest {
   source: CarouselSource;
   title: string;
   description?: string;
-  instructions?: string;
+  instructions?: string[];
   difficulty?: string;
   timeEstimate?: string;
 }

@@ -36,7 +36,7 @@ export interface RecipeDetailContentProps {
   dietTags?: string[];
   nutrition?: NutritionData | null;
   ingredients?: IngredientItem[];
-  instructions?: string | null;
+  instructions?: string[] | null;
   contentPaddingTop?: number;
   contentPaddingBottom?: number;
 }
@@ -141,14 +141,17 @@ export function RecipeDetailContent(props: RecipeDetailContentProps) {
           )}
 
           {/* 8. Instructions */}
-          {props.instructions && (
+          {props.instructions && props.instructions.length > 0 && (
             <View style={styles.instructionsSection}>
               <ThemedText style={styles.sectionTitle}>Instructions</ThemedText>
-              <ThemedText
-                style={[styles.instructions, { color: theme.textSecondary }]}
-              >
-                {props.instructions}
-              </ThemedText>
+              {props.instructions.map((step, idx) => (
+                <ThemedText
+                  key={idx}
+                  style={[styles.instructions, { color: theme.textSecondary }]}
+                >
+                  {`${idx + 1}. ${step}`}
+                </ThemedText>
+              ))}
             </View>
           )}
         </View>
