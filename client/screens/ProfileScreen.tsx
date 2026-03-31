@@ -34,8 +34,6 @@ import {
 } from "@/constants/theme";
 import { resolveImageUrl } from "@/lib/query-client";
 import type { ThemePreference } from "@/context/ThemeContext";
-import { useHealthKitSettings } from "@/hooks/useHealthKit";
-import { HealthKitSyncIndicator } from "@/components/HealthKitSyncIndicator";
 import { useProfileData } from "@/hooks/useProfileData";
 import type { DailySummary, FeaturedRecipe } from "@/hooks/useProfileData";
 
@@ -435,7 +433,6 @@ const SettingsItem = React.memo(function SettingsItem({
 const SettingsSection = React.memo(function SettingsSection({
   themePreference,
   onWeightTracking,
-  onHealthKit,
   onDietaryProfile,
   onGLP1Companion,
   onNutritionGoals,
@@ -448,7 +445,6 @@ const SettingsSection = React.memo(function SettingsSection({
 }: {
   themePreference: ThemePreference;
   onWeightTracking: () => void;
-  onHealthKit: () => void;
   onDietaryProfile: () => void;
   onGLP1Companion: () => void;
   onNutritionGoals: () => void;
@@ -460,9 +456,7 @@ const SettingsSection = React.memo(function SettingsSection({
   onLockedPress: () => void;
 }) {
   const { theme } = useTheme();
-  const { data: healthKitSettings } = useHealthKitSettings();
   const weightTrendUnlocked = usePremiumFeature("weightTrend");
-  const healthKitUnlocked = usePremiumFeature("healthKitSync");
   const glp1Unlocked = usePremiumFeature("glp1Companion");
   const adaptiveGoalsUnlocked = usePremiumFeature("adaptiveGoals");
 
@@ -478,20 +472,6 @@ const SettingsSection = React.memo(function SettingsSection({
           locked={!weightTrendUnlocked}
           onPress={weightTrendUnlocked ? onWeightTracking : onLockedPress}
         />
-        <View style={[styles.divider, { backgroundColor: theme.border }]} />
-        <View style={styles.healthKitRow}>
-          <View style={{ flex: 1 }}>
-            <SettingsItem
-              icon="heart"
-              label="Apple Health"
-              locked={!healthKitUnlocked}
-              onPress={healthKitUnlocked ? onHealthKit : onLockedPress}
-            />
-          </View>
-          {healthKitSettings && healthKitSettings.length > 0 && (
-            <HealthKitSyncIndicator settings={healthKitSettings} />
-          )}
-        </View>
         <View style={[styles.divider, { backgroundColor: theme.border }]} />
         <SettingsItem
           icon="clipboard"
@@ -640,7 +620,6 @@ export default function ProfileScreen() {
     handleSubscription,
     handleLockedPress,
     handleWeightTracking,
-    handleHealthKit,
     handleDietaryProfile,
     handleGLP1Companion,
     handleNutritionGoals,
@@ -779,7 +758,6 @@ export default function ProfileScreen() {
         <SettingsSection
           themePreference={themePreference}
           onWeightTracking={handleWeightTracking}
-          onHealthKit={handleHealthKit}
           onDietaryProfile={handleDietaryProfile}
           onGLP1Companion={handleGLP1Companion}
           onNutritionGoals={handleNutritionGoals}
@@ -994,11 +972,6 @@ const styles = StyleSheet.create({
   settingsCard: {
     padding: 0,
     overflow: "hidden",
-  },
-  healthKitRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingRight: Spacing.md,
   },
   settingsItem: {
     flexDirection: "row",
