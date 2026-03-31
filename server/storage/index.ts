@@ -24,6 +24,7 @@ import * as apiKeysStorage from "./api-keys";
 import * as batch from "./batch";
 import * as reformulation from "./reformulation";
 import * as sessions from "./sessions";
+import * as carousel from "./carousel";
 
 export { escapeLike, getDayBounds, getMonthBounds } from "./helpers";
 
@@ -238,4 +239,11 @@ export const storage = {
   createLabelSession: sessions.createLabelSession,
   getLabelSession: sessions.getLabelSession,
   clearLabelSession: sessions.clearLabelSession,
+
+  // Carousel (recipe discovery)
+  getDismissedRecipeIds: carousel.getDismissedRecipeIds,
+  dismissRecipe: carousel.dismissRecipe,
+  getCarouselCache: carousel.getCarouselCache,
+  setCarouselCache: carousel.setCarouselCache,
+  getRecentCommunityRecipes: carousel.getRecentCommunityRecipes,
 };

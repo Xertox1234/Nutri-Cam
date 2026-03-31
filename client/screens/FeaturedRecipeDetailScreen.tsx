@@ -29,6 +29,8 @@ import {
 } from "@/constants/theme";
 import type { RootStackParamList } from "@/navigation/RootStackNavigator";
 import type { CommunityRecipe } from "@shared/schema";
+import type { CarouselRecipeCard } from "@shared/types/carousel";
+import type { MealSuggestion } from "@shared/types/meal-suggestions";
 
 const CLOSE_BUTTON_SIZE = 44;
 const HERO_IMAGE_HEIGHT = 250;
@@ -103,22 +105,83 @@ function RecipeDetailSkeleton() {
   );
 }
 
+function normalizeToCommunityRecipe(card: CarouselRecipeCard): CommunityRecipe {
+  const data = card.recipeData;
+
+  // AI-generated suggestions
+  if (card.source === "ai") {
+    const ai = data as MealSuggestion;
+    return {
+      id: 0,
+      authorId: null,
+      barcode: null,
+      normalizedProductName: card.title.toLowerCase(),
+      title: card.title,
+      description: ai.description,
+      difficulty: ai.difficulty,
+      timeEstimate: ai.prepTimeMinutes ? `${ai.prepTimeMinutes} minutes` : null,
+      servings: 2,
+      dietTags: ai.dietTags,
+      instructions: ai.instructions,
+      imageUrl: card.imageUrl,
+      isPublic: true,
+      likeCount: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+  }
+
+  // Community recipes
+  if (card.source === "community" && "instructions" in data) {
+    return data as unknown as CommunityRecipe;
+  }
+
+  // Catalog recipes (minimal data)
+  return {
+    id: 0,
+    authorId: null,
+    barcode: null,
+    normalizedProductName: card.title.toLowerCase(),
+    title: card.title,
+    description: card.recommendationReason,
+    difficulty: null,
+    timeEstimate: card.prepTimeMinutes
+      ? `${card.prepTimeMinutes} minutes`
+      : null,
+    servings: null,
+    dietTags: [],
+    instructions: "View full recipe for instructions.",
+    imageUrl: card.imageUrl,
+    isPublic: true,
+    likeCount: 0,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+}
+
 export default function FeaturedRecipeDetailScreen() {
   const route = useRoute<FeaturedRecipeDetailRouteProp>();
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { recipeId } = route.params;
+  const { recipeId, carouselCard } = route.params;
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const haptics = useHaptics();
 
   const {
-    data: recipe,
-    isLoading,
+    data: fetchedRecipe,
+    isLoading: isFetching,
     error,
   } = useQuery<CommunityRecipe>({
     queryKey: [`/api/recipes/${recipeId}`],
+    enabled: !carouselCard, // Skip fetch if carousel card data provided
   });
+
+  // Normalize carousel card data into CommunityRecipe-like shape for display
+  const recipe: CommunityRecipe | undefined = carouselCard
+    ? normalizeToCommunityRecipe(carouselCard)
+    : fetchedRecipe;
+  const isLoading = !carouselCard && isFetching;
 
   const dismiss = useCallback(() => navigation.goBack(), [navigation]);
   const [pickerVisible, setPickerVisible] = useState(false);

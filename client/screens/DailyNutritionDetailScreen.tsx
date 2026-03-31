@@ -259,7 +259,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   ringSection: {
-    paddingTop: Spacing.lg,
+    paddingTop: Spacing.xl * 2 + 40,
     paddingBottom: Spacing.sm,
     alignItems: "center",
   },

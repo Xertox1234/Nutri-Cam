@@ -1647,6 +1647,60 @@ export const barcodeNutrition = pgTable("barcode_nutrition", {
     .notNull(),
 });
 
+// ── Carousel (recipe discovery) ──────────────────────────────────────
+
+export const recipeDismissals = pgTable(
+  "recipe_dismissals",
+  {
+    id: serial("id").primaryKey(),
+    userId: varchar("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    recipeIdentifier: text("recipe_identifier").notNull(),
+    source: text("source").notNull(),
+    dismissedAt: timestamp("dismissed_at")
+      .default(sql`CURRENT_TIMESTAMP`)
+      .notNull(),
+  },
+  (table) => ({
+    userRecipeUniqueIdx: uniqueIndex("recipe_dismissals_user_recipe_idx").on(
+      table.userId,
+      table.recipeIdentifier,
+    ),
+  }),
+);
+
+export const carouselSuggestionCache = pgTable(
+  "carousel_suggestion_cache",
+  {
+    id: serial("id").primaryKey(),
+    userId: varchar("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    profileHash: text("profile_hash").notNull(),
+    mealType: text("meal_type").notNull(),
+    suggestions: jsonb("suggestions").notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    createdAt: timestamp("created_at")
+      .default(sql`CURRENT_TIMESTAMP`)
+      .notNull(),
+  },
+  (table) => ({
+    userProfileMealIdx: uniqueIndex("carousel_cache_user_profile_meal_idx").on(
+      table.userId,
+      table.profileHash,
+      table.mealType,
+    ),
+  }),
+);
+
+export type RecipeDismissal = typeof recipeDismissals.$inferSelect;
+export type InsertRecipeDismissal = typeof recipeDismissals.$inferInsert;
+export type CarouselSuggestionCacheEntry =
+  typeof carouselSuggestionCache.$inferSelect;
+
+// ── Type exports ─────────────────────────────────────────────────────
+
 export type ApiKey = typeof apiKeys.$inferSelect;
 export type InsertApiKey = typeof apiKeys.$inferInsert;
 export type ApiKeyUsage = typeof apiKeyUsage.$inferSelect;

@@ -248,9 +248,6 @@ export default function QuickLogScreen() {
       >
         {/* Text Input */}
         <Card elevation={1} style={styles.inputCard}>
-          <ThemedText type="h4" style={styles.sectionTitle}>
-            Quick Log
-          </ThemedText>
           <ThemedText
             type="caption"
             style={[styles.hint, { color: theme.textSecondary }]}
@@ -436,10 +433,8 @@ const styles = StyleSheet.create({
   },
   inputCard: {
     margin: Spacing.lg,
+    marginTop: 80,
     marginBottom: Spacing.sm,
-  },
-  sectionTitle: {
-    marginBottom: Spacing.xs,
   },
   hint: {
     marginBottom: Spacing.md,
