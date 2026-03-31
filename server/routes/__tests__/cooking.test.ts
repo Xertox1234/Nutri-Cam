@@ -831,7 +831,7 @@ describe("Cooking Routes", () => {
         description: "Simple grilled chicken breast",
         difficulty: "Easy",
         timeEstimate: "20 minutes",
-        instructions: "Season and grill",
+        instructions: ["Season and grill"],
         dietTags: [],
       } satisfies RecipeContent);
 

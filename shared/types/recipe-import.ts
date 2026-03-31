@@ -13,7 +13,7 @@ export interface ImportedRecipeData {
   cuisine: string | null;
   dietTags: string[];
   ingredients: ParsedIngredient[];
-  instructions: string | null;
+  instructions: string[] | null;
   imageUrl: string | null;
   caloriesPerServing: string | null;
   proteinPerServing: string | null;

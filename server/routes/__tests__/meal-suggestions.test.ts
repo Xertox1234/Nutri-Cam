@@ -28,7 +28,7 @@ function createMockMealSuggestion(
     prepTimeMinutes: 15,
     difficulty: "Easy",
     ingredients: [{ name: "Test ingredient", quantity: "1", unit: "cup" }],
-    instructions: "Test instructions",
+    instructions: ["Test instructions"],
     dietTags: [],
     ...overrides,
   };

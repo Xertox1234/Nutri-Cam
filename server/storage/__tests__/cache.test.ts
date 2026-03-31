@@ -93,7 +93,7 @@ const sampleMealSuggestion: MealSuggestion = {
     { name: "Chicken breast", quantity: "200", unit: "g" },
     { name: "Rice", quantity: "100", unit: "g" },
   ],
-  instructions: "Grill chicken. Serve with rice.",
+  instructions: ["Grill chicken.", "Serve with rice."],
   dietTags: ["high-protein"],
 };
 

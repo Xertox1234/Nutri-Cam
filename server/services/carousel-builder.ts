@@ -91,7 +91,7 @@ function normalizeCommunity(
 function normalizeAi(suggestion: MealSuggestion): CarouselRecipeCard {
   const hash = crypto
     .createHash("sha256")
-    .update(suggestion.title + suggestion.instructions)
+    .update(suggestion.title + JSON.stringify(suggestion.instructions))
     .digest("hex")
     .slice(0, 12);
 

@@ -75,11 +75,8 @@ function buildIngredientsFromPrefill(
 function buildStepsFromPrefill(
   prefill: ImportedRecipeData | undefined,
 ): StepRow[] {
-  if (prefill?.instructions) {
-    const steps = deserializeSteps(prefill.instructions);
-    if (steps.length > 0) {
-      return steps.map((s) => ({ key: nextStepKey(), text: s }));
-    }
+  if (prefill?.instructions && prefill.instructions.length > 0) {
+    return prefill.instructions.map((s) => ({ key: nextStepKey(), text: s }));
   }
   return [{ key: nextStepKey(), text: "" }];
 }
@@ -239,9 +236,9 @@ export function useRecipeForm(prefill?: ImportedRecipeData) {
         };
       });
 
-    const instructionText = serializeSteps(
-      steps.filter((s) => s.text.trim()).map((s) => s.text),
-    );
+    const instructionSteps = steps
+      .filter((s) => s.text.trim())
+      .map((s) => s.text.trim());
 
     return {
       title: title.trim(),
@@ -255,7 +252,7 @@ export function useRecipeForm(prefill?: ImportedRecipeData) {
         : null,
       cuisine: tags.cuisine.trim() || null,
       dietTags: tags.dietTags as string[],
-      instructions: instructionText || null,
+      instructions: instructionSteps.length > 0 ? instructionSteps : null,
       caloriesPerServing: nutrition.calories || null,
       proteinPerServing: nutrition.protein || null,
       carbsPerServing: nutrition.carbs || null,

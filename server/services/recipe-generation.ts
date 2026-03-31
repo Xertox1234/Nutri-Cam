@@ -41,8 +41,14 @@ const recipeContentSchema = z.object({
   timeEstimate: z.string().min(1).max(50),
   instructions: z
     .union([z.string(), z.array(instructionItemSchema)])
-    .transform((v) => {
-      if (!Array.isArray(v)) return v;
+    .transform((v): string[] => {
+      if (!Array.isArray(v)) {
+        // Split single string on newlines into steps
+        return v
+          .split(/\n/)
+          .map((s) => s.replace(/^\d+[\.\)\:\-]\s*/, "").trim())
+          .filter((s) => s.length > 0);
+      }
       // Handle both string[] and object[] (e.g. [{step: 1, text: "..."}])
       return v
         .map((item) =>
@@ -53,9 +59,9 @@ const recipeContentSchema = z.object({
               item.description ??
               JSON.stringify(item)),
         )
-        .join("\n");
+        .filter((s) => s.length > 0);
     })
-    .pipe(z.string().min(1)),
+    .pipe(z.array(z.string()).min(1)),
   dietTags: z.array(z.string()).default([]),
 });
 
@@ -76,7 +82,7 @@ export interface GeneratedRecipe {
   description: string;
   difficulty: string;
   timeEstimate: string;
-  instructions: string;
+  instructions: string[];
   dietTags: string[];
   imageUrl: string | null;
 }
