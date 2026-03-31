@@ -11,19 +11,9 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.williamtower.ocrecipes",
-      "entitlements": {
-        "com.apple.developer.healthkit": true,
-        "com.apple.developer.healthkit.access": [
-          "HKQuantityTypeIdentifierBodyMass",
-          "HKQuantityTypeIdentifierStepCount",
-          "HKQuantityTypeIdentifierActiveEnergyBurned"
-        ]
-      },
       "infoPlist": {
         "NSCameraUsageDescription": "OCRecipes needs camera access to scan barcodes and nutrition labels.",
-        "NSMicrophoneUsageDescription": "OCRecipes uses the microphone for voice food logging.",
-        "NSHealthShareUsageDescription": "OCRecipes reads your health data to sync weight, steps, and workouts.",
-        "NSHealthUpdateUsageDescription": "OCRecipes writes nutrition data to Apple Health."
+        "NSMicrophoneUsageDescription": "OCRecipes uses the microphone for voice food logging."
       }
     },
     "android": {
@@ -74,12 +64,7 @@
           "speechRecognitionPermission": "OCRecipes uses speech recognition for voice food logging."
         }
       ],
-      [
-        "expo-notifications",
-        {
-          "sounds": []
-        }
-      ]
+      "./plugins/strip-push-entitlement"
     ],
     "experiments": {
       "reactCompiler": true

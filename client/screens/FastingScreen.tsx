@@ -7,6 +7,7 @@ import {
   RefreshControl,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useNavigation } from "@react-navigation/native";
 import { Feather, Ionicons } from "@expo/vector-icons";
@@ -41,6 +42,7 @@ const COACH_QUESTIONS = [
 
 export default function FastingScreen() {
   const insets = useSafeAreaInsets();
+  const headerHeight = useHeaderHeight();
   const tabBarHeight = useBottomTabBarHeight();
   const { reducedMotion } = useAccessibility();
 
@@ -87,7 +89,7 @@ export default function FastingScreen() {
     <ScrollView
       style={{ flex: 1, backgroundColor: theme.backgroundRoot }}
       contentContainerStyle={{
-        paddingTop: insets.top + Spacing.lg,
+        paddingTop: headerHeight + Spacing.xl,
         paddingBottom: tabBarHeight + Spacing.xl + FAB_CLEARANCE,
       }}
       scrollIndicatorInsets={{ bottom: insets.bottom }}
