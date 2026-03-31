@@ -64,7 +64,11 @@ export type RootStackParamList = {
   };
   GoalSetup: undefined;
   EditDietaryProfile: undefined;
-  FeaturedRecipeDetail: { recipeId: number };
+  FeaturedRecipeDetail: {
+    recipeId: number;
+    /** When provided, the screen uses this data directly instead of fetching by ID */
+    carouselCard?: import("@shared/types/carousel").CarouselRecipeCard;
+  };
   QuickLog: undefined;
   DailyNutritionDetail: undefined;
   MenuScanResult: {

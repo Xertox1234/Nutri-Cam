@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from "react";
 import { ScrollView, RefreshControl, StyleSheet, View } from "react-native";
+import { useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
 import { useNavigation } from "@react-navigation/native";
@@ -7,6 +8,7 @@ import * as Haptics from "expo-haptics";
 import Animated, { FadeInDown } from "react-native-reanimated";
 
 import { DailySummaryHeader } from "@/components/home/DailySummaryHeader";
+import { RecipeCarousel } from "@/components/home/RecipeCarousel";
 import { RecentActionsRow } from "@/components/home/RecentActionsRow";
 import { CollapsibleSection } from "@/components/home/CollapsibleSection";
 import { ActionRow } from "@/components/home/ActionRow";
@@ -27,10 +29,9 @@ import { UpgradeModal } from "@/components/UpgradeModal";
 import type { HomeScreenNavigationProp } from "@/types/navigation";
 
 const SECTIONS: { key: SectionKey; title: string; delay: number }[] = [
-  { key: "scanning", title: "Camera & Scanning", delay: 150 },
-  { key: "nutrition", title: "Nutrition & Health", delay: 200 },
-  { key: "recipes", title: "Recipes", delay: 250 },
-  { key: "planning", title: "Planning", delay: 300 },
+  { key: "nutrition", title: "Nutrition & Health", delay: 150 },
+  { key: "recipes", title: "Recipes", delay: 200 },
+  { key: "planning", title: "Planning", delay: 250 },
 ];
 
 export default function HomeScreen() {
@@ -43,6 +44,7 @@ export default function HomeScreen() {
 
   const { sections, toggleSection, recentActions, recordAction, usageCounts } =
     useHomeActions();
+  const queryClient = useQueryClient();
   const { refetch, isRefetching } = useDailyBudget();
 
   const isPremium = user?.subscriptionTier === "premium";
@@ -79,7 +81,12 @@ export default function HomeScreen() {
         refreshControl={
           <RefreshControl
             refreshing={isRefetching}
-            onRefresh={() => refetch().then(() => haptics.impact())}
+            onRefresh={() => {
+              queryClient.invalidateQueries({
+                queryKey: ["/api/recipes/carousel"],
+              });
+              refetch().then(() => haptics.impact());
+            }}
           />
         }
       >
@@ -91,6 +98,14 @@ export default function HomeScreen() {
           onActionPress={handleActionPress}
           usageCounts={usageCounts}
         />
+
+        <Animated.View
+          entering={
+            reducedMotion ? undefined : FadeInDown.delay(100).duration(400)
+          }
+        >
+          <RecipeCarousel />
+        </Animated.View>
 
         {SECTIONS.map(({ key, title, delay }) => (
           <Animated.View
