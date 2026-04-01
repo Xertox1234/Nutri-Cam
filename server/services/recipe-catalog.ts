@@ -218,6 +218,8 @@ export async function searchCatalogRecipes(
   url.searchParams.set("query", params.query);
   url.searchParams.set("number", String(params.number || 10));
   url.searchParams.set("offset", String(params.offset || 0));
+  // Only return recipes that have instructions — prevents empty recipe cards
+  url.searchParams.set("instructionsRequired", "true");
   if (params.cuisine) url.searchParams.set("cuisine", params.cuisine);
   if (params.diet) url.searchParams.set("diet", params.diet);
   if (params.type) url.searchParams.set("type", params.type);

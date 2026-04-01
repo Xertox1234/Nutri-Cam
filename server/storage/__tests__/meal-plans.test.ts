@@ -91,6 +91,7 @@ async function createTestMealPlanRecipe(
     proteinPerServing: "30",
     carbsPerServing: "40",
     fatPerServing: "15",
+    instructions: ["Step 1: Prepare ingredients", "Step 2: Cook and serve"],
     dietTags: [],
     ...overrides,
   };

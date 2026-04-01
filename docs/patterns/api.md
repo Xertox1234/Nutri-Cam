@@ -969,6 +969,46 @@ setNutrition({
 
 **Why:** External APIs often have inconsistent data coverage. A product might have per-serving calories but only per-100g fiber data. Per-field fallback ensures you get the best available data for each field.
 
+### External Data Ingestion Quality Gate
+
+When saving data from external APIs (Spoonacular, recipe URLs, third-party catalogs), validate that the record meets a **minimum content threshold** before persisting. Apply this as defense-in-depth across three layers:
+
+```typescript
+// Layer 1: API parameters — ask the source to pre-filter
+url.searchParams.set("instructionsRequired", "true");
+
+// Layer 2: Route-level validation — reject before saving
+const hasInstructions =
+  detail.recipe.instructions &&
+  Array.isArray(detail.recipe.instructions) &&
+  detail.recipe.instructions.length > 0;
+const hasIngredients = detail.ingredients && detail.ingredients.length > 0;
+if (!hasInstructions && !hasIngredients) {
+  sendError(
+    res,
+    422,
+    "This recipe has no instructions or ingredients",
+    ErrorCode.VALIDATION_ERROR,
+  );
+  return;
+}
+
+// Layer 3: Query-level filtering — hide existing bad data
+const conditions = [
+  sql`COALESCE(jsonb_array_length(${table.instructions}), 0) > 0`,
+];
+```
+
+**When to use:** Any endpoint that persists third-party data which will be displayed to users. Recipes from Spoonacular, products from OpenFoodFacts, or any external catalog where data completeness varies.
+
+**Why three layers:**
+
+- **Layer 1** reduces API quota waste on unusable records
+- **Layer 2** gives the client an actionable error (422) instead of silently saving empty data
+- **Layer 3** catches records that were saved before the gate existed (retroactive safety net)
+
+**Reference:** `server/routes/recipes.ts` — catalog save and URL import endpoints; `server/storage/community.ts` and `server/storage/meal-plans.ts` — query filters.
+
 ### Indicate Data Source to Users
 
 When falling back to different data formats, inform users what they're seeing:

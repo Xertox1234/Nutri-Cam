@@ -221,8 +221,22 @@ export async function getUnifiedRecipes(params: {
   // set may contain up to 2x this value (community + personal).
   const resultLimit = Math.min(params.limit ?? 50, 100);
 
-  const communityConditions = [eq(communityRecipes.isPublic, true)];
-  const personalConditions = [eq(mealPlanRecipes.userId, userId)];
+  const communityConditions = [
+    eq(communityRecipes.isPublic, true),
+    // Quality gate: exclude recipes with empty instructions
+    sql`COALESCE(jsonb_array_length(${communityRecipes.instructions}), 0) > 0`,
+  ];
+  const personalConditions = [
+    eq(mealPlanRecipes.userId, userId),
+    // Quality gate: exclude recipes with no instructions AND no ingredients
+    sql`(
+      COALESCE(jsonb_array_length(${mealPlanRecipes.instructions}), 0) > 0
+      OR EXISTS (
+        SELECT 1 FROM ${recipeIngredients}
+        WHERE ${recipeIngredients.recipeId} = ${mealPlanRecipes.id}
+      )
+    )`,
+  ];
 
   if (query) {
     const pattern = `%${escapeLike(query)}%`;
