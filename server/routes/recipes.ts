@@ -335,6 +335,7 @@ export function register(app: Express): void {
             servings: servings || 2,
             dietTags: generatedRecipe.dietTags,
             instructions: generatedRecipe.instructions,
+            ingredients: generatedRecipe.ingredients,
             imageUrl: generatedRecipe.imageUrl,
             isPublic: false, // Private until user shares
           },
@@ -630,6 +631,23 @@ export function register(app: Express): void {
           return;
         }
 
+        // Quality gate: reject recipes with no usable content
+        const hasInstructions =
+          detail.recipe.instructions &&
+          Array.isArray(detail.recipe.instructions) &&
+          detail.recipe.instructions.length > 0;
+        const hasIngredients =
+          detail.ingredients && detail.ingredients.length > 0;
+        if (!hasInstructions && !hasIngredients) {
+          sendError(
+            res,
+            422,
+            "This recipe has no instructions or ingredients and cannot be saved",
+            ErrorCode.VALIDATION_ERROR,
+          );
+          return;
+        }
+
         // Set the userId and infer meal types if not provided
         detail.recipe.userId = req.userId;
         if (!detail.recipe.mealTypes || detail.recipe.mealTypes.length === 0) {
@@ -697,8 +715,23 @@ export function register(app: Express): void {
           return;
         }
 
-        // Save to DB
+        // Quality gate: reject imported recipes with no usable content
         const { data } = result;
+        const importHasInstructions =
+          data.instructions && data.instructions.length > 0;
+        const importHasIngredients =
+          data.ingredients && data.ingredients.length > 0;
+        if (!importHasInstructions && !importHasIngredients) {
+          sendError(
+            res,
+            422,
+            "This recipe has no instructions or ingredients and cannot be imported",
+            ErrorCode.VALIDATION_ERROR,
+          );
+          return;
+        }
+
+        // Save to DB
         const ingredientData = data.ingredients.map((ing, idx) => ({
           recipeId: 0,
           name: ing.name,
