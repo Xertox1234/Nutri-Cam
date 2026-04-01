@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import {
   normalizeProductName,
   generateRecipeContent,
@@ -6,6 +7,31 @@ import {
 } from "../recipe-generation";
 
 import { openai, dalleClient } from "../../lib/openai";
+
+// Mock fs to avoid writing to disk in tests
+vi.mock("node:fs", async () => {
+  const actual = await vi.importActual<typeof import("node:fs")>("node:fs");
+  return {
+    ...actual,
+    default: {
+      ...actual,
+      writeFileSync: vi.fn(),
+      mkdirSync: vi.fn(),
+      existsSync: vi.fn(() => true),
+      promises: {
+        ...actual.promises,
+        writeFile: vi.fn().mockResolvedValue(undefined),
+      },
+    },
+    writeFileSync: vi.fn(),
+    mkdirSync: vi.fn(),
+    existsSync: vi.fn(() => true),
+    promises: {
+      ...actual.promises,
+      writeFile: vi.fn().mockResolvedValue(undefined),
+    },
+  };
+});
 
 // Mock the openai module
 vi.mock("../../lib/openai", () => ({
@@ -23,10 +49,20 @@ vi.mock("../../lib/openai", () => ({
   },
   OPENAI_TIMEOUT_HEAVY_MS: 60_000,
   OPENAI_TIMEOUT_IMAGE_MS: 120_000,
+  MODEL_FAST: "gpt-4o-mini",
+  MODEL_HEAVY: "gpt-4o",
 }));
+
+// Mock the runware module — isRunwareConfigured is controlled via a mutable ref
+const runwareMock = vi.hoisted(() => ({
+  isRunwareConfigured: false,
+  generateImage: vi.fn(),
+}));
+vi.mock("../../lib/runware", () => runwareMock);
 
 const mockCreate = vi.mocked(openai.chat.completions.create);
 const mockImageGenerate = vi.mocked(dalleClient.images.generate);
+const mockRunwareGenerate = runwareMock.generateImage;
 
 describe("Recipe Generation", () => {
   describe("normalizeProductName", () => {
@@ -76,7 +112,11 @@ describe("Recipe Generation", () => {
         description: "A light and healthy salad.",
         difficulty: "Easy",
         timeEstimate: "20 min",
-        instructions: "1. Grill chicken. 2. Toss salad. 3. Combine.",
+        ingredients: [
+          { name: "chicken breast", quantity: "2", unit: "" },
+          { name: "mixed greens", quantity: "4", unit: "cups" },
+        ],
+        instructions: "Grill chicken\nToss salad\nCombine",
         dietTags: ["high-protein", "low-carb"],
       };
 
@@ -92,7 +132,10 @@ describe("Recipe Generation", () => {
       expect(result.description).toBe("A light and healthy salad.");
       expect(result.difficulty).toBe("Easy");
       expect(result.timeEstimate).toBe("20 min");
+      expect(result.ingredients).toHaveLength(2);
+      expect(result.ingredients[0].name).toBe("chicken breast");
       expect(result.instructions).toContain("Grill chicken");
+      expect(result.instructions).toContain("Toss salad");
       expect(result.dietTags).toEqual(["high-protein", "low-carb"]);
     });
 
@@ -102,6 +145,7 @@ describe("Recipe Generation", () => {
         description: "Easy rice dish",
         difficulty: "Easy",
         timeEstimate: "15 min",
+        ingredients: [{ name: "rice", quantity: "1", unit: "cup" }],
         instructions: ["Boil water", "Add rice", "Simmer for 12 minutes"],
         dietTags: ["vegan"],
       };
@@ -122,6 +166,7 @@ describe("Recipe Generation", () => {
         description: "Easy rice dish",
         difficulty: "Easy",
         timeEstimate: "15 min",
+        ingredients: [{ name: "rice", quantity: "1", unit: "cup" }],
         instructions: [
           { step: 1, text: "Boil water" },
           { step: 2, text: "Add rice" },
@@ -173,7 +218,8 @@ describe("Recipe Generation", () => {
         description: "Plant-based bowl",
         difficulty: "Easy",
         timeEstimate: "15 min",
-        instructions: "Mix ingredients together.",
+        ingredients: [{ name: "tofu", quantity: "200", unit: "g" }],
+        instructions: "Mix ingredients together",
         dietTags: ["vegan"],
       };
 
@@ -204,14 +250,18 @@ describe("Recipe Generation", () => {
       vi.clearAllMocks();
     });
 
-    it("returns base64 data URL on success", async () => {
+    it("saves image to disk and returns URL path on success", async () => {
       mockImageGenerate.mockResolvedValue({
         data: [{ b64_json: "abc123base64data" }],
       } as any);
 
       const result = await generateRecipeImage("Chicken Salad", "Chicken");
 
-      expect(result).toBe("data:image/png;base64,abc123base64data");
+      expect(result).toMatch(/^\/api\/recipe-images\/recipe-.+\.png$/);
+      expect(fs.promises.writeFile).toHaveBeenCalledWith(
+        expect.stringContaining("recipe-"),
+        expect.any(Buffer),
+      );
     });
 
     it("returns null when DALL-E returns no data", async () => {
@@ -231,6 +281,60 @@ describe("Recipe Generation", () => {
 
       expect(result).toBeNull();
     });
+
+    describe("with Runware configured", () => {
+      beforeEach(() => {
+        runwareMock.isRunwareConfigured = true;
+      });
+
+      afterEach(() => {
+        runwareMock.isRunwareConfigured = false;
+      });
+
+      it("uses Runware when configured and succeeds", async () => {
+        mockRunwareGenerate.mockResolvedValue(Buffer.from("fake-image-data"));
+
+        const result = await generateRecipeImage("Chicken Salad", "Chicken");
+
+        expect(result).toMatch(/^\/api\/recipe-images\/recipe-.+\.png$/);
+        expect(mockRunwareGenerate).toHaveBeenCalled();
+        expect(mockImageGenerate).not.toHaveBeenCalled();
+      });
+
+      it("falls back to DALL-E when Runware returns null", async () => {
+        mockRunwareGenerate.mockResolvedValue(null);
+        mockImageGenerate.mockResolvedValue({
+          data: [{ b64_json: "dalle-fallback-data" }],
+        } as any);
+
+        const result = await generateRecipeImage("Chicken Salad", "Chicken");
+
+        expect(result).toMatch(/^\/api\/recipe-images\/recipe-.+\.png$/);
+        expect(mockRunwareGenerate).toHaveBeenCalled();
+        expect(mockImageGenerate).toHaveBeenCalled();
+      });
+
+      it("falls back to DALL-E when Runware throws", async () => {
+        mockRunwareGenerate.mockRejectedValue(new Error("Runware down"));
+        mockImageGenerate.mockResolvedValue({
+          data: [{ b64_json: "dalle-fallback-data" }],
+        } as any);
+
+        const result = await generateRecipeImage("Chicken Salad", "Chicken");
+
+        expect(result).toMatch(/^\/api\/recipe-images\/recipe-.+\.png$/);
+        expect(mockImageGenerate).toHaveBeenCalled();
+      });
+
+      it("returns null when both Runware and DALL-E fail", async () => {
+        mockRunwareGenerate.mockRejectedValue(new Error("Runware down"));
+        mockImageGenerate.mockRejectedValue(new Error("DALL-E down"));
+
+        const result = await generateRecipeImage("Chicken Salad", "Chicken");
+
+        expect(result).toBeNull();
+      });
+    });
   });
 
   describe("generateFullRecipe", () => {
@@ -244,7 +348,8 @@ describe("Recipe Generation", () => {
         description: "Delicious salmon",
         difficulty: "Medium",
         timeEstimate: "30 min",
-        instructions: "Grill the salmon.",
+        ingredients: [{ name: "salmon fillet", quantity: "2", unit: "" }],
+        instructions: "Grill the salmon",
         dietTags: ["high-protein"],
       };
 
@@ -259,7 +364,7 @@ describe("Recipe Generation", () => {
       const result = await generateFullRecipe({ productName: "Salmon" });
 
       expect(result.title).toBe("Grilled Salmon");
-      expect(result.imageUrl).toBe("data:image/png;base64,imagedata");
+      expect(result.imageUrl).toMatch(/^\/api\/recipe-images\/recipe-.+\.png$/);
     });
 
     it("returns recipe without image on image generation failure", async () => {
@@ -268,7 +373,8 @@ describe("Recipe Generation", () => {
         description: "Quick pasta dish",
         difficulty: "Easy",
         timeEstimate: "15 min",
-        instructions: "Cook pasta. Add sauce.",
+        ingredients: [{ name: "pasta", quantity: "200", unit: "g" }],
+        instructions: "Cook pasta\nAdd sauce",
         dietTags: [],
       };
 

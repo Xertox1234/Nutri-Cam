@@ -85,23 +85,27 @@ export function parseIsoDuration(duration: string | undefined): number | null {
 
 /**
  * Normalize recipeInstructions from either a single string or
- * an array of strings/HowToStep objects into a single text block.
+ * an array of strings/HowToStep objects into a string[] of steps.
  */
 export function normalizeInstructions(
   instructions: z.infer<typeof schemaOrgRecipeSchema>["recipeInstructions"],
-): string | null {
+): string[] | null {
   if (!instructions) return null;
   if (typeof instructions === "string") {
-    return instructions.replace(/<[^>]*>/g, "").trim() || null;
+    const cleaned = instructions.replace(/<[^>]*>/g, "").trim();
+    if (!cleaned) return null;
+    return cleaned
+      .split(/\n/)
+      .map((s) => s.replace(/^\d+[\.\)\:\-]\s*/, "").trim())
+      .filter((s) => s.length > 0);
   }
-  return (
-    instructions
-      .map((step, i) => {
-        const text = typeof step === "string" ? step : step.text;
-        return `${i + 1}. ${text.replace(/<[^>]*>/g, "").trim()}`;
-      })
-      .join("\n") || null
-  );
+  const steps = instructions
+    .map((step) => {
+      const text = typeof step === "string" ? step : step.text;
+      return text.replace(/<[^>]*>/g, "").trim();
+    })
+    .filter((s) => s.length > 0);
+  return steps.length > 0 ? steps : null;
 }
 
 /**

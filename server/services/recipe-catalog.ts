@@ -173,8 +173,12 @@ function mapToMealPlanRecipe(
     cookTimeMinutes: detail.cookingMinutes ?? null,
     imageUrl: detail.image || null,
     instructions: detail.instructions
-      ? detail.instructions.replace(/<[^>]*>/g, "")
-      : null,
+      ? detail.instructions
+          .replace(/<[^>]*>/g, "")
+          .split(/\n/)
+          .map((s: string) => s.replace(/^\d+[\.\)\:\-]\s*/, "").trim())
+          .filter((s: string) => s.length > 0)
+      : undefined,
     dietTags: detail.diets || [],
     caloriesPerServing: findNutrient(nutrients, "Calories")?.toString() ?? null,
     proteinPerServing: findNutrient(nutrients, "Protein")?.toString() ?? null,
@@ -214,6 +218,8 @@ export async function searchCatalogRecipes(
   url.searchParams.set("query", params.query);
   url.searchParams.set("number", String(params.number || 10));
   url.searchParams.set("offset", String(params.offset || 0));
+  // Only return recipes that have instructions — prevents empty recipe cards
+  url.searchParams.set("instructionsRequired", "true");
   if (params.cuisine) url.searchParams.set("cuisine", params.cuisine);
   if (params.diet) url.searchParams.set("diet", params.diet);
   if (params.type) url.searchParams.set("type", params.type);

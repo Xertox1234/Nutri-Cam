@@ -22,6 +22,8 @@ vi.mock("../../lib/openai", () => ({
     },
   },
   OPENAI_TIMEOUT_HEAVY_MS: 60_000,
+  MODEL_FAST: "gpt-4o-mini",
+  MODEL_HEAVY: "gpt-4o",
 }));
 
 const BASE_INPUT: PantryMealPlanInput = {
@@ -144,7 +146,7 @@ describe("pantry-meal-plan", () => {
       expect(result.success).toBe(false);
     });
 
-    it("should accept instructions as array and transform to string", () => {
+    it("should accept instructions as array and preserve as string[]", () => {
       const modified = {
         ...VALID_AI_RESPONSE,
         days: [
@@ -162,9 +164,10 @@ describe("pantry-meal-plan", () => {
       const result = aiResponseSchema.safeParse(modified);
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.days[0].meals[0].instructions).toBe(
-          "Step 1\nStep 2",
-        );
+        expect(result.data.days[0].meals[0].instructions).toEqual([
+          "Step 1",
+          "Step 2",
+        ]);
       }
     });
   });

@@ -20,7 +20,7 @@ export function useSaveCarouselRecipe() {
       source: CarouselSource;
       title: string;
       description?: string;
-      instructions?: string;
+      instructions?: string[];
       difficulty?: string;
       timeEstimate?: string;
     }) => {

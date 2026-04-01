@@ -42,7 +42,7 @@ function makeRecipe(overrides: Record<string, unknown> = {}): MealPlanRecipe {
     servings: 1,
     prepTimeMinutes: null,
     cookTimeMinutes: null,
-    instructions: null,
+    instructions: [],
     dietTags: [],
     mealTypes: [],
     caloriesPerServing: null,

@@ -160,7 +160,7 @@ function PopularPickCard({
           ? pick.difficulty
           : "Easy",
       ingredients: [],
-      instructions: "",
+      instructions: [],
       dietTags: pick.dietTags,
     });
   }, [haptics, onSelect, pick]);

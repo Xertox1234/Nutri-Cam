@@ -227,8 +227,9 @@ describe("Recipes Routes", () => {
         description: "Delicious",
         difficulty: "Easy",
         timeEstimate: "30 min",
+        ingredients: [{ name: "pasta", quantity: "200", unit: "g" }],
         dietTags: [],
-        instructions: "Cook pasta...",
+        instructions: ["Cook pasta..."],
         imageUrl: null,
       });
       vi.mocked(storage.createRecipeWithLimitCheck).mockResolvedValue(
@@ -455,6 +456,57 @@ describe("Recipes Routes", () => {
       });
       vi.mocked(storage.createMealPlanRecipe).mockResolvedValue(
         createMockMealPlanRecipe({ id: 1, title: "Chicken" }),
+      );
+
+      const res = await request(app)
+        .post("/api/meal-plan/catalog/123/save")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(201);
+    });
+
+    it("returns 422 for recipe with no instructions and no ingredients", async () => {
+      vi.mocked(storage.findMealPlanRecipeByExternalId).mockResolvedValue(
+        undefined,
+      );
+      vi.mocked(getCatalogRecipeDetail).mockResolvedValue({
+        recipe: createMockMealPlanRecipe({
+          title: "Empty Recipe",
+          instructions: [],
+        }),
+        ingredients: [],
+      });
+
+      const res = await request(app)
+        .post("/api/meal-plan/catalog/123/save")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(422);
+      expect(res.body.error).toMatch(/no instructions or ingredients/);
+    });
+
+    it("saves recipe with ingredients but no instructions", async () => {
+      vi.mocked(storage.findMealPlanRecipeByExternalId).mockResolvedValue(
+        undefined,
+      );
+      vi.mocked(getCatalogRecipeDetail).mockResolvedValue({
+        recipe: createMockMealPlanRecipe({
+          title: "Ingredient-Only Recipe",
+          instructions: [],
+        }),
+        ingredients: [
+          {
+            recipeId: 0,
+            name: "Flour",
+            quantity: "2",
+            unit: "cups",
+            category: "other",
+            displayOrder: 0,
+          },
+        ],
+      });
+      vi.mocked(storage.createMealPlanRecipe).mockResolvedValue(
+        createMockMealPlanRecipe({ id: 2, title: "Ingredient-Only Recipe" }),
       );
 
       const res = await request(app)
@@ -723,7 +775,7 @@ describe("Recipes Routes", () => {
           prepTimeMinutes: 10,
           cookTimeMinutes: 20,
           imageUrl: null,
-          instructions: "Cook it",
+          instructions: ["Cook it"],
           dietTags: [],
           caloriesPerServing: null,
           proteinPerServing: null,
