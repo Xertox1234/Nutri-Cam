@@ -50,7 +50,7 @@ async function createTestRecipe(
     title: "Test Recipe",
     description: "Test description",
     normalizedProductName: "test food",
-    instructions: "Mix and bake",
+    instructions: ["Mix and bake"],
     isPublic: true,
   };
   return createCommunityRecipe({ ...defaults, ...overrides });
@@ -193,7 +193,7 @@ describe("community storage", () => {
         title: "My New Recipe",
         description: "Delicious",
         normalizedProductName: "pasta",
-        instructions: "Boil then serve",
+        instructions: ["Boil then serve"],
         isPublic: true,
         dietTags: ["vegan"],
       });

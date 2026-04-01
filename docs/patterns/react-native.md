@@ -496,6 +496,8 @@ const styles = StyleSheet.create({
 
 **Why:** `transparentModal` is the only native-stack presentation that both keeps the previous screen visible (no black/grey background flash) and adds no native chrome (no grabber bars or forced corner radius). The tradeoff is you must handle your own close button and cannot use native swipe-to-dismiss.
 
+**Cross-navigator reuse:** When the same content appears from multiple entry points across different navigators, use a single root-level modal with a type discriminator param. See [Unified Modal with Type Discriminator](#unified-modal-with-type-discriminator).
+
 ### fullScreenModal Exception for Camera
 
 Use `presentation: "fullScreenModal"` instead of `transparentModal` for camera/scan screens. `transparentModal` has rendering issues on iOS that cause visual artifacts, and `fullScreenModal`'s black background is acceptable because the camera feed fills the screen immediately.
@@ -721,6 +723,105 @@ export default function CookbookFormScreen() {
 **When NOT to use:** When create and edit have substantially different fields, validation rules, or layouts (e.g., onboarding vs profile editing).
 
 **Why:** Eliminates duplication of form state, validation, layout, and styling. Changes to the form only need to happen in one place. The `isEditing` boolean provides a clear branch point for the few differences (title text, save handler, initial data).
+
+### Unified Modal with Type Discriminator
+
+When the same content is displayed from multiple entry points across different navigators, register **one root-level modal** with a type discriminator param instead of maintaining separate screens per navigator. The single screen uses mutually exclusive `useQuery` hooks and a normalization layer to handle different data sources.
+
+```typescript
+// RootStackParamList — discriminator param with default
+FeaturedRecipeDetail: {
+  recipeId: number;
+  recipeType?: "community" | "mealPlan";  // defaults to "community"
+  carouselCard?: CarouselRecipeCard;       // inline data bypasses fetch
+};
+```
+
+```typescript
+// Single screen with dual-fetch + normalization
+export default function FeaturedRecipeDetailScreen() {
+  const { recipeId, recipeType = "community", carouselCard } = route.params;
+
+  // Only one query fires — mutually exclusive `enabled` flags
+  const { data: community, isLoading: communityLoading } = useQuery({
+    queryKey: [`/api/recipes/${recipeId}`],
+    enabled: !carouselCard && recipeType === "community",
+  });
+  const { data: mealPlan, isLoading: mealPlanLoading } = useQuery({
+    queryKey: ["/api/meal-plan/recipes", recipeId],
+    enabled: !carouselCard && recipeType === "mealPlan",
+  });
+
+  // Normalize all sources into shared props interface
+  const normalized = useMemo((): NormalizedRecipe | null => {
+    if (carouselCard) return normalizeCarouselCard(carouselCard);
+    if (recipeType === "mealPlan" && mealPlan) return normalizeMealPlan(mealPlan);
+    if (community) return normalizeCommunity(community);
+    return null;
+  }, [carouselCard, recipeType, mealPlan, community]);
+
+  // Check only the active query
+  const isLoading = !carouselCard &&
+    (recipeType === "community" ? communityLoading : mealPlanLoading);
+
+  return (
+    <View accessibilityViewIsModal>
+      <DragHandle />
+      <RecipeDetailContent {...normalized} />
+    </View>
+  );
+}
+```
+
+**Reference implementation:** `FeaturedRecipeDetailScreen` — single root modal for all recipe detail views across home carousel, recipe browser, meal plan, cookbooks, and profile.
+
+**Key principles:**
+
+- **Discriminator param with default**: `recipeType` defaults to `"community"` so deep links and existing callers work without changes.
+- **Mutually exclusive queries**: Two `useQuery` hooks with opposite `enabled` flags — only the active source fetches. Check `isLoading`/`error` on the active query only, not with OR.
+- **Inline data bypass**: An optional param (e.g., `carouselCard`) skips the fetch entirely when data is already available from the caller.
+- **Normalization in `useMemo`**: A typed interface (e.g., `NormalizedRecipe`) unifies different API shapes. Each source gets its own normalizer function.
+- **Shared content component**: The layout lives in a separate `*Content` component (`RecipeDetailContent`) that accepts the normalized interface. The screen handles chrome (drag handle, safe areas), the content component handles layout.
+- **Hide missing sections**: Use conditional rendering (`{data && <Section />}`), not placeholders. Different data sources have different fields available.
+
+**When to use:** The same content is shown from 3+ entry points across different navigators and you want uniform UX (same presentation, same dismissal, same chrome).
+
+**When NOT to use:** When screens have genuinely different chrome requirements (e.g., one needs a toolbar with actions, another is read-only). In that case, share a `*Content` component but keep separate screen wrappers.
+
+### Drag Handle for Gesture-Dismissible Modals
+
+When a root-level modal uses `gestureEnabled` + `fullScreenGestureEnabled`, replace interactive close buttons with a visual-only drag handle pill. The navigator handles dismissal — the handle is purely a visual affordance.
+
+```typescript
+// Navigator registration
+<Stack.Screen
+  name="FeaturedRecipeDetail"
+  options={{
+    presentation: "transparentModal",
+    animation: "slide_from_bottom",
+    gestureEnabled: true,
+    fullScreenGestureEnabled: true, // iOS swipe-right from edge
+  }}
+/>
+
+// Screen — visual-only drag handle
+<View style={styles.handleContainer} pointerEvents="none">
+  <View style={[styles.handle, { backgroundColor: withOpacity(theme.text, 0.3) }]} />
+</View>
+
+// Styles
+handleContainer: { position: "absolute", left: 0, right: 0, zIndex: 10, alignItems: "center" },
+handle: { width: 36, height: 5, borderRadius: 2.5 },
+```
+
+**Key principles:**
+
+- **`pointerEvents="none"`** on the handle — it is visual-only, not interactive.
+- **`fullScreenGestureEnabled`** is iOS-only. Android users dismiss via system back button or swipe-down gesture (both work with `gestureEnabled: true`).
+- **ScrollView interaction**: Native stack modal swipe-down only triggers when ScrollView is scrolled to top — no extra gesture conflict handling needed.
+- **`accessibilityViewIsModal`** on the root container — VoiceOver users need to know this is a modal.
+
+**Reference implementation:** `RecipeDetailContent` shared by `RecipeDetailScreen` (MealPlan stack) and `FeaturedRecipeDetailScreen` (root modal).
 
 ### Coordinated Pull-to-Refresh for Multiple Queries
 

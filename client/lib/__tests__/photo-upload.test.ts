@@ -530,7 +530,11 @@ describe("mapPhotoResultToImportedRecipeData", () => {
     expect(mapped.dietTags).toEqual(["vegetarian"]);
     expect(mapped.ingredients).toHaveLength(2);
     expect(mapped.ingredients[0].name).toBe("penne pasta");
-    expect(mapped.instructions).toContain("Cook pasta");
+    expect(mapped.instructions).toEqual([
+      "1. Cook pasta",
+      "2. Sauté veggies",
+      "3. Combine",
+    ]);
     expect(mapped.imageUrl).toBeNull();
     expect(mapped.sourceUrl).toBe("photo_import");
   });

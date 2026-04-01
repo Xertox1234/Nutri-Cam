@@ -162,7 +162,13 @@ export async function getFeaturedRecipes(
   return db
     .select()
     .from(communityRecipes)
-    .where(eq(communityRecipes.isPublic, true))
+    .where(
+      and(
+        eq(communityRecipes.isPublic, true),
+        // Quality gate: exclude recipes with empty instructions
+        sql`COALESCE(jsonb_array_length(${communityRecipes.instructions}), 0) > 0`,
+      ),
+    )
     .orderBy(desc(communityRecipes.createdAt))
     .limit(limit)
     .offset(offset);

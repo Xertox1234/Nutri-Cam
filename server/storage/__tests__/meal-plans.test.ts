@@ -91,6 +91,7 @@ async function createTestMealPlanRecipe(
     proteinPerServing: "30",
     carbsPerServing: "40",
     fatPerServing: "15",
+    instructions: ["Step 1: Prepare ingredients", "Step 2: Cook and serve"],
     dietTags: [],
     ...overrides,
   };
@@ -127,7 +128,7 @@ async function createTestCommunityRecipe(
     title: "Community Recipe",
     description: "Community test",
     normalizedProductName: "community food",
-    instructions: "Mix and serve",
+    instructions: ["Mix and serve"],
     isPublic: true,
     dietTags: [] as string[],
   };

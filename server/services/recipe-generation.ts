@@ -1,18 +1,38 @@
 import { z } from "zod";
+import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
 import type { UserProfile } from "@shared/schema";
-import type { RecipeContent } from "@shared/types/cook-session";
+import type {
+  RecipeContent,
+  GeneratedIngredient,
+} from "@shared/types/cook-session";
 import {
   openai,
   dalleClient,
   OPENAI_TIMEOUT_HEAVY_MS,
   OPENAI_TIMEOUT_IMAGE_MS,
+  MODEL_HEAVY,
 } from "../lib/openai";
+import {
+  generateImage as runwareGenerateImage,
+  isRunwareConfigured,
+} from "../lib/runware";
 import { sanitizeUserInput, SYSTEM_PROMPT_BOUNDARY } from "../lib/ai-safety";
 import { createServiceLogger, toError } from "../lib/logger";
 
 const log = createServiceLogger("recipe-generation");
 
+const RECIPE_IMAGES_DIR = path.resolve(process.cwd(), "uploads/recipe-images");
+fs.mkdirSync(RECIPE_IMAGES_DIR, { recursive: true });
+
 // Zod schemas for recipe generation
+const ingredientSchema = z.object({
+  name: z.string().min(1),
+  quantity: z.string().default(""),
+  unit: z.string().default(""),
+});
+
 const instructionItemSchema = z.union([
   z.string(),
   z
@@ -29,10 +49,17 @@ const recipeContentSchema = z.object({
   description: z.string().min(1).max(500),
   difficulty: z.enum(["Easy", "Medium", "Hard"]),
   timeEstimate: z.string().min(1).max(50),
+  ingredients: z.array(ingredientSchema).min(1),
   instructions: z
     .union([z.string(), z.array(instructionItemSchema)])
-    .transform((v) => {
-      if (!Array.isArray(v)) return v;
+    .transform((v): string[] => {
+      if (!Array.isArray(v)) {
+        // Split single string on newlines into steps
+        return v
+          .split(/\n/)
+          .map((s) => s.replace(/^\d+[\.\)\:\-]\s*/, "").trim())
+          .filter((s) => s.length > 0);
+      }
       // Handle both string[] and object[] (e.g. [{step: 1, text: "..."}])
       return v
         .map((item) =>
@@ -43,9 +70,9 @@ const recipeContentSchema = z.object({
               item.description ??
               JSON.stringify(item)),
         )
-        .join("\n");
+        .filter((s) => s.length > 0);
     })
-    .pipe(z.string().min(1)),
+    .pipe(z.array(z.string()).min(1)),
   dietTags: z.array(z.string()).default([]),
 });
 
@@ -66,7 +93,8 @@ export interface GeneratedRecipe {
   description: string;
   difficulty: string;
   timeEstimate: string;
-  instructions: string;
+  ingredients: GeneratedIngredient[];
+  instructions: string[];
   dietTags: string[];
   imageUrl: string | null;
 }
@@ -128,44 +156,54 @@ export async function generateRecipeContent(
 
   const servingsText = input.servings ? `for ${input.servings} servings` : "";
   const timeText = input.timeConstraint
-    ? `The recipe should take ${input.timeConstraint} or less.`
+    ? `Time constraint: ${sanitizeUserInput(input.timeConstraint)} or less.`
     : "";
 
   const sanitizedProductName = sanitizeUserInput(input.productName);
 
-  const prompt = `Create a delicious recipe using "${sanitizedProductName}" as the main ingredient ${servingsText}.
+  const userParts: string[] = [
+    `Create a recipe using "${sanitizedProductName}" as the main ingredient ${servingsText}.`.trim(),
+  ];
+  if (dietaryContext) userParts.push(`Dietary requirements: ${dietaryContext}`);
+  if (timeText) userParts.push(timeText);
 
-${dietaryContext ? `User dietary requirements: ${dietaryContext}` : ""}
-${timeText}
-
-Generate a complete recipe with:
-1. A creative, appetizing title
-2. A brief description (1-2 sentences)
-3. Clear step-by-step instructions including ingredients list
-4. Difficulty level (Easy, Medium, or Hard)
-5. Total time estimate (prep + cook)
-6. Relevant diet tags (e.g., "vegetarian", "gluten-free", "low-carb", "quick", "kid-friendly")
-
-Respond with JSON only:
-{
-  "title": "Recipe Title",
-  "description": "Brief appetizing description",
-  "difficulty": "Easy|Medium|Hard",
-  "timeEstimate": "30 min",
-  "instructions": "Full instructions with ingredients list and steps",
-  "dietTags": ["tag1", "tag2"]
-}`;
+  const prompt = userParts.join("\n\n");
 
   let response;
   try {
     response = await openai.chat.completions.create(
       {
-        model: "gpt-4o",
+        model: MODEL_HEAVY,
+        temperature: 0.7,
         max_completion_tokens: 2000,
         messages: [
           {
             role: "system",
-            content: `You are a professional chef and recipe developer. Create delicious, practical recipes that are easy to follow. Always respond with valid JSON only. ${SYSTEM_PROMPT_BOUNDARY}`,
+            content: `You are a professional chef creating recipes for a nutrition tracking app. Recipes must be practical, nutritionally balanced, and easy to follow at home.
+
+Guidelines:
+- Use common, easy-to-find grocery-store ingredients.
+- List each ingredient with a measured quantity and unit (e.g. "1 tbsp", "200 g"). Use "" for unit when the item is counted (e.g. "2" eggs).
+- Write 5–12 concise instruction steps. Each step should describe one clear action.
+- Adapt complexity to the user's cooking skill level when provided.
+- Choose an accurate difficulty: Easy (≤ 5 ingredients, one-pot/no-cook), Medium (6–12 ingredients, standard techniques), Hard (12+ ingredients or advanced techniques).
+- Include accurate prep + cook time in the timeEstimate.
+- Tag with all applicable diet tags: "vegetarian", "vegan", "gluten-free", "dairy-free", "low-carb", "high-protein", "quick", "kid-friendly", etc.
+
+ALLERGY SAFETY: If the user has listed allergens, NEVER include ingredients containing those allergens. Double-check every ingredient against the allergen list. Allergies are safety-critical — treat them as absolute exclusions.
+
+Respond with a single JSON object matching this exact schema:
+{
+  "title": "string",
+  "description": "string (1-2 sentences)",
+  "difficulty": "Easy | Medium | Hard",
+  "timeEstimate": "string (e.g. 30 min)",
+  "ingredients": [{ "name": "string", "quantity": "string", "unit": "string" }],
+  "instructions": ["string"],
+  "dietTags": ["string"]
+}
+
+${SYSTEM_PROMPT_BOUNDARY}`,
           },
           { role: "user", content: prompt },
         ],
@@ -201,18 +239,35 @@ Respond with JSON only:
 }
 
 /**
- * Generate a food image using DALL-E 3
- * Returns base64 data URL or null if generation fails
+ * Generate a food image using Runware (primary) or DALL-E 3 (fallback).
+ * Saves to uploads/recipe-images/ and returns the URL path, or null on failure.
  */
 export async function generateRecipeImage(
   recipeTitle: string,
   productName: string,
 ): Promise<string | null> {
-  try {
-    const safeTitle = sanitizeUserInput(recipeTitle);
-    const safeProduct = sanitizeUserInput(productName);
-    const prompt = `Appetizing food photography of "${safeTitle}" featuring ${safeProduct}. Professional lighting, top-down view, styled on rustic wooden table. No text or labels. Photorealistic style.`;
+  const safeTitle = sanitizeUserInput(recipeTitle);
+  const safeProduct = sanitizeUserInput(productName);
+  const prompt = `Appetizing food photography of "${safeTitle}" featuring ${safeProduct}. Professional lighting, top-down view, styled on rustic wooden table. No text or labels. Photorealistic style.`;
 
+  // Try Runware first (66x cheaper than DALL-E)
+  if (isRunwareConfigured) {
+    try {
+      const buffer = await runwareGenerateImage(prompt);
+      if (buffer) {
+        return await saveImageBuffer(buffer);
+      }
+      log.warn("Runware returned no image, falling back to DALL-E");
+    } catch (error) {
+      log.warn(
+        { err: toError(error) },
+        "Runware failed, falling back to DALL-E",
+      );
+    }
+  }
+
+  // Fallback to DALL-E
+  try {
     const response = await dalleClient.images.generate(
       {
         model: "dall-e-3",
@@ -231,12 +286,25 @@ export async function generateRecipeImage(
       return null;
     }
 
-    // Return as base64 data URL (stored directly in DB like avatars)
-    return `data:image/png;base64,${imageData}`;
+    return await saveImageBuffer(Buffer.from(imageData, "base64"));
   } catch (error) {
     log.error({ err: toError(error) }, "DALL-E image generation error");
     return null;
   }
+}
+
+const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB
+
+async function saveImageBuffer(buffer: Buffer): Promise<string> {
+  if (buffer.length > MAX_IMAGE_SIZE_BYTES) {
+    throw new Error(
+      `Image too large: ${buffer.length} bytes (max ${MAX_IMAGE_SIZE_BYTES})`,
+    );
+  }
+  const filename = `recipe-${crypto.randomUUID()}.png`;
+  const filepath = path.join(RECIPE_IMAGES_DIR, filename);
+  await fs.promises.writeFile(filepath, buffer);
+  return `/api/recipe-images/${filename}`;
 }
 
 /**

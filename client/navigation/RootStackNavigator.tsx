@@ -38,6 +38,7 @@ import FrontLabelConfirmScreen from "@/screens/FrontLabelConfirmScreen";
 import BatchScanScreen from "@/screens/BatchScanScreen";
 import BatchSummaryScreen from "@/screens/BatchSummaryScreen";
 import WeightTrackingScreen from "@/screens/WeightTrackingScreen";
+import RecipeCoachChatScreen from "@/screens/RecipeCoachChatScreen";
 
 export type RootStackParamList = {
   Login: undefined;
@@ -66,6 +67,8 @@ export type RootStackParamList = {
   EditDietaryProfile: undefined;
   FeaturedRecipeDetail: {
     recipeId: number;
+    /** "community" (default) fetches from /api/recipes/:id; "mealPlan" fetches from /api/meal-plan/recipes/:id */
+    recipeType?: "community" | "mealPlan";
     /** When provided, the screen uses this data directly instead of fetching by ID */
     carouselCard?: import("@shared/types/carousel").CarouselRecipeCard;
   };
@@ -100,6 +103,11 @@ export type RootStackParamList = {
   BatchScan: undefined;
   BatchSummary: undefined;
   WeightTracking: undefined;
+  RecipeCoachChat: {
+    recipeId: number;
+    recipeType: "mealPlan" | "community";
+    initialQuestion: string;
+  };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -197,6 +205,8 @@ export default function RootStackNavigator() {
               headerShown: false,
               presentation: "transparentModal",
               animation: "slide_from_bottom",
+              gestureEnabled: true,
+              fullScreenGestureEnabled: true,
             }}
           />
           <Stack.Screen
@@ -314,6 +324,15 @@ export default function RootStackNavigator() {
                 <HeaderTitle title="Weight Tracking" showIcon={false} />
               ),
               presentation: "modal",
+            }}
+          />
+          <Stack.Screen
+            name="RecipeCoachChat"
+            component={RecipeCoachChatScreen}
+            options={{
+              headerShown: false,
+              presentation: "fullScreenModal",
+              animation: "slide_from_bottom",
             }}
           />
         </>

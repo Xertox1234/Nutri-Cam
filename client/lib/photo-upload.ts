@@ -389,7 +389,9 @@ export function mapPhotoResultToImportedRecipeData(
     cuisine: result.cuisine,
     dietTags: result.dietTags,
     ingredients: result.ingredients,
-    instructions: result.instructions,
+    instructions: result.instructions
+      ? result.instructions.split(/\n/).filter((s) => s.trim().length > 0)
+      : null,
     imageUrl: null,
     caloriesPerServing: result.caloriesPerServing?.toString() ?? null,
     proteinPerServing: result.proteinPerServing?.toString() ?? null,

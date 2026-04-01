@@ -5,13 +5,21 @@ import { foodCategorySchema } from "@shared/constants/preparation";
 // SHARED TYPES
 // ============================================================================
 
+/** Structured ingredient returned by AI recipe generation. */
+export interface GeneratedIngredient {
+  name: string;
+  quantity: string;
+  unit: string;
+}
+
 /** AI-generated recipe content returned by the recipe generation service. */
 export interface RecipeContent {
   title: string;
   description: string;
   difficulty: "Easy" | "Medium" | "Hard";
   timeEstimate: string;
-  instructions: string;
+  ingredients: GeneratedIngredient[];
+  instructions: string[];
   dietTags: string[];
 }
 
