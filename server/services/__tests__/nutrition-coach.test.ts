@@ -21,6 +21,7 @@ vi.mock("../../lib/openai", () => ({
 
 vi.mock("../../lib/ai-safety", () => ({
   sanitizeUserInput: vi.fn((s: string) => s),
+  sanitizeContextField: vi.fn((s: string) => s),
   containsDangerousDietaryAdvice: vi.fn(() => false),
   SYSTEM_PROMPT_BOUNDARY: "---BOUNDARY---",
 }));
@@ -289,6 +290,58 @@ describe("Nutrition Coach", () => {
 
       expect(result).toContain("Hello");
       expect(result).toContain("Sorry, the response was interrupted.");
+    });
+
+    it("includes screenContext in system prompt when provided", async () => {
+      mockCreate.mockResolvedValue(createMockStream(["OK"]) as any);
+
+      const ctx = makeContext({
+        screenContext:
+          "User is viewing recipe: Chicken Stir Fry\nIngredients: chicken, broccoli",
+      });
+
+      await collectStream(
+        generateCoachResponse(
+          [{ role: "user", content: "What pairs well?" }],
+          ctx,
+        ),
+      );
+
+      const callArgs = mockCreate.mock.calls[0]![0] as any;
+      const systemMsg = callArgs.messages[0].content;
+      expect(systemMsg).toContain("SCREEN CONTEXT");
+      expect(systemMsg).toContain("user-reported");
+      expect(systemMsg).toContain("Chicken Stir Fry");
+    });
+
+    it("places SYSTEM_PROMPT_BOUNDARY at the end of system prompt", async () => {
+      mockCreate.mockResolvedValue(createMockStream(["OK"]) as any);
+
+      await collectStream(
+        generateCoachResponse([{ role: "user", content: "Hi" }], makeContext()),
+      );
+
+      const callArgs = mockCreate.mock.calls[0]![0] as any;
+      const systemMsg = callArgs.messages[0].content as string;
+      const boundaryIndex = systemMsg.lastIndexOf("---BOUNDARY---");
+      expect(boundaryIndex).toBeGreaterThan(0);
+      // Boundary should be at the end (after trimming whitespace)
+      const afterBoundary = systemMsg
+        .slice(boundaryIndex + "---BOUNDARY---".length)
+        .trim();
+      expect(afterBoundary).toBe("");
+    });
+
+    it("omits SCREEN CONTEXT section when screenContext is undefined", async () => {
+      mockCreate.mockResolvedValue(createMockStream(["OK"]) as any);
+
+      await collectStream(
+        generateCoachResponse([{ role: "user", content: "Hi" }], makeContext()),
+      );
+
+      const callArgs = mockCreate.mock.calls[0]![0] as any;
+      const systemMsg = callArgs.messages[0].content;
+      expect(systemMsg).not.toContain("SCREEN CONTEXT");
     });
   });
 });
