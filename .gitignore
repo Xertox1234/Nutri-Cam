@@ -74,3 +74,6 @@ docs/plans/
 todos/
 .claude/worktrees/
 .ui-design/reviews/
+
+# Dev workaround: symlink for Metro entry resolution
+/index.js

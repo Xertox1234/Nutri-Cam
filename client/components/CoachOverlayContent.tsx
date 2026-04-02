@@ -28,7 +28,10 @@ import {
   FontFamily,
   withOpacity,
 } from "@/constants/theme";
-import type { CoachQuestion } from "@/context/CoachOverlayContext";
+export interface CoachQuestion {
+  readonly text: string;
+  readonly question: string;
+}
 
 interface CoachOverlayContentProps {
   question: CoachQuestion;
@@ -51,6 +54,8 @@ async function sendMessageStreaming(
   onDone: () => void,
   signal: AbortSignal,
 ): Promise<void> {
+  const token = await tokenStorage.get();
+
   return new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     const baseUrl = getApiUrl();
@@ -58,61 +63,58 @@ async function sendMessageStreaming(
 
     xhr.open("POST", url, true);
     xhr.setRequestHeader("Content-Type", "application/json");
+    if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
 
-    tokenStorage.get().then((token) => {
-      if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+    let accumulated = "";
+    let lastProcessedIndex = 0;
 
-      let accumulated = "";
-      let lastProcessedIndex = 0;
+    xhr.onreadystatechange = () => {
+      // readyState 3 = LOADING (partial data received)
+      if (xhr.readyState >= 3 && xhr.responseText) {
+        const newText = xhr.responseText.slice(lastProcessedIndex);
+        lastProcessedIndex = xhr.responseText.length;
 
-      xhr.onreadystatechange = () => {
-        // readyState 3 = LOADING (partial data received)
-        if (xhr.readyState >= 3 && xhr.responseText) {
-          const newText = xhr.responseText.slice(lastProcessedIndex);
-          lastProcessedIndex = xhr.responseText.length;
-
-          const lines = newText.split("\n");
-          for (const line of lines) {
-            if (line.startsWith("data: ")) {
-              try {
-                const data = JSON.parse(line.slice(6));
-                if (data.content) {
-                  accumulated += data.content;
-                  onChunk(accumulated);
-                }
-                if (data.done) {
-                  onDone();
-                }
-              } catch {
-                // Ignore JSON parse errors from incomplete chunks
+        const lines = newText.split("\n");
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.content) {
+                accumulated += data.content;
+                onChunk(accumulated);
               }
+              if (data.done) {
+                onDone();
+              }
+            } catch {
+              // Ignore JSON parse errors from incomplete chunks
             }
           }
         }
+      }
 
-        if (xhr.readyState === 4) {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            resolve();
-          } else {
-            reject(new Error(`${xhr.status}: ${xhr.responseText}`));
-          }
+      if (xhr.readyState === 4) {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve();
+        } else {
+          reject(new Error(`${xhr.status}: ${xhr.responseText}`));
         }
-      };
+      }
+    };
 
-      xhr.onerror = () => reject(new Error("Network error"));
+    xhr.onerror = () => reject(new Error("Network error"));
 
-      signal.addEventListener("abort", () => {
-        xhr.abort();
-        resolve();
-      });
-
-      xhr.send(
-        JSON.stringify({
-          content,
-          ...(screenContext && { screenContext }),
-        }),
-      );
+    signal.addEventListener("abort", () => {
+      xhr.abort();
+      resolve();
     });
+
+    xhr.send(
+      JSON.stringify({
+        content,
+        ...(screenContext && { screenContext }),
+      }),
+    );
   });
 }
 
@@ -174,26 +176,25 @@ export function CoachOverlayContent({
       question.question,
       screenContext,
       (accumulated) => setStreamingContent(accumulated),
-      () => {
-        // On done — refresh messages from server
-        queryClient.invalidateQueries({
+      async () => {
+        // On done — refresh messages from server, then clear streaming state
+        await queryClient.invalidateQueries({
           queryKey: [`/api/chat/conversations/${conversationId}/messages`],
         });
         queryClient.invalidateQueries({
           queryKey: ["/api/chat/conversations"],
         });
+        setIsStreaming(false);
+        setStreamingContent("");
       },
       controller.signal,
-    )
-      .catch(() => {
-        if (!controller.signal.aborted) setStreamError(true);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) {
-          setIsStreaming(false);
-          setStreamingContent("");
-        }
-      });
+    ).catch(() => {
+      if (!controller.signal.aborted) {
+        setStreamError(true);
+        setIsStreaming(false);
+        setStreamingContent("");
+      }
+    });
 
     return () => {
       controller.abort();
@@ -283,25 +284,24 @@ export function CoachOverlayContent({
       text,
       undefined, // no screenContext on follow-ups
       (accumulated) => setStreamingContent(accumulated),
-      () => {
-        queryClient.invalidateQueries({
+      async () => {
+        await queryClient.invalidateQueries({
           queryKey: [`/api/chat/conversations/${conversationId}/messages`],
         });
         queryClient.invalidateQueries({
           queryKey: ["/api/chat/conversations"],
         });
+        setIsStreaming(false);
+        setStreamingContent("");
       },
       controller.signal,
-    )
-      .catch(() => {
-        if (!controller.signal.aborted) setStreamError(true);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) {
-          setIsStreaming(false);
-          setStreamingContent("");
-        }
-      });
+    ).catch(() => {
+      if (!controller.signal.aborted) {
+        setStreamError(true);
+        setIsStreaming(false);
+        setStreamingContent("");
+      }
+    });
   }, [inputText, isStreaming, conversationId, queryClient]);
 
   const handleRetry = useCallback(() => {

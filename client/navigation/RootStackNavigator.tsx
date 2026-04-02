@@ -38,6 +38,7 @@ import FrontLabelConfirmScreen from "@/screens/FrontLabelConfirmScreen";
 import BatchScanScreen from "@/screens/BatchScanScreen";
 import BatchSummaryScreen from "@/screens/BatchSummaryScreen";
 import WeightTrackingScreen from "@/screens/WeightTrackingScreen";
+import CoachChatScreen from "@/screens/CoachChatScreen";
 
 export type RootStackParamList = {
   Login: undefined;
@@ -102,6 +103,11 @@ export type RootStackParamList = {
   BatchScan: undefined;
   BatchSummary: undefined;
   WeightTracking: undefined;
+  CoachChat: {
+    question: string;
+    questionText: string;
+    screenContext?: string;
+  };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -318,6 +324,15 @@ export default function RootStackNavigator() {
                 <HeaderTitle title="Weight Tracking" showIcon={false} />
               ),
               presentation: "modal",
+            }}
+          />
+          <Stack.Screen
+            name="CoachChat"
+            component={CoachChatScreen}
+            options={{
+              headerShown: false,
+              presentation: "fullScreenModal",
+              animation: "slide_from_bottom",
             }}
           />
         </>

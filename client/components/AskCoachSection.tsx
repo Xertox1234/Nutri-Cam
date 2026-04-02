@@ -1,73 +1,102 @@
-import React from "react";
+import React, { useCallback, useState } from "react";
 import { StyleSheet, Pressable } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useNavigation } from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import * as Haptics from "expo-haptics";
 
 import { ThemedText } from "@/components/ThemedText";
 import { Card } from "@/components/Card";
+import { UpgradeModal } from "@/components/UpgradeModal";
 import { useTheme } from "@/hooks/useTheme";
-import {
-  useCoachOverlay,
-  type CoachQuestion,
-} from "@/context/CoachOverlayContext";
+import { usePremiumContext } from "@/context/PremiumContext";
 import { Spacing, FontFamily } from "@/constants/theme";
+import type { RootStackParamList } from "@/navigation/RootStackNavigator";
+import type { CoachQuestion } from "@/components/CoachOverlayContent";
 
 interface AskCoachSectionProps {
   questions: readonly CoachQuestion[];
   screenContext: string;
 }
 
+type NavProp = NativeStackNavigationProp<RootStackParamList>;
+
 export const AskCoachSection = React.memo(function AskCoachSection({
   questions,
   screenContext,
 }: AskCoachSectionProps) {
   const { theme } = useTheme();
-  const { openCoach } = useCoachOverlay();
+  const { isPremium } = usePremiumContext();
+  const navigation = useNavigation<NavProp>();
+  const [showUpgrade, setShowUpgrade] = useState(false);
+
+  const handlePress = useCallback(
+    (q: CoachQuestion) => {
+      if (!isPremium) {
+        setShowUpgrade(true);
+        return;
+      }
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      navigation.navigate("CoachChat", {
+        question: q.question,
+        questionText: q.text,
+        screenContext,
+      });
+    },
+    [isPremium, navigation, screenContext],
+  );
 
   return (
-    <Card elevation={1} style={styles.card}>
-      <ThemedText
-        type="h4"
-        style={styles.sectionTitle}
-        accessibilityRole="header"
-      >
-        Ask Coach
-      </ThemedText>
-      {questions.map((q) => (
-        <Pressable
-          key={q.text}
-          onPress={() => openCoach(q, screenContext)}
-          style={({ pressed }) => [
-            styles.questionRow,
-            {
-              borderBottomColor: theme.border,
-              opacity: pressed ? 0.6 : 1,
-            },
-          ]}
-          accessibilityRole="button"
-          accessibilityLabel={q.text}
-          accessibilityHint="Opens coach overlay with answer to this question"
+    <>
+      <Card elevation={1} style={styles.card}>
+        <ThemedText
+          type="h4"
+          style={styles.sectionTitle}
+          accessibilityRole="header"
         >
-          <Ionicons
-            name="chatbubble-outline"
-            size={16}
-            color={theme.link}
-            importantForAccessibility="no"
-          />
-          <ThemedText
-            style={[styles.questionText, { color: theme.text }]}
-            numberOfLines={1}
+          Ask Coach
+        </ThemedText>
+        {questions.map((q) => (
+          <Pressable
+            key={q.text}
+            onPress={() => handlePress(q)}
+            style={({ pressed }) => [
+              styles.questionRow,
+              {
+                borderBottomColor: theme.border,
+                opacity: pressed ? 0.6 : 1,
+              },
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel={q.text}
+            accessibilityHint="Opens coach chat with answer to this question"
           >
-            {q.text}
-          </ThemedText>
-          <Ionicons
-            name="chevron-forward"
-            size={16}
-            color={theme.textSecondary}
-            importantForAccessibility="no"
-          />
-        </Pressable>
-      ))}
-    </Card>
+            <Ionicons
+              name="chatbubble-outline"
+              size={16}
+              color={theme.link}
+              importantForAccessibility="no"
+            />
+            <ThemedText
+              style={[styles.questionText, { color: theme.text }]}
+              numberOfLines={1}
+            >
+              {q.text}
+            </ThemedText>
+            <Ionicons
+              name="chevron-forward"
+              size={16}
+              color={theme.textSecondary}
+              importantForAccessibility="no"
+            />
+          </Pressable>
+        ))}
+      </Card>
+      <UpgradeModal
+        visible={showUpgrade}
+        onClose={() => setShowUpgrade(false)}
+      />
+    </>
   );
 });
 
