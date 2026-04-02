@@ -4,6 +4,10 @@ This document captures key learnings, gotchas, and architectural decisions disco
 
 ## Table of Contents
 
+- [RN Modal Cannot Overlay React Navigation transparentModal (2026-04-01)](#rn-modal-cannot-overlay-react-navigation-transparentmodal-2026-04-01)
+- [fetch ReadableStream Fails Inside RN Modal — Use XHR (2026-04-01)](#fetch-readablestream-fails-inside-rn-modal--use-xhr-2026-04-01)
+- [Mass-Assignment via Partial&lt;User&gt; in Storage Update Functions (2026-04-01)](#mass-assignment-via-partialuser-in-storage-update-functions-2026-04-01)
+- [Polymorphic FK with Discriminator Column — No DB-Level Constraint (2026-04-01)](#polymorphic-fk-with-discriminator-column--no-db-level-constraint-2026-04-01)
 - [CHECK Constraint vs ON DELETE SET NULL Conflict (2026-03-29)](#check-constraint-vs-on-delete-set-null-conflict-2026-03-29)
 - [Avoid Re-Querying After Insert — Build History In-Memory (2026-03-29)](#avoid-re-querying-after-insert--build-history-in-memory-2026-03-29)
 - [PostgreSQL Session Timezone + Drizzle UTC Mismatch (2026-03-27)](#postgresql-session-timezone--drizzle-utc-mismatch-2026-03-27)
@@ -37,6 +41,135 @@ This document captures key learnings, gotchas, and architectural decisions disco
 - [Testing & Tooling Learnings](#testing--tooling-learnings)
 - [Database Migration Gotchas](#database-migration-gotchas)
 - [TypeScript Safety Learnings](#typescript-safety-learnings)
+
+---
+
+## [2026-04-01] RN Modal Cannot Overlay React Navigation transparentModal
+
+**Problem:** An RN `Modal` component rendered from a context provider at the app root opens _behind_ a React Navigation `transparentModal` screen on iOS. The user taps a button inside the `transparentModal`, the `Modal` opens, but it's invisible underneath.
+
+**Root cause:** iOS `presentViewController:` presents on the root view controller, but React Navigation's `transparentModal` creates a separate native view controller above it. The RN Modal cannot stack on top.
+
+**Fix:** Register the overlay as a `fullScreenModal` screen in the RootStack navigator instead. Navigation screens stack correctly on top of each other regardless of presentation mode. Use `navigation.navigate("CoachChat", { ... })` instead of context-based overlay.
+
+**Rule:** Never use RN `Modal` or absolute-positioned Views to overlay content on screens that are themselves React Navigation modals (`transparentModal`, `modal`, `formSheet`). Use a navigation screen instead.
+
+---
+
+## [2026-04-01] fetch ReadableStream Fails Inside RN Modal — Use XHR
+
+**Problem:** SSE streaming via `fetch` + `res.body.getReader()` works in regular React Native screens but silently fails inside an RN `Modal`. The `ReadableStream` reader never delivers chunks — `isStreaming` stays true but `streamingContent` stays empty.
+
+**Root cause:** React Native's `ReadableStream` implementation does not reliably deliver chunks in all native view contexts. The Modal creates a separate native view hierarchy that disrupts the streaming.
+
+**Fix:** Use `XMLHttpRequest` with `onreadystatechange` and `readyState >= 3` (LOADING) for SSE parsing. XHR's progressive response text works reliably everywhere in RN, including inside Modals.
+
+```typescript
+xhr.onreadystatechange = () => {
+  if (xhr.readyState >= 3 && xhr.responseText) {
+    const newText = xhr.responseText.slice(lastProcessedIndex);
+    lastProcessedIndex = xhr.responseText.length;
+    // Parse SSE lines from newText
+  }
+};
+```
+
+**Rule:** For SSE streaming in React Native, prefer XHR over fetch+ReadableStream. XHR is universally reliable; ReadableStream is context-dependent.
+
+---
+
+## [2026-04-01] Mass-Assignment via Partial<User> in Storage Update Functions
+
+**Category:** Security Post-Mortem
+
+### Context
+
+The `updateUser()` storage function accepted `Partial<User>` — the full User type includes `password`, `role`, `tokenVersion`, `subscriptionTier`, `username`, and `createdAt`. Routes that called `updateUser()` passed Zod-validated input, so the route-level defense was sound. But the storage function signature itself imposed no restriction.
+
+### Problem
+
+`Partial<User>` is a TypeScript denylist-by-absence: every field on the `User` type is accepted. If a future route or code path passed unsanitized input to `updateUser()`, an attacker could escalate privileges (set `role`), hijack accounts (overwrite `password`), or bypass subscription checks (set `subscriptionTier: "premium"`). Drizzle's `.set()` applies whatever it receives — there is no ORM-level field filtering.
+
+This is the classic mass-assignment vulnerability, adapted to the TypeScript/Drizzle stack where it looks deceptively type-safe because `Partial<User>` _is_ a real type. The danger is that TypeScript types don't distinguish "fields the user should control" from "fields the system should control."
+
+### Solution
+
+Replaced `Partial<User>` with `Partial<UpdatableUserFields>` where `UpdatableUserFields` is defined as `Pick<User, 'displayName' | 'avatarUrl' | ...>` — an explicit allowlist of fields callers may set. Sensitive columns (`password`, `role`, `tokenVersion`, `subscriptionTier`, `username`, `createdAt`) are excluded.
+
+Used `Pick<>` (allowlist) instead of `Omit<>` (denylist) so that new columns added to the schema are excluded by default — the developer must explicitly opt them into the whitelist.
+
+### Outcome
+
+- TypeScript compiler now rejects `updateUser(id, { role: 'admin' })` at build time
+- Sensitive fields can only be modified through dedicated storage functions (`incrementTokenVersion`, `changePassword`, receipt validation flow)
+- Defense-in-depth: even if a route skips Zod validation, the storage layer prevents privilege escalation
+
+### Takeaways
+
+- **`Partial<T>` on a full table row type is a mass-assignment vector.** Treat it the same as accepting raw `req.body` — always narrow the type to only the fields the caller should control.
+- **Use `Pick<>` (allowlist), not `Omit<>` (denylist).** Denylists fail open when new columns are added to the schema; allowlists fail closed.
+- **Route-level Zod ≠ storage-level safety.** Both layers should independently reject sensitive field mutations. A Zod schema protects one route; a `Pick<>` type protects all callers.
+- **Audit all `Partial<TableRow>` signatures in the storage layer.** If a function takes `Partial<InsertUserProfile>`, verify that the insert schema already omits sensitive fields, or add a `Pick<>`.
+
+### References
+
+- Fixed in: `server/storage/users.ts` — `UpdatableUserFields` type, `updateUser()`
+- Related pattern: "Mass-Assignment Protection: Whitelist Updatable Fields" in `docs/patterns/security.md`
+- OWASP reference: [Mass Assignment](https://owasp.org/API-Security/editions/2023/en/0xa3-broken-object-property-level-authorization/)
+
+---
+
+## [2026-04-01] Polymorphic FK with Discriminator Column — No DB-Level Constraint
+
+**Category:** Decision (Architecture)
+
+### Context
+
+The `cookbookRecipes` junction table stores recipes from two different parent tables: `mealPlanRecipes` (user-generated meal plan recipes) and `communityRecipes` (shared/community recipes). A `recipeType` discriminator column (`'mealPlan'` or `'community'`) indicates which parent table the `recipeId` references.
+
+### Problem
+
+During a storage-layer audit, this was flagged as a potential data integrity issue because `recipeId` has no database-level foreign key constraint — an orphaned reference could exist if a parent recipe is deleted without cleaning up the junction rows.
+
+PostgreSQL cannot enforce conditional foreign keys ("FK to table A when column X = 'a', FK to table B when column X = 'b'"). This is a known limitation of relational databases for polymorphic associations.
+
+### Investigation
+
+Evaluated three approaches:
+
+1. **Separate FK columns** (`mealPlanRecipeId` + `communityRecipeId`, one nullable) with a CHECK constraint. This is the "mutually-optional FK" pattern already used in `dailyLogs`. Rejected because the cookbook recipes table would need a third discriminator anyway for display logic, and nullable FK pairs add query complexity.
+
+2. **Single `recipeId` + `recipeType` discriminator** (current approach). No DB-level FK, but app code handles cleanup. Simple schema, simple queries, discriminator serves double duty (query filter + display hint).
+
+3. **Shared `recipes` parent table** that both meal plan and community recipes extend. Would allow a single FK. Rejected as a major schema refactor with cascading changes across 20+ routes and storage functions.
+
+### Solution
+
+Kept the discriminator pattern (option 2) with these mitigations already in place:
+
+- **Transactional cleanup:** When a `mealPlanRecipe` or `communityRecipe` is deleted, `cookbookRecipes` rows referencing it are deleted in the same transaction
+- **Query-time filtering:** Cookbook recipe fetches use `LEFT JOIN` and filter out rows where the joined parent is `NULL` (orphan resilience)
+- **Unique constraint:** `(cookbookId, recipeId, recipeType)` prevents duplicate additions
+
+Reclassified the audit finding as a **false positive** — the lack of a DB-level FK is a deliberate trade-off, not an oversight.
+
+### Outcome
+
+No code changes needed. The finding validated that the existing mitigations are sufficient.
+
+### Takeaways
+
+- **Polymorphic FKs with a discriminator column are a valid pattern when the alternative (separate nullable FK columns or shared parent table) adds disproportionate complexity.** Document the decision so future auditors don't re-flag it.
+- **Mitigations for missing FK constraints:** (1) transactional cleanup on parent delete, (2) query-time orphan filtering via LEFT JOIN + NULL check, (3) unique constraints to prevent duplicates.
+- **The existing "CHECK Constraint for Mutually-Optional FK Pairs" pattern** (in `docs/patterns/database.md`) covers the _two nullable FK columns_ variant. The discriminator column variant is a separate approach suited for 3+ parent tables or when the discriminator serves additional purposes.
+- **When an audit flags a known trade-off, document the rationale once** rather than deferring. Future audits will check LEARNINGS.md before re-flagging.
+
+### References
+
+- Schema: `shared/schema.ts` — `cookbookRecipes` table
+- Cleanup: `server/storage/cookbooks.ts` — transactional delete on recipe removal
+- Related: `docs/patterns/database.md` — "CHECK Constraint for Mutually-Optional FK Pairs" (alternative approach)
+- Plan doc: `docs/plans/archived/2026-03-08-feat-cookbook-feature-homepage-redesign-plan.md`
 
 ---
 

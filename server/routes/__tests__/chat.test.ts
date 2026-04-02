@@ -28,6 +28,8 @@ vi.mock("../../storage", () => ({
     getLatestWeight: vi.fn(),
     updateChatConversationTitle: vi.fn(),
     deleteChatConversation: vi.fn(),
+    getCoachCachedResponse: vi.fn().mockResolvedValue(null),
+    setCoachCachedResponse: vi.fn().mockResolvedValue(undefined),
   },
 }));
 
@@ -96,6 +98,7 @@ describe("Chat Routes", () => {
       expect(storage.createChatConversation).toHaveBeenCalledWith(
         "1",
         "New Chat",
+        "coach",
       );
     });
   });

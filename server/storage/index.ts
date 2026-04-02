@@ -32,8 +32,11 @@ export const storage = {
   // Users & profiles
   getUser: users.getUser,
   getUserByUsername: users.getUserByUsername,
+  getUserForAuth: users.getUserForAuth,
+  getUserByUsernameForAuth: users.getUserByUsernameForAuth,
   createUser: users.createUser,
   updateUser: users.updateUser,
+  incrementTokenVersion: users.incrementTokenVersion,
   deleteUser: users.deleteUser,
   getUserProfile: users.getUserProfile,
   createUserProfile: users.createUserProfile,
@@ -125,6 +128,9 @@ export const storage = {
   updateChatConversationTitle: chat.updateChatConversationTitle,
   getDailyChatMessageCount: chat.getDailyChatMessageCount,
   createChatMessageWithLimitCheck: chat.createChatMessageWithLimitCheck,
+  saveRecipeFromChat: chat.saveRecipeFromChat,
+  getCoachCachedResponse: chat.getCoachCachedResponse,
+  setCoachCachedResponse: chat.setCoachCachedResponse,
 
   // Cache (suggestions, instructions, meal suggestions, micronutrients)
   getSuggestionCache: cache.getSuggestionCache,

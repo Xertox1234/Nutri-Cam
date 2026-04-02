@@ -813,6 +813,7 @@ export const chatConversations = pgTable(
       .references(() => users.id, { onDelete: "cascade" })
       .notNull(),
     title: text("title").notNull(),
+    type: text("type").notNull().default("coach"), // 'coach' | 'recipe'
     createdAt: timestamp("created_at")
       .default(sql`CURRENT_TIMESTAMP`)
       .notNull(),
@@ -822,6 +823,10 @@ export const chatConversations = pgTable(
   },
   (table) => ({
     userIdIdx: index("chat_conversations_user_id_idx").on(table.userId),
+    userTypeIdx: index("chat_conversations_user_type_idx").on(
+      table.userId,
+      table.type,
+    ),
   }),
 );
 
@@ -842,6 +847,11 @@ export const chatMessages = pgTable(
   (table) => ({
     conversationIdIdx: index("chat_messages_conversation_id_idx").on(
       table.conversationId,
+    ),
+    convRoleCreatedIdx: index("chat_messages_conv_role_created_idx").on(
+      table.conversationId,
+      table.role,
+      table.createdAt,
     ),
   }),
 );
@@ -1318,6 +1328,29 @@ export const mealSuggestionCacheRelations = relations(
       fields: [mealSuggestionCache.userId],
       references: [users.id],
     }),
+  }),
+);
+
+// Coach response cache — universal cache for predefined coach questions
+// Only used for questions WITHOUT screenContext (universal answers like fasting tips)
+export const coachResponseCache = pgTable(
+  "coach_response_cache",
+  {
+    id: serial("id").primaryKey(),
+    questionHash: varchar("question_hash", { length: 64 }).notNull().unique(),
+    question: text("question").notNull(),
+    response: text("response").notNull(),
+    hitCount: integer("hit_count").default(0),
+    createdAt: timestamp("created_at")
+      .default(sql`CURRENT_TIMESTAMP`)
+      .notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+  },
+  (table) => ({
+    questionHashIdx: uniqueIndex("coach_response_cache_hash_idx").on(
+      table.questionHash,
+    ),
+    expiresAtIdx: index("coach_response_cache_expires_idx").on(table.expiresAt),
   }),
 );
 
