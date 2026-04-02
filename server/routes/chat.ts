@@ -271,15 +271,15 @@ export function register(app: Express): void {
             const words = cachedResponse.split(/(\s+)/);
             let i = 0;
             while (i < words.length && !aborted) {
-              // Send 3-5 words at a time for natural-feeling chunks
-              const chunkSize = 3 + Math.floor(Math.random() * 3);
+              // Send 5-8 words at a time for fast but natural chunks
+              const chunkSize = 5 + Math.floor(Math.random() * 4);
               const chunk = words.slice(i, i + chunkSize).join("");
               i += chunkSize;
               fullResponse += chunk;
               res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
-              // 30-80ms delay between chunks for typing feel
+              // 15-40ms delay — fast enough to feel responsive, slow enough to animate
               await new Promise((r) =>
-                setTimeout(r, 30 + Math.floor(Math.random() * 50)),
+                setTimeout(r, 15 + Math.floor(Math.random() * 25)),
               );
             }
           } else {
