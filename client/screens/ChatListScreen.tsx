@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import {
   StyleSheet,
   View,
@@ -34,12 +34,21 @@ import {
 } from "@/constants/theme";
 import { FLATLIST_DEFAULTS } from "@/constants/performance";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import type { CompositeNavigationProp } from "@react-navigation/native";
+import type { BottomTabNavigationProp } from "@react-navigation/bottom-tabs";
 import type { ChatStackParamList } from "@/navigation/ChatStackNavigator";
+import type { MainTabParamList } from "@/navigation/MainTabNavigator";
+import type { RootStackParamList } from "@/navigation/RootStackNavigator";
 
-type ChatListNavigationProp = NativeStackNavigationProp<
-  ChatStackParamList,
-  "ChatList"
+type ChatListNavigationProp = CompositeNavigationProp<
+  NativeStackNavigationProp<ChatStackParamList, "ChatList">,
+  CompositeNavigationProp<
+    BottomTabNavigationProp<MainTabParamList>,
+    NativeStackNavigationProp<RootStackParamList>
+  >
 >;
+
+type ChatSegment = "coach" | "recipe";
 
 const MAX_ANIMATED_INDEX = 10;
 
@@ -71,17 +80,27 @@ export default function ChatListScreen() {
   const { confirm, ConfirmationModal } = useConfirmationModal();
   const navigation = useNavigation<ChatListNavigationProp>();
 
+  const [activeSegment, setActiveSegment] = useState<ChatSegment>("coach");
+  const isRecipeMode = activeSegment === "recipe";
+
   const {
     data: conversations,
     isLoading,
     refetch,
     isRefetching,
-  } = useChatConversations();
+  } = useChatConversations(activeSegment);
   const createConversation = useCreateConversation();
   const deleteConversation = useDeleteConversation();
 
   const handleNewChat = useCallback(async () => {
     haptics.impact(Haptics.ImpactFeedbackStyle.Light);
+
+    // Recipe chats open the dedicated RecipeChat screen
+    if (isRecipeMode) {
+      navigation.navigate("RecipeChat", {});
+      return;
+    }
+
     try {
       const conversation = await createConversation.mutateAsync(undefined);
       navigation.navigate("Chat", { conversationId: conversation.id });
@@ -100,14 +119,18 @@ export default function ChatListScreen() {
       haptics.notification(Haptics.NotificationFeedbackType.Error);
       toast.error(userMessage);
     }
-  }, [haptics, toast, createConversation, navigation]);
+  }, [haptics, toast, createConversation, navigation, isRecipeMode]);
 
   const handleOpenChat = useCallback(
     (conversationId: number) => {
       haptics.impact(Haptics.ImpactFeedbackStyle.Light);
-      navigation.navigate("Chat", { conversationId });
+      if (isRecipeMode) {
+        navigation.navigate("RecipeChat", { conversationId });
+      } else {
+        navigation.navigate("Chat", { conversationId });
+      }
     },
-    [haptics, navigation],
+    [haptics, navigation, isRecipeMode],
   );
 
   const handleDeleteChat = useCallback(
@@ -158,7 +181,7 @@ export default function ChatListScreen() {
             ]}
           >
             <Feather
-              name="message-circle"
+              name={isRecipeMode ? "book-open" : "message-circle"}
               size={18}
               color={theme.link}
               accessible={false}
@@ -185,7 +208,7 @@ export default function ChatListScreen() {
         </Pressable>
       </Animated.View>
     ),
-    [handleOpenChat, handleDeleteChat, theme, reducedMotion],
+    [handleOpenChat, handleDeleteChat, theme, reducedMotion, isRecipeMode],
   );
 
   return (
@@ -218,6 +241,53 @@ export default function ChatListScreen() {
         >
           <Feather name="plus" size={20} color={theme.buttonText} />
         </Pressable>
+      </View>
+
+      {/* Segment Control */}
+      <View
+        style={[
+          styles.segmentContainer,
+          { backgroundColor: withOpacity(theme.text, 0.06) },
+        ]}
+        accessibilityRole="tablist"
+      >
+        {(["coach", "recipe"] as const).map((segment) => {
+          const isActive = activeSegment === segment;
+          return (
+            <Pressable
+              key={segment}
+              onPress={() => {
+                setActiveSegment(segment);
+                haptics.impact(Haptics.ImpactFeedbackStyle.Light);
+              }}
+              style={[
+                styles.segmentTab,
+                isActive && [
+                  styles.segmentTabActive,
+                  { backgroundColor: theme.backgroundRoot },
+                ],
+              ]}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: isActive }}
+              accessibilityLabel={
+                segment === "coach" ? "Coach chats" : "Recipe chats"
+              }
+            >
+              <ThemedText
+                type="caption"
+                style={[
+                  styles.segmentLabel,
+                  {
+                    color: isActive ? theme.text : theme.textSecondary,
+                    fontWeight: isActive ? "600" : "400",
+                  },
+                ]}
+              >
+                {segment === "coach" ? "Coach" : "Recipes"}
+              </ThemedText>
+            </Pressable>
+          );
+        })}
       </View>
 
       <FlatList
@@ -297,6 +367,29 @@ const styles = StyleSheet.create({
   },
   headerSubtitle: {
     marginTop: 2,
+  },
+  segmentContainer: {
+    flexDirection: "row",
+    marginHorizontal: Spacing.lg,
+    marginBottom: Spacing.md,
+    borderRadius: BorderRadius.sm,
+    padding: 3,
+  },
+  segmentTab: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: Spacing.sm,
+    borderRadius: BorderRadius.xs,
+  },
+  segmentTabActive: {
+    shadowColor: "#000", // hardcoded — iOS shadow requires literal black
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  segmentLabel: {
+    fontSize: 13,
   },
   newChatButton: {
     width: 44,
