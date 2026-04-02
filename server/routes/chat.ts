@@ -16,8 +16,18 @@ import {
   generateCoachResponse,
   type CoachContext,
 } from "../services/nutrition-coach";
+import {
+  generateRecipeChatResponse,
+  buildRecipeContext,
+  type RecipeChatSSEEvent,
+  type RecipeChatRecipe,
+  recipeChatMetadataSchema,
+} from "../services/recipe-chat";
 import { logger, toError } from "../lib/logger";
 import { createHash } from "crypto";
+
+const SSE_TIMEOUT_MS = 120_000; // 2 minutes max per SSE connection
+const SSE_MAX_RESPONSE_BYTES = 50 * 1024; // 50KB max response size
 
 export function register(app: Express): void {
   // GET /api/chat/conversations - List conversations
@@ -28,9 +38,15 @@ export function register(app: Express): void {
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const limit = parseQueryInt(req.query.limit, { default: 50, max: 50 });
+        const typeParam = req.query.type as string | undefined;
+        const type =
+          typeParam === "coach" || typeParam === "recipe"
+            ? typeParam
+            : undefined;
         const conversations = await storage.getChatConversations(
           req.userId,
           limit,
+          type,
         );
         res.json(conversations);
       } catch (error) {
@@ -52,7 +68,10 @@ export function register(app: Express): void {
     chatRateLimit,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
-        const schema = z.object({ title: z.string().max(200).optional() });
+        const schema = z.object({
+          title: z.string().max(200).optional(),
+          type: z.enum(["coach", "recipe"]).default("coach"),
+        });
         const parsed = schema.safeParse(req.body);
         if (!parsed.success)
           return sendError(
@@ -64,7 +83,9 @@ export function register(app: Express): void {
 
         const conversation = await storage.createChatConversation(
           req.userId,
-          parsed.data.title || "New Chat",
+          parsed.data.title ||
+            (parsed.data.type === "recipe" ? "New Recipe Chat" : "New Chat"),
+          parsed.data.type,
         );
         res.status(201).json(conversation);
       } catch (error) {
@@ -159,11 +180,16 @@ export function register(app: Express): void {
         // Premium gate — fail fast before DB queries
         if (!checkAiConfigured(res)) return;
 
+        // Dispatch based on conversation type
+        const isRecipeChat = conversation.type === "recipe";
+
+        const featureKey = isRecipeChat ? "recipeGeneration" : "aiCoach";
+        const featureLabel = isRecipeChat ? "Recipe Generation" : "AI Coach";
         const features = await checkPremiumFeature(
           req,
           res,
-          "aiCoach",
-          "AI Coach",
+          featureKey as "recipeGeneration" | "aiCoach",
+          featureLabel,
         );
         if (!features) return;
 
@@ -173,70 +199,27 @@ export function register(app: Express): void {
 
         // Atomically check daily limit and create message in a single
         // transaction to prevent TOCTOU races bypassing the limit.
+        const dailyLimit = isRecipeChat
+          ? features.dailyRecipeGenerations
+          : features.dailyCoachMessages;
         const message = await storage.createChatMessageWithLimitCheck(
           id,
           req.userId,
           parsed.data.content,
-          features.dailyCoachMessages,
+          dailyLimit,
+          conversation.type as "coach" | "recipe",
         );
 
         if (!message) {
           return sendError(
             res,
             429,
-            "Daily chat message limit reached",
+            isRecipeChat
+              ? "Daily recipe generation limit reached"
+              : "Daily chat message limit reached",
             ErrorCode.DAILY_LIMIT_REACHED,
           );
         }
-
-        // Build context in parallel
-        const today = new Date();
-        const [profile, dailySummary, latestWeight, history] =
-          await Promise.all([
-            storage.getUserProfile(req.userId),
-            storage.getDailySummary(req.userId, today),
-            storage.getLatestWeight(req.userId),
-            storage.getChatMessages(id, 20),
-          ]);
-
-        const context: CoachContext = {
-          // When user has no calorie goal, pass null so the coach knows goals aren't set.
-          // Macro fallbacks are 0 (not DEFAULT_NUTRITION_GOALS) because the coach should
-          // only reference macros the user has explicitly configured.
-          goals: user.dailyCalorieGoal
-            ? {
-                calories: user.dailyCalorieGoal,
-                protein: user.dailyProteinGoal || 0,
-                carbs: user.dailyCarbsGoal || 0,
-                fat: user.dailyFatGoal || 0,
-              }
-            : null,
-          todayIntake: {
-            calories: Number(dailySummary.totalCalories),
-            protein: Number(dailySummary.totalProtein),
-            carbs: Number(dailySummary.totalCarbs),
-            fat: Number(dailySummary.totalFat),
-          },
-          weightTrend: {
-            currentWeight: latestWeight
-              ? parseFloat(latestWeight.weight)
-              : null,
-            weeklyRate: null,
-          },
-          dietaryProfile: {
-            dietType: profile?.dietType || null,
-            allergies: (
-              (profile?.allergies as { name: string }[] | null) || []
-            ).map((a) => a.name),
-            dislikes: (profile?.foodDislikes as string[]) || [],
-          },
-          screenContext: parsed.data.screenContext,
-        };
-
-        const messageHistory = history.map((m) => ({
-          role: m.role as "user" | "assistant" | "system",
-          content: m.content,
-        }));
 
         // Stream response via SSE
         res.setHeader("Content-Type", "text/event-stream");
@@ -250,76 +233,204 @@ export function register(app: Express): void {
           aborted = true;
         });
 
-        // Check cache for predefined questions (no screenContext = universal answer)
-        const isCacheable = !parsed.data.screenContext && history.length <= 1;
-        const questionHash = isCacheable
-          ? createHash("sha256")
-              .update(parsed.data.content.trim().toLowerCase())
-              .digest("hex")
-              .slice(0, 32)
-          : null;
+        // SSE timeout — prevent hung connections
+        const sseTimeout = setTimeout(() => {
+          aborted = true;
+          if (!res.writableEnded) {
+            res.write(
+              `data: ${JSON.stringify({ error: "Response timeout" })}\n\n`,
+            );
+            res.end();
+          }
+        }, SSE_TIMEOUT_MS);
 
-        let cachedResponse: string | null = null;
-        if (questionHash) {
-          cachedResponse = await storage.getCoachCachedResponse(questionHash);
-        }
+        let responseBytes = 0;
 
-        let fullResponse = "";
         try {
-          if (cachedResponse) {
-            // Stream cached response with simulated typing animation
-            const words = cachedResponse.split(/(\s+)/);
-            let i = 0;
-            while (i < words.length && !aborted) {
-              // Send 5-8 words at a time for fast but natural chunks
-              const chunkSize = 5 + Math.floor(Math.random() * 4);
-              const chunk = words.slice(i, i + chunkSize).join("");
-              i += chunkSize;
-              fullResponse += chunk;
-              res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
-              // 15-40ms delay — fast enough to feel responsive, slow enough to animate
-              await new Promise((r) =>
-                setTimeout(r, 15 + Math.floor(Math.random() * 25)),
-              );
-            }
-          } else {
-            // Generate fresh response via OpenAI
-            for await (const chunk of generateCoachResponse(
-              messageHistory,
-              context,
+          if (isRecipeChat) {
+            // ─── RECIPE CHAT PATH ────────────────────────────────
+            const [profile, history] = await Promise.all([
+              storage.getUserProfile(req.userId),
+              storage.getChatMessages(id, 10),
+            ]);
+
+            const contextMessages = buildRecipeContext(history);
+
+            let fullTextResponse = "";
+            let recipeData: RecipeChatRecipe | null = null;
+            let allergenWarning: string | null = null;
+
+            for await (const event of generateRecipeChatResponse(
+              contextMessages,
+              profile,
+              parsed.data.screenContext,
             )) {
               if (aborted) break;
-              fullResponse += chunk;
-              res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
+
+              const eventJson = JSON.stringify(event);
+              responseBytes += eventJson.length;
+              if (responseBytes > SSE_MAX_RESPONSE_BYTES) {
+                aborted = true;
+                break;
+              }
+
+              if ("done" in event && event.done) {
+                // Terminal event — handled after loop
+              } else if ("recipe" in event && event.recipe) {
+                recipeData = event.recipe;
+                allergenWarning = event.allergenWarning;
+                res.write(`data: ${eventJson}\n\n`);
+              } else if ("imageUrl" in event && event.imageUrl) {
+                res.write(`data: ${eventJson}\n\n`);
+              } else if ("content" in event && event.content) {
+                fullTextResponse += event.content;
+                res.write(`data: ${eventJson}\n\n`);
+              }
             }
 
-            // Cache the response for future use (fire-and-forget)
-            if (questionHash && fullResponse && !aborted) {
-              storage
-                .setCoachCachedResponse(
-                  questionHash,
-                  parsed.data.content,
-                  fullResponse,
-                )
-                .catch(() => {});
+            // Save assistant message with recipe in metadata
+            if (fullTextResponse || recipeData) {
+              const metadata = recipeData
+                ? {
+                    metadataVersion: 1,
+                    recipe: recipeData,
+                    allergenWarning,
+                    imageUrl: null,
+                  }
+                : null;
+
+              await storage.createChatMessage(
+                id,
+                "assistant",
+                fullTextResponse || "Here's a recipe for you!",
+                metadata,
+              );
             }
-          }
 
-          // Save assistant message (full or partial) to maintain conversation consistency
-          if (fullResponse) {
-            await storage.createChatMessage(id, "assistant", fullResponse);
-          }
+            // Auto-title from recipe name on first exchange
+            if (!aborted && recipeData) {
+              const history2 = await storage.getChatMessages(id, 3);
+              if (history2.length <= 3) {
+                await storage.updateChatConversationTitle(
+                  id,
+                  req.userId,
+                  recipeData.title,
+                );
+              }
+            }
+          } else {
+            // ─── COACH CHAT PATH (existing) ──────────────────────
+            const today = new Date();
+            const [profile, dailySummary, latestWeight, history] =
+              await Promise.all([
+                storage.getUserProfile(req.userId),
+                storage.getDailySummary(req.userId, today),
+                storage.getLatestWeight(req.userId),
+                storage.getChatMessages(id, 20),
+              ]);
 
-          // Update conversation title if this is the first exchange
-          if (!aborted && history.length <= 1) {
-            const shortTitle =
-              parsed.data.content.slice(0, 50) +
-              (parsed.data.content.length > 50 ? "..." : "");
-            await storage.updateChatConversationTitle(
-              id,
-              req.userId,
-              shortTitle,
-            );
+            const context: CoachContext = {
+              goals: user.dailyCalorieGoal
+                ? {
+                    calories: user.dailyCalorieGoal,
+                    protein: user.dailyProteinGoal || 0,
+                    carbs: user.dailyCarbsGoal || 0,
+                    fat: user.dailyFatGoal || 0,
+                  }
+                : null,
+              todayIntake: {
+                calories: Number(dailySummary.totalCalories),
+                protein: Number(dailySummary.totalProtein),
+                carbs: Number(dailySummary.totalCarbs),
+                fat: Number(dailySummary.totalFat),
+              },
+              weightTrend: {
+                currentWeight: latestWeight
+                  ? parseFloat(latestWeight.weight)
+                  : null,
+                weeklyRate: null,
+              },
+              dietaryProfile: {
+                dietType: profile?.dietType || null,
+                allergies: (
+                  (profile?.allergies as { name: string }[] | null) || []
+                ).map((a) => a.name),
+                dislikes: (profile?.foodDislikes as string[]) || [],
+              },
+              screenContext: parsed.data.screenContext,
+            };
+
+            const messageHistory = history.map((m) => ({
+              role: m.role as "user" | "assistant" | "system",
+              content: m.content,
+            }));
+
+            // Check cache for predefined questions (no screenContext = universal answer)
+            const isCacheable =
+              !parsed.data.screenContext && history.length <= 1;
+            const questionHash = isCacheable
+              ? createHash("sha256")
+                  .update(parsed.data.content.trim().toLowerCase())
+                  .digest("hex")
+                  .slice(0, 32)
+              : null;
+
+            let cachedResponse: string | null = null;
+            if (questionHash) {
+              cachedResponse =
+                await storage.getCoachCachedResponse(questionHash);
+            }
+
+            let fullResponse = "";
+
+            if (cachedResponse) {
+              const words = cachedResponse.split(/(\s+)/);
+              let i = 0;
+              while (i < words.length && !aborted) {
+                const chunkSize = 5 + Math.floor(Math.random() * 4);
+                const chunk = words.slice(i, i + chunkSize).join("");
+                i += chunkSize;
+                fullResponse += chunk;
+                res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
+                await new Promise((r) =>
+                  setTimeout(r, 15 + Math.floor(Math.random() * 25)),
+                );
+              }
+            } else {
+              for await (const chunk of generateCoachResponse(
+                messageHistory,
+                context,
+              )) {
+                if (aborted) break;
+                fullResponse += chunk;
+                res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
+              }
+
+              if (questionHash && fullResponse && !aborted) {
+                storage
+                  .setCoachCachedResponse(
+                    questionHash,
+                    parsed.data.content,
+                    fullResponse,
+                  )
+                  .catch(() => {});
+              }
+            }
+
+            if (fullResponse) {
+              await storage.createChatMessage(id, "assistant", fullResponse);
+            }
+
+            if (!aborted && history.length <= 1) {
+              const shortTitle =
+                parsed.data.content.slice(0, 50) +
+                (parsed.data.content.length > 50 ? "..." : "");
+              await storage.updateChatConversationTitle(
+                id,
+                req.userId,
+                shortTitle,
+              );
+            }
           }
 
           if (!aborted) {
@@ -327,17 +438,13 @@ export function register(app: Express): void {
           }
         } catch (error) {
           logger.error({ err: toError(error) }, "chat streaming error");
-          if (!aborted) {
+          if (!aborted && !res.writableEnded) {
             res.write(
               `data: ${JSON.stringify({ error: "Failed to generate response" })}\n\n`,
             );
           }
-          // Save partial response so conversation stays consistent
-          if (fullResponse) {
-            await storage
-              .createChatMessage(id, "assistant", fullResponse)
-              .catch(() => {});
-          }
+        } finally {
+          clearTimeout(sseTimeout);
         }
         res.end();
       } catch (error) {

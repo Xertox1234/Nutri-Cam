@@ -73,7 +73,7 @@ export async function createChatMessage(
   conversationId: number,
   role: string,
   content: string,
-  metadata?: Record<string, string | number | boolean | null> | null,
+  metadata?: Record<string, unknown> | null,
 ): Promise<ChatMessage> {
   return db.transaction(async (tx) => {
     const [message] = await tx
