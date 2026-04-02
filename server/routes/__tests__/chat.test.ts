@@ -98,6 +98,7 @@ describe("Chat Routes", () => {
       expect(storage.createChatConversation).toHaveBeenCalledWith(
         "1",
         "New Chat",
+        "coach",
       );
     });
   });
