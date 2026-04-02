@@ -340,7 +340,11 @@ export function register(app: Express): void {
             ErrorCode.VALIDATION_ERROR,
           );
 
-        const updates: Record<string, unknown> = {
+        const updates: {
+          glp1Mode: boolean;
+          glp1Medication?: string;
+          glp1StartDate?: Date;
+        } = {
           glp1Mode: parsed.data.glp1Mode,
         };
         if (parsed.data.glp1Medication) {

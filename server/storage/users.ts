@@ -171,9 +171,28 @@ export async function createUserProfile(
   return newProfile;
 }
 
+/** Whitelist of fields callers may update on a user profile.
+ *  `userId` is excluded — it's a foreign key and immutable after creation. */
+type UpdatableProfileFields = Pick<
+  InsertUserProfile,
+  | "allergies"
+  | "healthConditions"
+  | "dietType"
+  | "foodDislikes"
+  | "primaryGoal"
+  | "activityLevel"
+  | "householdSize"
+  | "cuisinePreferences"
+  | "cookingSkillLevel"
+  | "cookingTimeAvailable"
+  | "glp1Mode"
+  | "glp1Medication"
+  | "glp1StartDate"
+>;
+
 export async function updateUserProfile(
   userId: string,
-  updates: Partial<InsertUserProfile>,
+  updates: Partial<UpdatableProfileFields>,
 ): Promise<UserProfile | undefined> {
   const [profile] = await db
     .update(userProfiles)
