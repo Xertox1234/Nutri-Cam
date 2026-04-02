@@ -38,7 +38,8 @@ import FrontLabelConfirmScreen from "@/screens/FrontLabelConfirmScreen";
 import BatchScanScreen from "@/screens/BatchScanScreen";
 import BatchSummaryScreen from "@/screens/BatchSummaryScreen";
 import WeightTrackingScreen from "@/screens/WeightTrackingScreen";
-import RecipeCoachChatScreen from "@/screens/RecipeCoachChatScreen";
+import CoachChatScreen from "@/screens/CoachChatScreen";
+import RecipeChatScreen from "@/screens/RecipeChatScreen";
 
 export type RootStackParamList = {
   Login: undefined;
@@ -103,10 +104,14 @@ export type RootStackParamList = {
   BatchScan: undefined;
   BatchSummary: undefined;
   WeightTracking: undefined;
-  RecipeCoachChat: {
-    recipeId: number;
-    recipeType: "mealPlan" | "community";
-    initialQuestion: string;
+  CoachChat: {
+    question: string;
+    questionText: string;
+    screenContext?: string;
+  };
+  RecipeChat: {
+    conversationId?: number;
+    initialMessage?: string;
   };
 };
 
@@ -203,7 +208,7 @@ export default function RootStackNavigator() {
             component={FeaturedRecipeDetailScreen}
             options={{
               headerShown: false,
-              presentation: "transparentModal",
+              presentation: "modal",
               animation: "slide_from_bottom",
               gestureEnabled: true,
               fullScreenGestureEnabled: true,
@@ -327,8 +332,17 @@ export default function RootStackNavigator() {
             }}
           />
           <Stack.Screen
-            name="RecipeCoachChat"
-            component={RecipeCoachChatScreen}
+            name="CoachChat"
+            component={CoachChatScreen}
+            options={{
+              headerShown: false,
+              presentation: "fullScreenModal",
+              animation: "slide_from_bottom",
+            }}
+          />
+          <Stack.Screen
+            name="RecipeChat"
+            component={RecipeChatScreen}
             options={{
               headerShown: false,
               presentation: "fullScreenModal",

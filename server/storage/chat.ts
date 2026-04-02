@@ -1,12 +1,16 @@
 import {
   type ChatConversation,
   type ChatMessage,
+  type CommunityRecipe,
   chatConversations,
   chatMessages,
+  communityRecipes,
+  coachResponseCache,
 } from "@shared/schema";
 import { db } from "../db";
 import { eq, desc, and, gte, lt, sql } from "drizzle-orm";
 import { getDayBounds } from "./helpers";
+import { recipeChatMetadataSchema } from "../services/recipe-chat";
 
 // ============================================================================
 // CHAT CONVERSATIONS
@@ -28,11 +32,16 @@ export async function getChatConversation(
 export async function getChatConversations(
   userId: string,
   limit = 50,
+  type?: "coach" | "recipe",
 ): Promise<ChatConversation[]> {
+  const conditions = [eq(chatConversations.userId, userId)];
+  if (type) {
+    conditions.push(eq(chatConversations.type, type));
+  }
   return db
     .select()
     .from(chatConversations)
-    .where(eq(chatConversations.userId, userId))
+    .where(and(...conditions))
     .orderBy(desc(chatConversations.updatedAt))
     .limit(limit);
 }
@@ -40,10 +49,11 @@ export async function getChatConversations(
 export async function createChatConversation(
   userId: string,
   title: string,
+  type: "coach" | "recipe" = "coach",
 ): Promise<ChatConversation> {
   const [conversation] = await db
     .insert(chatConversations)
-    .values({ userId, title })
+    .values({ userId, title, type })
     .returning();
   return conversation;
 }
@@ -64,7 +74,7 @@ export async function createChatMessage(
   conversationId: number,
   role: string,
   content: string,
-  metadata?: Record<string, string | number | boolean | null> | null,
+  metadata?: Record<string, unknown> | null,
 ): Promise<ChatMessage> {
   return db.transaction(async (tx) => {
     const [message] = await tx
@@ -145,6 +155,9 @@ export async function getDailyChatMessageCount(
  * Wraps count-check + insert in a single transaction to prevent TOCTOU races
  * where concurrent requests could bypass the daily limit.
  *
+ * The conversationType filter ensures coach and recipe limits are counted
+ * independently (they have different daily allowances).
+ *
  * Returns the created message, or null if the daily limit has been reached.
  */
 export async function createChatMessageWithLimitCheck(
@@ -152,9 +165,23 @@ export async function createChatMessageWithLimitCheck(
   userId: string,
   content: string,
   dailyLimit: number,
+  conversationType?: "coach" | "recipe",
 ): Promise<ChatMessage | null> {
   return db.transaction(async (tx) => {
+    // Advisory lock per user to serialize concurrent generation attempts
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${userId}))`);
+
     const { startOfDay, endOfDay } = getDayBounds(new Date());
+
+    const conditions = [
+      eq(chatConversations.userId, userId),
+      eq(chatMessages.role, "user"),
+      gte(chatMessages.createdAt, startOfDay),
+      lt(chatMessages.createdAt, endOfDay),
+    ];
+    if (conversationType) {
+      conditions.push(eq(chatConversations.type, conversationType));
+    }
 
     const countResult = await tx
       .select({ count: sql<number>`count(*)` })
@@ -163,14 +190,7 @@ export async function createChatMessageWithLimitCheck(
         chatConversations,
         eq(chatMessages.conversationId, chatConversations.id),
       )
-      .where(
-        and(
-          eq(chatConversations.userId, userId),
-          eq(chatMessages.role, "user"),
-          gte(chatMessages.createdAt, startOfDay),
-          lt(chatMessages.createdAt, endOfDay),
-        ),
-      );
+      .where(and(...conditions));
 
     const currentCount = Number(countResult[0]?.count ?? 0);
     if (currentCount >= dailyLimit) {
@@ -195,4 +215,148 @@ export async function createChatMessageWithLimitCheck(
 
     return message;
   });
+}
+
+// ============================================================================
+// RECIPE CHAT — SAVE RECIPE FROM CHAT
+// ============================================================================
+
+/**
+ * Save a recipe from a chat message to communityRecipes.
+ * Atomic transaction: verify ownership, check idempotency, create recipe,
+ * update message metadata with back-reference.
+ *
+ * Returns the created recipe, or the existing one if already saved.
+ */
+export async function saveRecipeFromChat(
+  messageId: number,
+  conversationId: number,
+  userId: string,
+): Promise<CommunityRecipe | null> {
+  return db.transaction(async (tx) => {
+    // 1. Verify conversation ownership
+    const [conv] = await tx
+      .select()
+      .from(chatConversations)
+      .where(
+        and(
+          eq(chatConversations.id, conversationId),
+          eq(chatConversations.userId, userId),
+        ),
+      );
+    if (!conv) return null;
+
+    // 2. Get the message and check it belongs to this conversation
+    const [msg] = await tx
+      .select()
+      .from(chatMessages)
+      .where(
+        and(
+          eq(chatMessages.id, messageId),
+          eq(chatMessages.conversationId, conversationId),
+        ),
+      );
+    if (!msg || !msg.metadata) return null;
+
+    // 3. Validate metadata with Zod — no unsafe `as` casts on DB values
+    const parsed = recipeChatMetadataSchema.safeParse(msg.metadata);
+
+    // Handle legacy or non-recipe messages: check raw savedRecipeId for idempotency
+    const rawMetadata = msg.metadata as Record<string, unknown>;
+    if (rawMetadata.savedRecipeId) {
+      const [existing] = await tx
+        .select()
+        .from(communityRecipes)
+        .where(eq(communityRecipes.id, Number(rawMetadata.savedRecipeId)));
+      return existing || null;
+    }
+
+    // 4. Extract validated recipe data from metadata
+    if (!parsed.success) return null;
+    const { recipe } = parsed.data;
+
+    // 5. Create communityRecipe (private by default)
+    const [created] = await tx
+      .insert(communityRecipes)
+      .values({
+        authorId: userId,
+        normalizedProductName: recipe.title.toLowerCase(),
+        title: recipe.title,
+        description: recipe.description,
+        difficulty: recipe.difficulty,
+        timeEstimate: recipe.timeEstimate,
+        servings: recipe.servings ?? 2,
+        dietTags: recipe.dietTags ?? [],
+        instructions: recipe.instructions,
+        ingredients: recipe.ingredients,
+        imageUrl: parsed.data.imageUrl ?? null,
+        isPublic: false,
+      })
+      .returning();
+
+    // 6. Update message metadata with back-reference
+    await tx
+      .update(chatMessages)
+      .set({
+        metadata: sql`${chatMessages.metadata} || ${JSON.stringify({ savedRecipeId: created.id })}::jsonb`,
+      })
+      .where(eq(chatMessages.id, messageId));
+
+    return created;
+  });
+}
+
+// ============================================================================
+// COACH RESPONSE CACHE
+// ============================================================================
+
+/**
+ * Get a cached coach response by question hash.
+ * Returns null if not found or expired. Increments hit count on cache hit.
+ */
+export async function getCoachCachedResponse(
+  questionHash: string,
+): Promise<string | null> {
+  const [cached] = await db
+    .select()
+    .from(coachResponseCache)
+    .where(
+      and(
+        eq(coachResponseCache.questionHash, questionHash),
+        gte(coachResponseCache.expiresAt, new Date()),
+      ),
+    )
+    .limit(1);
+
+  if (!cached) return null;
+
+  // Fire-and-forget hit count increment
+  db.update(coachResponseCache)
+    .set({ hitCount: sql`${coachResponseCache.hitCount} + 1` })
+    .where(eq(coachResponseCache.id, cached.id))
+    .catch(() => {});
+
+  return cached.response;
+}
+
+/**
+ * Cache a coach response for a predefined question.
+ * Uses upsert to handle concurrent first-asks.
+ */
+export async function setCoachCachedResponse(
+  questionHash: string,
+  question: string,
+  response: string,
+  ttlDays = 7,
+): Promise<void> {
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + ttlDays);
+
+  await db
+    .insert(coachResponseCache)
+    .values({ questionHash, question, response, expiresAt })
+    .onConflictDoUpdate({
+      target: coachResponseCache.questionHash,
+      set: { response, expiresAt, hitCount: 0 },
+    });
 }

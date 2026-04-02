@@ -923,3 +923,151 @@ return res.status(status).json({ error: message });
 **References:**
 
 - `server/index.ts` — `setupErrorHandler()`
+
+---
+
+### Exclude Sensitive Columns from Default Queries
+
+Storage functions that return user records should exclude password hashes (and other secrets) by default. Create a `safeUserColumns` object that omits the `password` column using destructuring, and provide separate `ForAuth` variants for the rare login/delete flows that need it.
+
+```typescript
+// ❌ BAD: password hash leaks to every caller
+async function getUser(id: number): Promise<User | undefined> {
+  const [user] = await db.select().from(users).where(eq(users.id, id));
+  return user;
+}
+
+// ✅ GOOD: default query excludes password
+const { password: _, ...safeUserColumns } = getTableColumns(users);
+type SafeUser = InferSelectModel<typeof users> & { password?: never };
+
+async function getUser(id: number): Promise<SafeUser | undefined> {
+  const [user] = await db
+    .select(safeUserColumns)
+    .from(users)
+    .where(eq(users.id, id));
+  return user as SafeUser | undefined;
+}
+
+// Only for login / account-deletion flows
+async function getUserForAuth(id: number): Promise<User | undefined> {
+  const [user] = await db.select().from(users).where(eq(users.id, id));
+  return user;
+}
+```
+
+**When to use:** Any storage function returning rows from tables that contain password hashes, API keys, or other secrets.
+
+**Why:** Defence-in-depth — even if a route accidentally serialises the full object into a response, the secret is never present.
+
+**References:**
+
+- `server/storage/users.ts` — `safeUserColumns`, `getUser()`, `getUserForAuth()`
+
+---
+
+### Hash Secrets Used as In-Memory Cache Keys
+
+When caching the result of a secret lookup (e.g. API key → userId), never store the raw secret as the `Map` key. A heap dump or debug log would expose every cached secret. Instead, hash the secret with SHA-256 and use the digest as the key.
+
+```typescript
+import { createHash } from "crypto";
+
+// ❌ BAD: raw API key sits in memory as a Map key
+const apiKeyCache = new Map<string, { userId: number; expiresAt: number }>();
+apiKeyCache.set(rawKey, { userId, expiresAt });
+
+// ✅ GOOD: SHA-256 digest as key
+function cacheKey(raw: string): string {
+  return createHash("sha256").update(raw).digest("hex");
+}
+const apiKeyCache = new Map<string, { userId: number; expiresAt: number }>();
+apiKeyCache.set(cacheKey(rawKey), { userId, expiresAt });
+```
+
+**When to use:** Any in-memory cache (Map, object, LRU) keyed by a secret value — API keys, tokens, session IDs.
+
+**Why:** Secrets in memory are accessible via heap dumps, core dumps, or debug endpoints. Hashing makes the cache opaque without affecting lookup performance.
+
+**References:**
+
+- `server/middleware/api-key-auth.ts` — `cacheKey()`, `apiKeyCache`
+
+---
+
+### Mass-Assignment Protection: Whitelist Updatable Fields
+
+When a storage function accepts a partial update object and passes it to Drizzle's `.set()`, constrain the type to only the fields callers are allowed to modify. Never accept `Partial<TableRow>` — it allows setting sensitive columns like `role`, `password`, `email`, `tokenVersion`, or `subscriptionTier`.
+
+**When to use:** Any storage `update*()` function that accepts a caller-provided object and passes it to `.set()`.
+
+**When NOT to use:** Internal functions that build the update object entirely within the storage layer (e.g., `incrementTokenVersion` which uses a SQL expression, not caller input).
+
+**Implementation:**
+
+```typescript
+import type { User } from "@shared/schema";
+
+// ❌ BAD: Accepts any User field — caller can set role, password, tokenVersion
+export async function updateUser(
+  id: string,
+  updates: Partial<User>,
+): Promise<User | undefined> {
+  const [user] = await db
+    .update(users)
+    .set(updates)
+    .where(eq(users.id, id))
+    .returning();
+  return user || undefined;
+}
+
+// ✅ GOOD: Whitelist of safe fields via Pick<>
+type UpdatableUserFields = Pick<
+  User,
+  | "displayName"
+  | "avatarUrl"
+  | "onboardingCompleted"
+  | "dailyCalorieGoal"
+  | "dailyProteinGoal"
+  | "dailyCarbsGoal"
+  | "dailyFatGoal"
+  | "goalsCalculatedAt"
+  | "weight"
+  | "height"
+  | "age"
+  | "gender"
+  | "goalWeight"
+  | "adaptiveGoalsEnabled"
+>;
+
+export async function updateUser(
+  id: string,
+  updates: Partial<UpdatableUserFields>,
+): Promise<User | undefined> {
+  const [user] = await db
+    .update(users)
+    .set(updates)
+    .where(eq(users.id, id))
+    .returning();
+  return user || undefined;
+}
+```
+
+**Why `Pick<>` instead of `Omit<>`:** `Omit<User, 'password' | 'role' | ...>` is a denylist — it silently allows any new column added to the schema. `Pick<>` is an allowlist — new columns are excluded by default and must be explicitly opted-in. Allowlists fail safe; denylists fail open.
+
+**What about Zod validation at the route?** Route-level Zod schemas are the primary defense, but storage-layer types provide defense-in-depth. If a future code path calls `updateUser()` without route-level validation, the `Pick<>` type prevents the TypeScript compiler from accepting sensitive fields.
+
+**Sensitive fields that must NEVER appear in an update whitelist:**
+
+- `id` — primary key, immutable
+- `password` — use dedicated `changePassword()` with bcrypt
+- `role` — use dedicated admin-only `setRole()`
+- `tokenVersion` — use atomic `incrementTokenVersion()` (SQL expression)
+- `subscriptionTier`, `subscriptionExpiresAt` — set only by receipt validation
+- `username` — immutable after creation
+- `createdAt` — auto-generated, immutable
+
+**References:**
+
+- `server/storage/users.ts` — `UpdatableUserFields`, `updateUser()`
+- See also: [IDOR Protection](#idor-protection-auth--ownership-check) (complementary — whitelist prevents privilege escalation, IDOR prevents cross-user access)
