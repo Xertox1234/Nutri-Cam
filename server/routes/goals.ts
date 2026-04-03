@@ -40,8 +40,7 @@ export function register(app: Express): void {
           goalsCalculatedAt: user.goalsCalculatedAt,
         });
       } catch (error) {
-        logger.error({ err: toError(error) }, "get goals error");
-        sendError(res, 500, "Failed to fetch goals", ErrorCode.INTERNAL_ERROR);
+        handleRouteError(res, error, "fetch goals");
       }
     },
   );
@@ -57,9 +56,10 @@ export function register(app: Express): void {
         // Calculate goals using the service
         const goals = calculateGoals(validated);
 
-        // Update user goals and profile in parallel (different tables, no FK dependency)
-        await Promise.all([
-          storage.updateUser(req.userId, {
+        // Update user goals and profile atomically in a single transaction
+        await storage.updateUserGoalsAndProfile(
+          req.userId,
+          {
             weight: validated.weight.toString(),
             height: validated.height.toString(),
             age: validated.age,
@@ -69,12 +69,12 @@ export function register(app: Express): void {
             dailyCarbsGoal: goals.dailyCarbs,
             dailyFatGoal: goals.dailyFat,
             goalsCalculatedAt: new Date(),
-          }),
-          storage.upsertProfileWithOnboarding(req.userId, {
+          },
+          {
             activityLevel: validated.activityLevel,
             primaryGoal: validated.primaryGoal,
-          }),
-        ]);
+          },
+        );
 
         res.json({
           ...goals,

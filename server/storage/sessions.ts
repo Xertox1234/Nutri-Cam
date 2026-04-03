@@ -8,10 +8,16 @@
  * TODO: Replace with Redis for horizontal scaling in production.
  */
 import crypto from "crypto";
-import type {
-  AnalysisResult,
-  LabelExtractionResult,
-} from "../services/photo-analysis";
+import type { AnalysisResult } from "@shared/types/photo-analysis";
+import type { LabelExtractionResult } from "@shared/types/label-analysis";
+
+// ── Cooking session store ─────────────────────────────────────────────
+
+import type { CookingSessionIngredient } from "@shared/types/cook-session";
+
+// ── Front-label verification session store ───────────────────────────
+
+import type { FrontLabelExtractionResult } from "@shared/types/front-label";
 
 // ── Generic session store factory ─────────────────────────────────────
 
@@ -230,6 +236,40 @@ export function clearLabelSession(sessionId: string): void {
   labelStore.clear(sessionId);
 }
 
+interface CookingSessionPhoto {
+  id: string;
+  addedAt: number;
+}
+
+export interface CookingSession {
+  id: string;
+  userId: string;
+  ingredients: CookingSessionIngredient[];
+  photos: CookingSessionPhoto[];
+  createdAt: number;
+}
+
+export const cookingSessionStore = createSessionStore<CookingSession>({
+  maxPerUser: 2,
+  maxGlobal: 1000,
+  timeoutMs: 30 * 60 * 1000,
+  label: "active cooking",
+});
+
+export interface FrontLabelSession {
+  userId: string;
+  data: FrontLabelExtractionResult;
+  barcode: string;
+  createdAt: number;
+}
+
+export const frontLabelSessionStore = createSessionStore<FrontLabelSession>({
+  maxPerUser: 3,
+  maxGlobal: 500,
+  timeoutMs: 15 * 60 * 1000, // 15 minutes
+  label: "active front-label",
+});
+
 // ── Test internals ────────────────────────────────────────────────────
 
 export const _testInternals = {
@@ -239,4 +279,8 @@ export const _testInternals = {
   labelSessionStore: labelStore._internals.store,
   labelSessionTimeouts: labelStore._internals.timeouts,
   userLabelSessionCount: labelStore._internals.userCount,
+  cookingSessionStore: cookingSessionStore._internals.store,
+  userCookingSessionCount: cookingSessionStore._internals.userCount,
+  frontLabelSessionStore: frontLabelSessionStore._internals.store,
+  userFrontLabelSessionCount: frontLabelSessionStore._internals.userCount,
 };

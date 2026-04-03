@@ -13,6 +13,7 @@ import {
 import { parseNaturalLanguageFood } from "../services/food-nlp";
 import { transcribeAudio } from "../services/voice-transcription";
 import { logger, toError } from "../lib/logger";
+import { detectAudioMimeType } from "../lib/audio-mime";
 
 const audioUpload = multer({
   storage: multer.memoryStorage(),
@@ -84,6 +85,17 @@ export function register(app: Express): void {
         }
 
         if (!checkAiConfigured(res)) return;
+
+        // Verify audio content via magic bytes (defense-in-depth beyond MIME header)
+        const detectedMime = detectAudioMimeType(req.file.buffer);
+        if (!detectedMime) {
+          return sendError(
+            res,
+            400,
+            "Invalid audio content. File does not match any supported audio format.",
+            ErrorCode.VALIDATION_ERROR,
+          );
+        }
 
         const transcription = await transcribeAudio(
           req.file.buffer,

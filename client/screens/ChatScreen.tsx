@@ -71,7 +71,7 @@ const SUGGESTED_PROMPTS = [
   "Suggest a healthy snack",
 ];
 
-function SuggestedPrompts({
+const SuggestedPrompts = React.memo(function SuggestedPrompts({
   onSelect,
 }: {
   onSelect: (prompt: string) => void;
@@ -148,7 +148,7 @@ function SuggestedPrompts({
       </View>
     </View>
   );
-}
+});
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 

@@ -28,6 +28,7 @@ import {
   useSaveRecipeFromChat,
   type StreamingRecipe,
 } from "@/hooks/useChat";
+import { FLATLIST_DEFAULTS } from "@/constants/performance";
 import { RecipeCard } from "@/components/recipe-chat/RecipeCard";
 
 type RecipeChatRouteProp = RouteProp<RootStackParamList, "RecipeChat">;
@@ -325,6 +326,7 @@ export default function RecipeChatScreen() {
           }
           onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
           keyboardDismissMode="interactive"
+          {...FLATLIST_DEFAULTS}
         />
       )}
 

@@ -15,6 +15,7 @@ import {
 } from "@shared/types/cook-session";
 import {
   detectAllergens,
+  parseUserAllergies,
   ALLERGEN_INGREDIENT_MAP,
   type AllergySeverity,
 } from "@shared/constants/allergens";
@@ -214,12 +215,10 @@ function buildDietaryProfileSummary(
   const parts: string[] = [];
   if (profile.dietType)
     parts.push(`Diet: ${sanitizeUserInput(profile.dietType)}`);
-  if (profile.allergies && Array.isArray(profile.allergies)) {
-    const allergyNames = (profile.allergies as { name: string }[]).map((a) =>
-      sanitizeUserInput(a.name),
-    );
-    if (allergyNames.length > 0)
-      parts.push(`Allergies: ${allergyNames.join(", ")}`);
+  const parsedAllergies = parseUserAllergies(profile.allergies);
+  if (parsedAllergies.length > 0) {
+    const allergyNames = parsedAllergies.map((a) => sanitizeUserInput(a.name));
+    parts.push(`Allergies: ${allergyNames.join(", ")}`);
   }
   if (profile.foodDislikes && Array.isArray(profile.foodDislikes)) {
     if (profile.foodDislikes.length > 0)
@@ -269,7 +268,7 @@ function extractDietaryTags(profile: UserProfile | null | undefined): string[] {
       sesame: ["sesame-free"],
     };
 
-    for (const allergy of profile.allergies as { name: string }[]) {
+    for (const allergy of parseUserAllergies(profile.allergies)) {
       const name = allergy.name.toLowerCase().trim();
       const mapped = allergenToTag[name];
       if (mapped) {

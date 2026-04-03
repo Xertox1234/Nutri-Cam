@@ -1,6 +1,4 @@
-import { db } from "../db";
-import { mealPlanRecipes, recipeIngredients } from "@shared/schema";
-import { eq, sql } from "drizzle-orm";
+import { storage } from "../storage";
 
 const MEAL_TYPE_KEYWORDS: Record<string, string[]> = {
   breakfast: [
@@ -157,47 +155,16 @@ export function inferMealTypes(
 }
 
 export async function backfillMealTypes(): Promise<number> {
-  const recipes = await db
-    .select({
-      id: mealPlanRecipes.id,
-      title: mealPlanRecipes.title,
-    })
-    .from(mealPlanRecipes)
-    .where(
-      sql`${mealPlanRecipes.mealTypes}::jsonb = '[]'::jsonb OR ${mealPlanRecipes.mealTypes} IS NULL`,
-    );
+  const { recipes, ingredientsByRecipe } =
+    await storage.getRecipesWithEmptyMealTypes();
 
   if (recipes.length === 0) return 0;
 
-  // Batch-fetch ingredients for all recipes
-  const recipeIds = recipes.map((r) => r.id);
-  const allIngredients = await db
-    .select({
-      recipeId: recipeIngredients.recipeId,
-      name: recipeIngredients.name,
-    })
-    .from(recipeIngredients)
-    .where(sql`${recipeIngredients.recipeId} = ANY(${recipeIds})`);
-
-  const ingredientsByRecipe = new Map<number, string[]>();
-  for (const ing of allIngredients) {
-    const existing = ingredientsByRecipe.get(ing.recipeId) ?? [];
-    existing.push(ing.name);
-    ingredientsByRecipe.set(ing.recipeId, existing);
-  }
-
-  let updated = 0;
-  await db.transaction(async (tx) => {
-    for (const recipe of recipes) {
-      const ingredientNames = ingredientsByRecipe.get(recipe.id);
-      const mealTypes = inferMealTypes(recipe.title, ingredientNames);
-      await tx
-        .update(mealPlanRecipes)
-        .set({ mealTypes })
-        .where(eq(mealPlanRecipes.id, recipe.id));
-      updated++;
-    }
+  const updates = recipes.map((recipe) => {
+    const ingredientNames = ingredientsByRecipe.get(recipe.id);
+    const mealTypes = inferMealTypes(recipe.title, ingredientNames);
+    return { id: recipe.id, mealTypes };
   });
 
-  return updated;
+  return storage.batchUpdateMealTypes(updates);
 }

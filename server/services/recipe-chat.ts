@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { ChatMessage, UserProfile } from "@shared/schema";
 import {
   detectAllergens,
+  parseUserAllergies,
   type AllergenMatch,
 } from "@shared/constants/allergens";
 import {
@@ -99,31 +100,11 @@ const recipeResponseSchema = z.object({
   dietTags: z.array(z.string()).default([]),
 });
 
-/** Metadata stored in chatMessages.metadata for recipe responses */
-export const recipeChatMetadataSchema = z.object({
-  metadataVersion: z.literal(1),
-  recipe: z.object({
-    title: z.string(),
-    description: z.string(),
-    difficulty: z.string(),
-    timeEstimate: z.string(),
-    servings: z.number(),
-    ingredients: z.array(
-      z.object({
-        name: z.string(),
-        quantity: z.string(),
-        unit: z.string(),
-      }),
-    ),
-    instructions: z.array(z.string()),
-    dietTags: z.array(z.string()),
-  }),
-  allergenWarning: z.string().nullable(),
-  imageUrl: z.string().nullable(),
-  savedRecipeId: z.number().optional(),
-});
-
-export type RecipeChatMetadata = z.infer<typeof recipeChatMetadataSchema>;
+// Re-export shared schema for consumers that already import from this file
+export {
+  recipeChatMetadataSchema,
+  type RecipeChatMetadata,
+} from "@shared/schemas/recipe-chat";
 
 // ============================================================================
 // CONTEXT BUILDING
@@ -210,13 +191,10 @@ function buildSystemPrompt(
   if (userProfile) {
     parts.push("USER DIETARY PROFILE:");
 
-    if (
-      userProfile.allergies &&
-      Array.isArray(userProfile.allergies) &&
-      userProfile.allergies.length > 0
-    ) {
-      const allergyNames = (userProfile.allergies as { name: string }[]).map(
-        (a) => sanitizeUserInput(a.name),
+    const parsedAllergies = parseUserAllergies(userProfile.allergies);
+    if (parsedAllergies.length > 0) {
+      const allergyNames = parsedAllergies.map((a) =>
+        sanitizeUserInput(a.name),
       );
       parts.push(
         `ALLERGY SAFETY: MUST AVOID these allergens: ${allergyNames.join(", ")}. NEVER include ingredients containing these allergens. Double-check every ingredient. Allergies are safety-critical — treat them as absolute exclusions.`,

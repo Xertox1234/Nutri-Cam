@@ -43,6 +43,7 @@ export const storage = {
   createUserProfile: users.createUserProfile,
   updateUserProfile: users.updateUserProfile,
   upsertProfileWithOnboarding: users.upsertProfileWithOnboarding,
+  updateUserGoalsAndProfile: users.updateUserGoalsAndProfile,
   getSubscriptionStatus: users.getSubscriptionStatus,
   updateSubscription: users.updateSubscription,
   getTransaction: users.getTransaction,
@@ -108,6 +109,8 @@ export const storage = {
     mealPlans.getMealPlanIngredientsForDateRange,
   getFrequentRecipesForMealType: mealPlans.getFrequentRecipesForMealType,
   getPopularPicksByMealType: mealPlans.getPopularPicksByMealType,
+  getRecipesWithEmptyMealTypes: mealPlans.getRecipesWithEmptyMealTypes,
+  batchUpdateMealTypes: mealPlans.batchUpdateMealTypes,
 
   // Weight & HealthKit
   getWeightLogs: users.getWeightLogs,
@@ -149,6 +152,9 @@ export const storage = {
   getDailyMealSuggestionCount: cache.getDailyMealSuggestionCount,
   getMicronutrientCache: cache.getMicronutrientCache,
   setMicronutrientCache: cache.setMicronutrientCache,
+  getNutritionCacheBatch: cache.getNutritionCacheBatch,
+  setNutritionCache: cache.setNutritionCache,
+  setNutritionCacheIfAbsent: cache.setNutritionCacheIfAbsent,
 
   // Community recipes
   getDailyRecipeGenerationCount: community.getDailyRecipeGenerationCount,
@@ -246,6 +252,8 @@ export const storage = {
   createLabelSession: sessions.createLabelSession,
   getLabelSession: sessions.getLabelSession,
   clearLabelSession: sessions.clearLabelSession,
+  cookingSessionStore: sessions.cookingSessionStore,
+  frontLabelSessionStore: sessions.frontLabelSessionStore,
 
   // Carousel (recipe discovery)
   getDismissedRecipeIds: carousel.getDismissedRecipeIds,

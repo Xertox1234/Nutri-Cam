@@ -10,7 +10,7 @@ import {
 import { db } from "../db";
 import { eq, desc, and, gte, lt, sql } from "drizzle-orm";
 import { getDayBounds } from "./helpers";
-import { recipeChatMetadataSchema } from "../services/recipe-chat";
+import { recipeChatMetadataSchema } from "@shared/schemas/recipe-chat";
 
 // ============================================================================
 // CHAT CONVERSATIONS

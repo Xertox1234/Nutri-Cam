@@ -29,3 +29,6 @@ In nutrition-coach.ts (lines 72-87), full conversation history is sent directly.
 
 ### 2026-02-24
 - Found by security-sentinel agent
+
+### 2026-04-02
+- Partially resolved by full audit finding M1: `question` parameter in refineAnalysis now sanitized via sanitizeUserInput(). Chat/food-nlp sanitization was addressed in earlier audits. Remaining: content filter layer on AI responses (deferred — requires domain-specific safety rules).

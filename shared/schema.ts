@@ -490,6 +490,9 @@ export const communityRecipes = pgTable(
       "gin",
       table.dietTags,
     ),
+    isPublicCreatedAtIdx: index(
+      "community_recipes_is_public_created_at_idx",
+    ).on(table.isPublic, table.createdAt),
   }),
 );
 
@@ -890,10 +893,10 @@ export const fastingSchedules = pgTable(
     eatingHours: integer("eating_hours").notNull(),
     eatingWindowStart: text("eating_window_start"), // "12:00"
     eatingWindowEnd: text("eating_window_end"), // "20:00"
-    isActive: boolean("is_active").default(true),
-    notifyEatingWindow: boolean("notify_eating_window").default(true),
-    notifyMilestones: boolean("notify_milestones").default(true),
-    notifyCheckIns: boolean("notify_check_ins").default(true),
+    isActive: boolean("is_active").default(true).notNull(),
+    notifyEatingWindow: boolean("notify_eating_window").default(true).notNull(),
+    notifyMilestones: boolean("notify_milestones").default(true).notNull(),
+    notifyCheckIns: boolean("notify_check_ins").default(true).notNull(),
   },
   (table) => ({
     userIdx: uniqueIndex("fasting_schedules_user_idx").on(table.userId),
@@ -969,6 +972,10 @@ export const medicationLogs = pgTable(
     userDateIdx: index("medication_logs_user_date_idx").on(
       table.userId,
       table.takenAt,
+    ),
+    appetiteRange: check(
+      "medication_appetite_range",
+      sql`${table.appetiteLevel} >= 1 AND ${table.appetiteLevel} <= 5`,
     ),
   }),
 );
@@ -1617,6 +1624,9 @@ export const reformulationFlags = pgTable(
   (table) => ({
     barcodeIdx: index("reformulation_flags_barcode_idx").on(table.barcode),
     statusIdx: index("reformulation_flags_status_idx").on(table.status),
+    activeFlagUniqueIdx: uniqueIndex("reformulation_flags_active_unique")
+      .on(table.barcode)
+      .where(sql`status = 'flagged'`),
   }),
 );
 
@@ -1643,7 +1653,7 @@ export const apiKeys = pgTable(
     revokedAt: timestamp("revoked_at"),
   },
   (table) => ({
-    prefixIdx: index("api_keys_prefix_idx").on(table.keyPrefix),
+    prefixIdx: uniqueIndex("api_keys_prefix_idx").on(table.keyPrefix),
     statusIdx: index("api_keys_status_idx").on(table.status),
   }),
 );
