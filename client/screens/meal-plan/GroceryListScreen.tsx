@@ -19,6 +19,7 @@ import * as Haptics from "expo-haptics";
 import { ThemedText } from "@/components/ThemedText";
 import { SwipeableRow } from "@/components/SwipeableRow";
 import { SkeletonBox } from "@/components/SkeletonLoader";
+import { IngredientIcon } from "@/components/IngredientIcon";
 import { useTheme } from "@/hooks/useTheme";
 import { useHaptics } from "@/hooks/useHaptics";
 import { usePremiumContext } from "@/context/PremiumContext";
@@ -98,6 +99,11 @@ function GroceryItemRow({
           <Feather name="check" size={12} color={theme.buttonText} />
         )}
       </View>
+      <IngredientIcon
+        name={item.name}
+        category={item.category ?? undefined}
+        size={24}
+      />
       <View style={styles.itemContent}>
         <ThemedText
           style={[
@@ -333,7 +339,16 @@ export default function GroceryListScreen() {
               { backgroundColor: theme.backgroundRoot },
             ]}
           >
-            <ThemedText style={styles.sectionTitle}>{section.title}</ThemedText>
+            <View style={styles.sectionHeaderContent}>
+              <IngredientIcon
+                name={section.title}
+                category={section.title.toLowerCase()}
+                size={20}
+              />
+              <ThemedText style={styles.sectionTitle}>
+                {section.title}
+              </ThemedText>
+            </View>
           </View>
         )}
         contentContainerStyle={{
@@ -486,6 +501,11 @@ const styles = StyleSheet.create({
   },
   sectionHeader: {
     paddingVertical: Spacing.sm,
+  },
+  sectionHeaderContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.xs,
   },
   sectionTitle: {
     fontSize: 14,

@@ -34,6 +34,8 @@ const DEFAULT_NEGATIVE_PROMPT =
 export interface GenerateImageOptions {
   prompt: string;
   negativePrompt?: string;
+  width?: number;
+  height?: number;
 }
 
 /**
@@ -62,8 +64,8 @@ export async function generateImage(
           model: "runware:400@6",
           positivePrompt: options.prompt,
           negativePrompt: options.negativePrompt ?? DEFAULT_NEGATIVE_PROMPT,
-          width: 1024,
-          height: 1024,
+          width: options.width ?? 1024,
+          height: options.height ?? 1024,
           outputType: "base64Data",
           numberResults: 1,
         },
