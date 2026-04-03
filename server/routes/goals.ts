@@ -9,7 +9,8 @@ import {
   userPhysicalProfileSchema,
 } from "../services/goal-calculator";
 import { ErrorCode } from "@shared/constants/error-codes";
-import { handleRouteError, crudRateLimit, parseQueryDate } from "./_helpers";
+import { crudRateLimit } from "./_rate-limiters";
+import { handleRouteError, parseQueryDate } from "./_helpers";
 import { DEFAULT_NUTRITION_GOALS } from "@shared/constants/nutrition";
 
 // Zod schema for manual goal update
@@ -40,7 +41,8 @@ export function register(app: Express): void {
           goalsCalculatedAt: user.goalsCalculatedAt,
         });
       } catch (error) {
-        handleRouteError(res, error, "fetch goals");
+        logger.error({ err: toError(error) }, "get goals error");
+        sendError(res, 500, "Failed to fetch goals", ErrorCode.INTERNAL_ERROR);
       }
     },
   );

@@ -4,11 +4,8 @@ import { type AuthenticatedRequest, requireAuth } from "../middleware/auth";
 import { storage } from "../storage";
 import { sendError } from "../lib/api-errors";
 import { ErrorCode } from "@shared/constants/error-codes";
-import {
-  handleRouteError,
-  checkPremiumFeature,
-  crudRateLimit,
-} from "./_helpers";
+import { crudRateLimit } from "./_rate-limiters";
+import { handleRouteError, checkPremiumFeature } from "./_helpers";
 import { syncHealthKitData } from "../services/healthkit-sync";
 import { logger, toError } from "../lib/logger";
 

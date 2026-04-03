@@ -4,13 +4,13 @@ import { storage } from "../storage";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/auth";
 import { sendError } from "../lib/api-errors";
 import { ErrorCode } from "@shared/constants/error-codes";
+import { crudRateLimit } from "./_rate-limiters";
 import {
-  crudRateLimit,
   formatZodError,
-  handleRouteError,
   parsePositiveIntParam,
   parseQueryInt,
 } from "./_helpers";
+import { logger, toError } from "../lib/logger";
 
 const createCookbookSchema = z.object({
   name: z.string().min(1, "Name is required").max(200),
@@ -44,7 +44,13 @@ export function register(app: Express): void {
         const cookbooks = await storage.getUserCookbooks(req.userId, limit);
         res.json(cookbooks);
       } catch (error) {
-        handleRouteError(res, error, "fetch cookbooks");
+        logger.error({ err: toError(error) }, "failed to fetch cookbooks");
+        sendError(
+          res,
+          500,
+          "Failed to fetch cookbooks",
+          ErrorCode.INTERNAL_ERROR,
+        );
       }
     },
   );
@@ -75,7 +81,13 @@ export function register(app: Express): void {
         });
         res.status(201).json(cookbook);
       } catch (error) {
-        handleRouteError(res, error, "create cookbook");
+        logger.error({ err: toError(error) }, "failed to create cookbook");
+        sendError(
+          res,
+          500,
+          "Failed to create cookbook",
+          ErrorCode.INTERNAL_ERROR,
+        );
       }
     },
   );
@@ -110,7 +122,13 @@ export function register(app: Express): void {
         );
         res.json({ ...cookbook, recipes });
       } catch (error) {
-        handleRouteError(res, error, "fetch cookbook");
+        logger.error({ err: toError(error) }, "failed to fetch cookbook");
+        sendError(
+          res,
+          500,
+          "Failed to fetch cookbook",
+          ErrorCode.INTERNAL_ERROR,
+        );
       }
     },
   );
@@ -155,7 +173,13 @@ export function register(app: Express): void {
         }
         res.json(updated);
       } catch (error) {
-        handleRouteError(res, error, "update cookbook");
+        logger.error({ err: toError(error) }, "failed to update cookbook");
+        sendError(
+          res,
+          500,
+          "Failed to update cookbook",
+          ErrorCode.INTERNAL_ERROR,
+        );
       }
     },
   );
@@ -185,7 +209,13 @@ export function register(app: Express): void {
         }
         res.status(204).send();
       } catch (error) {
-        handleRouteError(res, error, "delete cookbook");
+        logger.error({ err: toError(error) }, "failed to delete cookbook");
+        sendError(
+          res,
+          500,
+          "Failed to delete cookbook",
+          ErrorCode.INTERNAL_ERROR,
+        );
       }
     },
   );
@@ -242,7 +272,16 @@ export function register(app: Express): void {
         }
         res.status(201).json(added);
       } catch (error) {
-        handleRouteError(res, error, "add recipe to cookbook");
+        logger.error(
+          { err: toError(error) },
+          "failed to add recipe to cookbook",
+        );
+        sendError(
+          res,
+          500,
+          "Failed to add recipe to cookbook",
+          ErrorCode.INTERNAL_ERROR,
+        );
       }
     },
   );
@@ -299,7 +338,16 @@ export function register(app: Express): void {
         }
         res.status(204).send();
       } catch (error) {
-        handleRouteError(res, error, "remove recipe from cookbook");
+        logger.error(
+          { err: toError(error) },
+          "failed to remove recipe from cookbook",
+        );
+        sendError(
+          res,
+          500,
+          "Failed to remove recipe from cookbook",
+          ErrorCode.INTERNAL_ERROR,
+        );
       }
     },
   );

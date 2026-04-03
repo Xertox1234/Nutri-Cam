@@ -2,12 +2,12 @@ import type { Express, Response } from "express";
 import { z } from "zod";
 import { type AuthenticatedRequest, requireAuth } from "../middleware/auth";
 import { storage } from "../storage";
+import { crudRateLimit } from "./_rate-limiters";
 import {
   handleRouteError,
   parsePositiveIntParam,
   parseQueryInt,
   parseQueryDate,
-  crudRateLimit,
 } from "./_helpers";
 import { sendError } from "../lib/api-errors";
 import { logger, toError } from "../lib/logger";

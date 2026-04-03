@@ -1,5 +1,5 @@
 import type { Express } from "express";
-import { crudRateLimit } from "./_helpers";
+import { crudRateLimit } from "./_rate-limiters";
 
 const DOCS_HTML = `<!DOCTYPE html>
 <html lang="en">

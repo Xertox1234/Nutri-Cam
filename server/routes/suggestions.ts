@@ -7,12 +7,8 @@ import { fireAndForget } from "../lib/fire-and-forget";
 import { ErrorCode } from "@shared/constants/error-codes";
 import { type Allergy } from "@shared/schema";
 import { calculateProfileHash } from "../utils/profile-hash";
-import {
-  instructionsRateLimit,
-  suggestionsRateLimit,
-  parsePositiveIntParam,
-  checkAiConfigured,
-} from "./_helpers";
+import { instructionsRateLimit, suggestionsRateLimit } from "./_rate-limiters";
+import { parsePositiveIntParam, checkAiConfigured } from "./_helpers";
 import { openai, MODEL_FAST, OPENAI_TIMEOUT_FAST_MS } from "../lib/openai";
 import { sanitizeUserInput, SYSTEM_PROMPT_BOUNDARY } from "../lib/ai-safety";
 import { logger, toError } from "../lib/logger";

@@ -2,7 +2,6 @@ import { z } from "zod";
 import type { ChatMessage, UserProfile } from "@shared/schema";
 import {
   detectAllergens,
-  parseUserAllergies,
   type AllergenMatch,
 } from "@shared/constants/allergens";
 import {
@@ -12,6 +11,7 @@ import {
   MODEL_HEAVY,
 } from "../lib/openai";
 import { sanitizeUserInput, SYSTEM_PROMPT_BOUNDARY } from "../lib/ai-safety";
+import { buildDietaryContext } from "../lib/dietary-context";
 import { generateRecipeImage } from "./recipe-generation";
 import { createServiceLogger, toError } from "../lib/logger";
 
@@ -100,11 +100,31 @@ const recipeResponseSchema = z.object({
   dietTags: z.array(z.string()).default([]),
 });
 
-// Re-export shared schema for consumers that already import from this file
-export {
-  recipeChatMetadataSchema,
-  type RecipeChatMetadata,
-} from "@shared/schemas/recipe-chat";
+/** Metadata stored in chatMessages.metadata for recipe responses */
+export const recipeChatMetadataSchema = z.object({
+  metadataVersion: z.literal(1),
+  recipe: z.object({
+    title: z.string(),
+    description: z.string(),
+    difficulty: z.string(),
+    timeEstimate: z.string(),
+    servings: z.number(),
+    ingredients: z.array(
+      z.object({
+        name: z.string(),
+        quantity: z.string(),
+        unit: z.string(),
+      }),
+    ),
+    instructions: z.array(z.string()),
+    dietTags: z.array(z.string()),
+  }),
+  allergenWarning: z.string().nullable(),
+  imageUrl: z.string().nullable(),
+  savedRecipeId: z.number().optional(),
+});
+
+export type RecipeChatMetadata = z.infer<typeof recipeChatMetadataSchema>;
 
 // ============================================================================
 // CONTEXT BUILDING
@@ -188,31 +208,15 @@ function buildSystemPrompt(
   ];
 
   // User dietary context
-  if (userProfile) {
+  const dietaryContext = buildDietaryContext(userProfile, {
+    allergenDetail: "basic",
+  });
+  if (dietaryContext) {
     parts.push("USER DIETARY PROFILE:");
-
-    const parsedAllergies = parseUserAllergies(userProfile.allergies);
-    if (parsedAllergies.length > 0) {
-      const allergyNames = parsedAllergies.map((a) =>
-        sanitizeUserInput(a.name),
-      );
-      parts.push(
-        `ALLERGY SAFETY: MUST AVOID these allergens: ${allergyNames.join(", ")}. NEVER include ingredients containing these allergens. Double-check every ingredient. Allergies are safety-critical — treat them as absolute exclusions.`,
-      );
-    }
-    if (userProfile.dietType) {
-      parts.push(`Diet type: ${sanitizeUserInput(userProfile.dietType)}`);
-    }
-    if (userProfile.cookingSkillLevel) {
-      parts.push(
-        `Cooking skill: ${sanitizeUserInput(userProfile.cookingSkillLevel)}`,
-      );
-    }
-    if (userProfile.cookingTimeAvailable) {
-      parts.push(
-        `Preferred cooking time: ${sanitizeUserInput(userProfile.cookingTimeAvailable)}`,
-      );
-    }
+    parts.push(dietaryContext);
+    parts.push(
+      "ALLERGY SAFETY: NEVER include ingredients containing listed allergens. Double-check every ingredient. Allergies are safety-critical — treat them as absolute exclusions.",
+    );
     parts.push("");
   }
 

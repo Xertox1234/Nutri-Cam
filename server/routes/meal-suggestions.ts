@@ -14,8 +14,8 @@ import type {
   PopularPick,
 } from "@shared/types/meal-suggestions";
 import { DEFAULT_NUTRITION_GOALS } from "@shared/constants/nutrition";
+import { mealSuggestionRateLimit } from "./_rate-limiters";
 import {
-  mealSuggestionRateLimit,
   formatZodError,
   handleRouteError,
   checkPremiumFeature,

@@ -3,7 +3,6 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { UserProfile } from "@shared/schema";
-import { parseUserAllergies } from "@shared/constants/allergens";
 import type {
   RecipeContent,
   GeneratedIngredient,
@@ -20,6 +19,7 @@ import {
   isRunwareConfigured,
 } from "../lib/runware";
 import { sanitizeUserInput, SYSTEM_PROMPT_BOUNDARY } from "../lib/ai-safety";
+import { buildDietaryContext } from "../lib/dietary-context";
 import { createServiceLogger, toError } from "../lib/logger";
 
 const log = createServiceLogger("recipe-generation");
@@ -101,56 +101,15 @@ export interface GeneratedRecipe {
 }
 
 /**
- * Build dietary context string from user profile
- */
-function buildDietaryContext(
-  userProfile: UserProfile | null | undefined,
-  additionalDietPrefs?: string[],
-): string {
-  const parts: string[] = [];
-
-  if (userProfile) {
-    const parsedAllergies = parseUserAllergies(userProfile.allergies);
-    if (parsedAllergies.length > 0) {
-      const allergyNames = parsedAllergies.map((a) =>
-        sanitizeUserInput(a.name),
-      );
-      parts.push(`MUST AVOID these allergens: ${allergyNames.join(", ")}`);
-    }
-    if (userProfile.dietType) {
-      parts.push(`Diet type: ${sanitizeUserInput(userProfile.dietType)}`);
-    }
-    if (userProfile.cookingSkillLevel) {
-      parts.push(
-        `Cooking skill: ${sanitizeUserInput(userProfile.cookingSkillLevel)}`,
-      );
-    }
-    if (userProfile.cookingTimeAvailable) {
-      parts.push(
-        `Preferred cooking time: ${sanitizeUserInput(userProfile.cookingTimeAvailable)}`,
-      );
-    }
-  }
-
-  if (additionalDietPrefs && additionalDietPrefs.length > 0) {
-    parts.push(
-      `Additional preferences: ${additionalDietPrefs.map(sanitizeUserInput).join(", ")}`,
-    );
-  }
-
-  return parts.length > 0 ? parts.join(". ") + "." : "";
-}
-
-/**
  * Generate recipe content using GPT-4
  */
 export async function generateRecipeContent(
   input: RecipeGenerationInput,
 ): Promise<RecipeContent> {
-  const dietaryContext = buildDietaryContext(
-    input.userProfile,
-    input.dietPreferences,
-  );
+  const dietaryContext = buildDietaryContext(input.userProfile, {
+    allergenDetail: "basic",
+    additionalPreferences: input.dietPreferences,
+  });
 
   const servingsText = input.servings ? `for ${input.servings} servings` : "";
   const timeText = input.timeConstraint

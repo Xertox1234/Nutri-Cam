@@ -5,11 +5,9 @@ import { sendError } from "../lib/api-errors";
 import { logger, toError } from "../lib/logger";
 import { fireAndForget } from "../lib/fire-and-forget";
 import { ErrorCode } from "@shared/constants/error-codes";
-import {
-  handleRouteError,
-  userProfileInputSchema,
-  crudRateLimit,
-} from "./_helpers";
+import { crudRateLimit } from "./_rate-limiters";
+import { userProfileInputSchema } from "./_schemas";
+import { handleRouteError } from "./_helpers";
 
 // Fields that affect AI-generated suggestions - if any change, invalidate cache
 const cacheAffectingFields = [

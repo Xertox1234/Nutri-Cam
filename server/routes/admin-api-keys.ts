@@ -6,8 +6,8 @@ import { ErrorCode } from "@shared/constants/error-codes";
 import { logger, toError } from "../lib/logger";
 import { z } from "zod";
 import { API_TIERS } from "@shared/constants/api-tiers";
-import { isAdmin, crudRateLimit } from "./_helpers";
-import { clearApiKeyCache } from "../middleware/api-key-auth";
+import { crudRateLimit } from "./_rate-limiters";
+import { isAdmin } from "./_admin";
 
 const createKeySchema = z.object({
   name: z.string().min(1).max(100),
@@ -45,10 +45,6 @@ export function register(app: Express): void {
         const { name, tier } = parsed.data;
         const result = await storage.createApiKey(name, tier, req.userId);
 
-        logger.info(
-          { userId: req.userId, action: "create_api_key" },
-          "admin operation",
-        );
         res.status(201).json({
           id: result.id,
           keyPrefix: result.keyPrefix,
@@ -125,11 +121,6 @@ export function register(app: Express): void {
         }
 
         await storage.revokeApiKey(id);
-        clearApiKeyCache();
-        logger.info(
-          { userId: req.userId, action: "revoke_api_key", keyId: id },
-          "admin operation",
-        );
         res.json({ message: "API key revoked" });
       } catch (err) {
         logger.error({ err: toError(err) }, "admin revoke API key error");
@@ -174,16 +165,6 @@ export function register(app: Express): void {
         }
 
         await storage.updateApiKeyTier(id, parsed.data.tier);
-        clearApiKeyCache();
-        logger.info(
-          {
-            userId: req.userId,
-            action: "update_api_key_tier",
-            keyId: id,
-            tier: parsed.data.tier,
-          },
-          "admin operation",
-        );
         res.json({ message: "API key tier updated", tier: parsed.data.tier });
       } catch (err) {
         logger.error({ err: toError(err) }, "admin update API key tier error");

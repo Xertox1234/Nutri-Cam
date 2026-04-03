@@ -4,8 +4,8 @@ import { storage } from "../storage";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/auth";
 import { buildCarousel } from "../services/carousel-builder";
 import { sendError } from "../lib/api-errors";
+import { crudRateLimit } from "./_rate-limiters";
 import {
-  crudRateLimit,
   getPremiumFeatures,
   handleRouteError,
   formatZodError,

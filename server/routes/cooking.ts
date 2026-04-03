@@ -2,14 +2,13 @@ import type { Express, Response } from "express";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/auth";
 import { sendError } from "../lib/api-errors";
 import { ErrorCode } from "@shared/constants/error-codes";
+import { crudRateLimit, createRateLimiter } from "./_rate-limiters";
+import { createImageUpload } from "./_upload";
 import {
-  crudRateLimit,
   formatZodError,
   checkPremiumFeature,
   checkAiConfigured,
-  createImageUpload,
   parseStringParam,
-  createRateLimiter,
 } from "./_helpers";
 import {
   ingredientEditSchema,
@@ -37,7 +36,7 @@ import {
 } from "@shared/constants/allergens";
 import { logger, toError } from "../lib/logger";
 import { storage } from "../storage";
-import { cookingSessionStore, type CookingSession } from "../storage/sessions";
+import { createSessionStore } from "../storage/sessions";
 
 // ============================================================================
 // MULTER CONFIG (5MB for ingredient photos)
@@ -62,12 +61,33 @@ const substitutionRateLimit = createRateLimiter({
 });
 
 // ============================================================================
-// SESSION STORE (centralized in storage/sessions.ts)
+// SESSION STORE (in-memory, 3-map pattern from photos.ts)
 // ============================================================================
 
-const MAX_PHOTOS_PER_SESSION = 10;
+interface CookingSessionPhoto {
+  id: string;
+  addedAt: number;
+}
 
-const cookStore = cookingSessionStore;
+interface CookingSession {
+  id: string;
+  userId: string;
+  ingredients: CookingSessionIngredient[];
+  photos: CookingSessionPhoto[];
+  createdAt: number;
+}
+
+const MAX_PHOTOS_PER_SESSION = 10;
+const MAX_SESSIONS_PER_USER = 2;
+const MAX_SESSIONS_GLOBAL = 1000;
+const COOK_SESSION_TIMEOUT = 30 * 60 * 1000;
+
+const cookStore = createSessionStore<CookingSession>({
+  maxPerUser: MAX_SESSIONS_PER_USER,
+  maxGlobal: MAX_SESSIONS_GLOBAL,
+  timeoutMs: COOK_SESSION_TIMEOUT,
+  label: "active cooking",
+});
 
 // Aliases for backward compatibility with route code and tests
 const clearCookSession = cookStore.clear;
@@ -111,9 +131,9 @@ export const _testInternals = {
   resetSessionTimeout: cookStore.resetTimeout,
   MAX_PHOTOS_PER_SESSION,
   MAX_INGREDIENTS_PER_SESSION,
-  MAX_SESSIONS_PER_USER: 2,
-  MAX_SESSIONS_GLOBAL: 1000,
-  COOK_SESSION_TIMEOUT: 30 * 60 * 1000,
+  MAX_SESSIONS_PER_USER,
+  MAX_SESSIONS_GLOBAL,
+  COOK_SESSION_TIMEOUT,
 };
 
 // ============================================================================

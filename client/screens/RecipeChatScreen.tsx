@@ -13,7 +13,6 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import type { RouteProp } from "@react-navigation/native";
-import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
 
@@ -21,6 +20,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { withOpacity, Spacing, BorderRadius } from "@/constants/theme";
 import { ThemedText } from "@/components/ThemedText";
 import type { RootStackParamList } from "@/navigation/RootStackNavigator";
+import type { RecipeChatScreenNavigationProp } from "@/types/navigation";
 import {
   useCreateConversation,
   useChatMessages,
@@ -70,8 +70,7 @@ const SUGGESTION_CHIPS = [
 
 export default function RecipeChatScreen() {
   const route = useRoute<RecipeChatRouteProp>();
-  const navigation =
-    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const navigation = useNavigation<RecipeChatScreenNavigationProp>();
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const flatListRef = useRef<FlatList>(null);

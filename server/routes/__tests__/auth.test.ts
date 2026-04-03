@@ -6,13 +6,13 @@ import { storage } from "../../storage";
 import { detectImageMimeType } from "../../lib/image-mime";
 import { register } from "../auth";
 import { ZodError } from "zod";
+import { ipKeyGenerator } from "../_rate-limiters";
 import {
   parsePositiveIntParam,
   parseQueryInt,
   parseQueryDate,
   parseQueryString,
   parseStringParam,
-  ipKeyGenerator,
   formatZodError,
   getPremiumFeatures,
   checkPremiumFeature,
