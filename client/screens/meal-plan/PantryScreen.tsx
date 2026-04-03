@@ -15,6 +15,7 @@ import * as Haptics from "expo-haptics";
 import { ThemedText } from "@/components/ThemedText";
 import { SwipeableRow } from "@/components/SwipeableRow";
 import { SkeletonBox } from "@/components/SkeletonLoader";
+import { IngredientIcon } from "@/components/IngredientIcon";
 import { UpgradeModal } from "@/components/UpgradeModal";
 import { useConfirmationModal } from "@/components/ConfirmationModal";
 import { useTheme } from "@/hooks/useTheme";
@@ -67,6 +68,11 @@ function PantryItemRow({
 
   return (
     <View style={styles.itemRow}>
+      <IngredientIcon
+        name={item.name}
+        category={item.category ?? undefined}
+        size={28}
+      />
       <View style={styles.itemContent}>
         <ThemedText style={styles.itemName} numberOfLines={1}>
           {item.name}
@@ -267,7 +273,16 @@ export default function PantryScreen() {
               { backgroundColor: theme.backgroundRoot },
             ]}
           >
-            <ThemedText style={styles.sectionTitle}>{section.title}</ThemedText>
+            <View style={styles.sectionHeaderContent}>
+              <IngredientIcon
+                name={section.title}
+                category={section.title.toLowerCase()}
+                size={20}
+              />
+              <ThemedText style={styles.sectionTitle}>
+                {section.title}
+              </ThemedText>
+            </View>
           </View>
         )}
         contentContainerStyle={{
@@ -414,6 +429,11 @@ const styles = StyleSheet.create({
   },
   sectionHeader: {
     paddingVertical: Spacing.sm,
+  },
+  sectionHeaderContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.xs,
   },
   sectionTitle: {
     fontSize: 14,

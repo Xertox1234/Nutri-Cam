@@ -4,6 +4,7 @@ import { ThemedText } from "@/components/ThemedText";
 import { AllergenBadge } from "@/components/AllergenBadge";
 import { AllergenWarningBanner } from "@/components/AllergenWarningBanner";
 import { InlineSubstitution } from "@/components/InlineSubstitution";
+import { IngredientIcon } from "@/components/IngredientIcon";
 import { useTheme } from "@/hooks/useTheme";
 import { Spacing, FontFamily } from "@/constants/theme";
 import {
@@ -110,14 +111,7 @@ export function RecipeIngredientsList({
               },
             ]}
           >
-            {!borderColor && (
-              <View
-                style={[
-                  styles.ingredientBullet,
-                  { backgroundColor: theme.link },
-                ]}
-              />
-            )}
+            <IngredientIcon name={ing.name} size={22} />
             <View style={{ flex: 1 }}>
               <ThemedText style={styles.ingredientText}>
                 {ing.quantity && ing.unit
@@ -166,13 +160,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "flex-start",
     marginBottom: Spacing.sm,
-  },
-  ingredientBullet: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginTop: 7,
-    marginRight: Spacing.md,
+    gap: Spacing.sm,
   },
   ingredientText: {
     fontSize: 15,

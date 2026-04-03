@@ -26,7 +26,8 @@
     "ios": "expo run:ios",
     "seed:recipes": "tsx server/scripts/seed-recipes.ts",
     "e2e": "maestro test e2e/flows/",
-    "e2e:smoke": "maestro test --tags smoke e2e/flows/"
+    "e2e:smoke": "maestro test --tags smoke e2e/flows/",
+    "generate:icons": "npx tsx scripts/generate-ingredient-icons.ts"
   },
   "dependencies": {
     "@apple/app-store-server-library": "^2.0.0",
@@ -124,6 +125,7 @@
     "pino-pretty": "^13.1.3",
     "prettier": "3.6.2",
     "react-dom": "^19.1.0",
+    "sharp": "^0.34.5",
     "supertest": "^7.2.2",
     "typescript": "~5.9.2",
     "vitest": "^4.0.18"
