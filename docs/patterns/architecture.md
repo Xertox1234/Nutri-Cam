@@ -213,6 +213,56 @@ const item = await db.transaction(async (tx) => { ... });
 
 **Reference files:** All route files import from `"../storage"`, never from `"../db"`. See `server/routes/nutrition.ts`, `server/routes/photos.ts`, `server/routes/beverages.ts` for examples.
 
+### When to Extract a Service from a Route
+
+Route handlers should stay thin — parse request, call one service or storage function, send response. When a route orchestrates **3+ storage domains** or **computes derived values** from multiple data sources, extract the logic into a service (`server/services/*.ts`).
+
+```
+✅ routes → services → storage (cross-domain orchestration)
+✅ routes → storage (single-domain read/write)
+❌ routes with 5 storage calls, Promise.all, and math (too much business logic)
+```
+
+```typescript
+// ❌ Before: route handler orchestrates 4 storage domains + computes derived value
+app.get("/api/profile/widgets", requireAuth, async (req, res) => {
+  const [user, summary, schedule, fast, weight] = await Promise.all([
+    storage.getUser(req.userId),
+    storage.getDailySummary(req.userId, date),
+    storage.getFastingSchedule(req.userId),
+    storage.getActiveFastingLog(req.userId),
+    storage.getLatestWeight(req.userId),
+  ]);
+  const remaining = calorieGoal - foodCalories; // business logic in route
+  res.json({ dailyBudget: { calorieGoal, foodCalories, remaining }, ... });
+});
+
+// ✅ After: service owns the orchestration, route stays thin
+import { getProfileWidgets } from "../services/profile-hub";
+
+app.get("/api/profile/widgets", requireAuth, async (req, res) => {
+  const data = await getProfileWidgets(req.userId);
+  if (!data) return sendError(res, 404, "User not found", ErrorCode.NOT_FOUND);
+  res.json(data);
+});
+```
+
+**Extraction signals:**
+
+- Route calls 3+ storage methods from different domains
+- Route contains `Promise.all` with cross-domain fetches
+- Route computes derived values (subtraction, aggregation, formatting)
+- The same aggregation is needed by another endpoint or a background job
+
+**What stays in the route:**
+
+- Auth + rate limiting (middleware)
+- Request validation (Zod parse)
+- Error mapping (404, 400, 500)
+- `res.json()` / `res.status()`
+
+**Reference files:** `server/services/profile-hub.ts` (extracted from `server/routes/profile-hub.ts`)
+
 ### SSE Streaming for AI Responses
 
 When an endpoint streams a response from an LLM (e.g., the nutrition coach chat), use Server-Sent Events (SSE) with a consistent event format. Accumulate the full response for persistence, then send a terminal `done` event.

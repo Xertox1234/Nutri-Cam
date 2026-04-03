@@ -1,6 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { AccessibilityInfo, Platform, ScrollView } from "react-native";
-import * as ImagePicker from "expo-image-picker";
+import { AccessibilityInfo, Platform } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { useQuery } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
@@ -9,35 +8,30 @@ import { useTheme } from "@/hooks/useTheme";
 import { useHaptics } from "@/hooks/useHaptics";
 import { useAccessibility } from "@/hooks/useAccessibility";
 import { useAuthContext } from "@/context/AuthContext";
-import { usePremiumContext } from "@/context/PremiumContext";
 import {
   useThemePreference,
   type ThemePreference,
 } from "@/context/ThemeContext";
-import { compressImage, cleanupImage } from "@/lib/image-compression";
-import { getApiUrl } from "@/lib/query-client";
-import { tokenStorage } from "@/lib/token-storage";
-import { uploadAsync, FileSystemUploadType } from "expo-file-system/legacy";
 import { useProfileWidgets } from "@/hooks/useProfileWidgets";
 import { useLibraryCounts } from "@/hooks/useLibraryCounts";
+import { useAvatarUpload } from "@/hooks/useAvatarUpload";
 import type { ProfileScreenNavigationProp } from "@/types/navigation";
 
 export function useProfileData() {
   const { theme } = useTheme();
   const haptics = useHaptics();
   const { reducedMotion } = useAccessibility();
-  const { user, logout, checkAuth } = useAuthContext();
+  const { user } = useAuthContext();
   const navigation = useNavigation<ProfileScreenNavigationProp>();
   const { preference: themePreference, setPreference: setThemePreference } =
     useThemePreference();
-  const { isPremium } = usePremiumContext();
-
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
-  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const { isUploading: isUploadingAvatar, upload: handleAvatarPress } =
+    useAvatarUpload();
 
   // New aggregated hooks
   const { data: widgetData, isLoading: widgetsLoading } = useProfileWidgets();
-  const { data: libraryCounts, isLoading: countsLoading } = useLibraryCounts();
+  const { data: libraryCounts } = useLibraryCounts();
 
   // Verification data (still separate — used for badge)
   const { data: verificationData } = useQuery<{
@@ -73,72 +67,6 @@ export function useProfileData() {
           : "system";
     await setThemePreference(nextPreference);
   }, [haptics, themePreference, setThemePreference]);
-
-  const handleAvatarPress = useCallback(async () => {
-    haptics.impact(Haptics.ImpactFeedbackStyle.Light);
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
-
-    if (result.canceled || !result.assets[0]) {
-      return;
-    }
-
-    setIsUploadingAvatar(true);
-    try {
-      const token = await tokenStorage.get();
-      if (!token) {
-        throw new Error("Not authenticated");
-      }
-
-      const compressed = await compressImage(result.assets[0].uri, {
-        maxWidth: 400,
-        maxHeight: 400,
-        quality: 0.8,
-        targetSizeKB: 500,
-      });
-
-      try {
-        const uploadResult = await uploadAsync(
-          `${getApiUrl()}/api/user/avatar`,
-          compressed.uri,
-          {
-            httpMethod: "POST",
-            uploadType: FileSystemUploadType.MULTIPART,
-            fieldName: "avatar",
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
-          },
-        );
-
-        if (uploadResult.status !== 200) {
-          let errorMessage = "Failed to upload avatar";
-          try {
-            const errorData = JSON.parse(uploadResult.body || "{}");
-            if (errorData.error) errorMessage = errorData.error;
-          } catch {
-            // Malformed response body — use default message
-          }
-          throw new Error(errorMessage);
-        }
-
-        await checkAuth();
-        haptics.notification(Haptics.NotificationFeedbackType.Success);
-      } finally {
-        await cleanupImage(compressed.uri);
-      }
-    } catch (error) {
-      console.error("Avatar upload error:", error);
-      haptics.notification(Haptics.NotificationFeedbackType.Error);
-    } finally {
-      setIsUploadingAvatar(false);
-    }
-  }, [haptics, checkAuth]);
 
   const handleGearPress = useCallback(() => {
     haptics.impact(Haptics.ImpactFeedbackStyle.Light);

@@ -30,18 +30,19 @@ const LibraryCard = React.memo(function LibraryCard({
   item,
   count,
   locked,
-  onPress,
+  onItemPress,
 }: {
   item: LibraryItem;
   count: number;
   locked: boolean;
-  onPress: () => void;
+  onItemPress: (item: LibraryItem) => void;
 }) {
   const { theme } = useTheme();
+  const handlePress = useCallback(() => onItemPress(item), [onItemPress, item]);
 
   return (
     <Pressable
-      onPress={onPress}
+      onPress={handlePress}
       accessibilityRole="button"
       accessibilityLabel={
         locked
@@ -138,7 +139,7 @@ export const LibraryGrid = React.memo(function LibraryGrid({
                   item={item}
                   count={counts[item.countKey]}
                   locked={locked}
-                  onPress={() => handlePress(item)}
+                  onItemPress={handlePress}
                 />
               );
             })}

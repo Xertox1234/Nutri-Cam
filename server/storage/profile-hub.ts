@@ -1,13 +1,5 @@
 import { db } from "../db";
-import { eq, sql } from "drizzle-orm";
-import {
-  cookbooks,
-  savedItems,
-  scannedItems,
-  groceryLists,
-  pantryItems,
-  communityRecipes,
-} from "@shared/schema";
+import { sql } from "drizzle-orm";
 import type { LibraryCountsResponse } from "@shared/schemas/profile-hub";
 
 /**

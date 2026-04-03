@@ -1,11 +1,5 @@
-import React from "react";
-import {
-  StyleSheet,
-  View,
-  Pressable,
-  AccessibilityInfo,
-  Platform,
-} from "react-native";
+import React, { useState, useEffect } from "react";
+import { StyleSheet, View, Pressable } from "react-native";
 import { Feather } from "@expo/vector-icons";
 
 import { ThemedText } from "@/components/ThemedText";
@@ -36,6 +30,14 @@ export const MiniWidgetRow = React.memo(function MiniWidgetRow({
 }: MiniWidgetRowProps) {
   const { theme } = useTheme();
   const { dailyBudget, fasting, latestWeight } = widgets;
+
+  // Tick every 60s while fasting to keep elapsed time fresh
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!fasting.currentFast) return;
+    const id = setInterval(() => setTick((t) => t + 1), 60_000);
+    return () => clearInterval(id);
+  }, [fasting.currentFast]);
 
   const calorieProgress =
     dailyBudget.calorieGoal > 0
