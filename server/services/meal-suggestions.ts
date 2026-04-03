@@ -2,10 +2,9 @@ import crypto from "crypto";
 import { z } from "zod";
 import type { UserProfile } from "@shared/schema";
 import type { MealSuggestion } from "@shared/types/meal-suggestions";
-import { ALLERGEN_INGREDIENT_MAP } from "@shared/constants/allergens";
-import type { AllergenId } from "@shared/constants/allergens";
 import { openai, OPENAI_TIMEOUT_HEAVY_MS, MODEL_HEAVY } from "../lib/openai";
-import { sanitizeUserInput, SYSTEM_PROMPT_BOUNDARY } from "../lib/ai-safety";
+import { SYSTEM_PROMPT_BOUNDARY } from "../lib/ai-safety";
+import { buildDietaryContext } from "../lib/dietary-context";
 import { createServiceLogger, toError } from "../lib/logger";
 
 const log = createServiceLogger("meal-suggestions");
@@ -65,76 +64,6 @@ export interface MealSuggestionInput {
     carbs: number;
     fat: number;
   };
-}
-
-/**
- * Build dietary context string from user profile
- */
-function buildDietaryContext(userProfile: UserProfile | null): string {
-  if (!userProfile) return "";
-
-  const parts: string[] = [];
-
-  if (
-    userProfile.allergies &&
-    Array.isArray(userProfile.allergies) &&
-    userProfile.allergies.length > 0
-  ) {
-    const allergyLines: string[] = [];
-    for (const allergy of userProfile.allergies as {
-      name: string;
-      severity?: string;
-    }[]) {
-      const severity = allergy.severity ?? "moderate";
-      const def =
-        ALLERGEN_INGREDIENT_MAP[allergy.name as AllergenId] ??
-        ALLERGEN_INGREDIENT_MAP[allergy.name.toLowerCase() as AllergenId];
-      if (def) {
-        const examples = def.directIngredients.slice(0, 8).join(", ");
-        allergyLines.push(
-          `${severity.toUpperCase()} (${severity === "severe" ? "life-threatening" : severity === "moderate" ? "noticeable reaction" : "slight discomfort"}): ${def.label} — avoid: ${examples}`,
-        );
-      } else {
-        allergyLines.push(
-          `${severity.toUpperCase()}: ${sanitizeUserInput(allergy.name)}`,
-        );
-      }
-    }
-    parts.push(`CRITICAL ALLERGY RESTRICTIONS:\n${allergyLines.join("\n")}`);
-  }
-  if (userProfile.dietType) {
-    parts.push(`Diet type: ${sanitizeUserInput(userProfile.dietType)}`);
-  }
-  if (
-    userProfile.foodDislikes &&
-    Array.isArray(userProfile.foodDislikes) &&
-    userProfile.foodDislikes.length > 0
-  ) {
-    parts.push(
-      `Dislikes: ${userProfile.foodDislikes.map((d) => sanitizeUserInput(String(d))).join(", ")}`,
-    );
-  }
-  if (userProfile.cookingSkillLevel) {
-    parts.push(
-      `Cooking skill: ${sanitizeUserInput(userProfile.cookingSkillLevel)}`,
-    );
-  }
-  if (userProfile.cookingTimeAvailable) {
-    parts.push(
-      `Preferred cooking time: ${sanitizeUserInput(userProfile.cookingTimeAvailable)}`,
-    );
-  }
-  if (
-    userProfile.cuisinePreferences &&
-    Array.isArray(userProfile.cuisinePreferences) &&
-    userProfile.cuisinePreferences.length > 0
-  ) {
-    parts.push(
-      `Cuisine preferences: ${userProfile.cuisinePreferences.map((c) => sanitizeUserInput(String(c))).join(", ")}`,
-    );
-  }
-
-  return parts.length > 0 ? parts.join(". ") + "." : "";
 }
 
 export { buildDietaryContext };

@@ -1,11 +1,9 @@
 import { z } from "zod";
+import { loginSchema, registerSchema, profileUpdateSchema } from "../_schemas";
 import {
   parsePositiveIntParam,
   parseQueryInt,
   formatZodError,
-  loginSchema,
-  registerSchema,
-  profileUpdateSchema,
 } from "../_helpers";
 
 describe("Route Helpers", () => {

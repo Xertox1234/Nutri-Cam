@@ -28,11 +28,10 @@ import {
   mapLabelToNutritionData,
   cacheNutritionIfAbsent,
 } from "../services/nutrition-lookup";
+import { photoRateLimit } from "./_rate-limiters";
+import { upload, createImageUpload } from "./_upload";
 import {
-  photoRateLimit,
   handleRouteError,
-  upload,
-  createImageUpload,
   checkPremiumFeature,
   checkAiConfigured,
   getPremiumFeatures,
@@ -125,20 +124,8 @@ export function register(app: Express): void {
 
         // Parse intent from multipart form parameters (default: "log")
         // Supports "auto" for smart scan classification
-        const intentSchema = z
-          .enum([
-            "auto",
-            "log",
-            "calories",
-            "identify",
-            "recipe",
-            "menu",
-            "label",
-          ])
-          .catch("log");
-        const intentRaw = intentSchema.parse(
-          req.body?.intent ?? "log",
-        ) as PhotoIntentOrAuto;
+        const intentRaw = ((req.body?.intent as string) ||
+          "log") as PhotoIntentOrAuto;
 
         // Convert buffer to base64
         const imageBase64 = req.file.buffer.toString("base64");

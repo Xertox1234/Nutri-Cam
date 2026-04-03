@@ -7,11 +7,10 @@ import { ErrorCode } from "@shared/constants/error-codes";
 import { insertScannedItemSchema } from "@shared/schema";
 import { logger, toError } from "../lib/logger";
 import { lookupNutrition, lookupBarcode } from "../services/nutrition-lookup";
+import { nutritionLookupRateLimit, pantryRateLimit } from "./_rate-limiters";
+import { numericStringField } from "./_schemas";
 import {
-  nutritionLookupRateLimit,
-  pantryRateLimit,
   handleRouteError,
-  numericStringField,
   parsePositiveIntParam,
   parseQueryInt,
   parseQueryDate,

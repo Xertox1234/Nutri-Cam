@@ -1,7 +1,8 @@
 import type { Express, Response } from "express";
 import { type AuthenticatedRequest, requireAuth } from "../middleware/auth";
 import { storage } from "../storage";
-import { handleRouteError, createRateLimiter } from "./_helpers";
+import { createRateLimiter } from "./_rate-limiters";
+import { handleRouteError } from "./_helpers";
 import { sendError } from "../lib/api-errors";
 import { ErrorCode } from "@shared/constants/error-codes";
 import { getProfileWidgets } from "../services/profile-hub";

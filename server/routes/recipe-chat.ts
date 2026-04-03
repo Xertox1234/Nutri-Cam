@@ -2,9 +2,9 @@ import type { Express, Response } from "express";
 import { z } from "zod";
 import { storage } from "../storage";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/auth";
+import { chatRateLimit } from "./_rate-limiters";
+import { createImageUpload } from "./_upload";
 import {
-  chatRateLimit,
-  createImageUpload,
   formatZodError,
   parsePositiveIntParam,
   checkPremiumFeature,

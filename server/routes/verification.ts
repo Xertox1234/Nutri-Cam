@@ -1,6 +1,7 @@
 import type { Express, Response } from "express";
 import { z } from "zod";
 import { storage } from "../storage";
+import { createSessionStore } from "../storage/sessions";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/auth";
 import { sendError } from "../lib/api-errors";
 import { ErrorCode } from "@shared/constants/error-codes";
@@ -16,23 +17,19 @@ import {
 import { detectReformulation } from "../services/reformulation-detection";
 import { analyzeFrontLabel } from "../services/front-label-analysis";
 import { consensusNutritionSchema } from "@shared/types/verification";
-import { frontLabelDataSchema } from "@shared/types/front-label";
+import {
+  frontLabelDataSchema,
+  type FrontLabelExtractionResult,
+} from "@shared/types/front-label";
+import { crudRateLimit, createRateLimiter } from "./_rate-limiters";
+import { createImageUpload } from "./_upload";
+import { isAdmin } from "./_admin";
 import {
   checkAiConfigured,
-  crudRateLimit,
-  createImageUpload,
-  createRateLimiter,
-  isAdmin,
   parseQueryInt,
   parseQueryString,
   parseStringParam,
 } from "./_helpers";
-
-// ============================================================================
-// Front-label session store (centralized in storage/sessions.ts)
-// ============================================================================
-
-import { frontLabelSessionStore } from "../storage/sessions";
 
 const verificationRateLimit = createRateLimiter({
   windowMs: 60 * 1000,
@@ -59,7 +56,22 @@ const frontLabelConfirmSchema = z.object({
 // Multer config for front-label photo uploads (5MB limit)
 const frontLabelUpload = createImageUpload(5 * 1024 * 1024);
 
-const frontLabelStore = frontLabelSessionStore;
+// ============================================================================
+// Front-label session store (uses generic factory from storage/sessions.ts)
+// ============================================================================
+interface FrontLabelSession {
+  userId: string;
+  data: FrontLabelExtractionResult;
+  barcode: string;
+  createdAt: number;
+}
+
+const frontLabelStore = createSessionStore<FrontLabelSession>({
+  maxPerUser: 3,
+  maxGlobal: 500,
+  timeoutMs: 15 * 60 * 1000, // 15 minutes
+  label: "active front-label",
+});
 
 // Exported for testing (grouped per docs/patterns/security.md Test Internals Export Pattern)
 export const _testInternals = {
@@ -107,11 +119,11 @@ export function register(app: Express): void {
           );
         }
 
-        // Check if user already verified this barcode (parallel with history fetch)
-        const [alreadyVerified, existingHistory] = await Promise.all([
-          storage.hasUserVerified(barcode, req.userId),
-          storage.getVerificationHistory(barcode),
-        ]);
+        // Check if user already verified this barcode
+        const alreadyVerified = await storage.hasUserVerified(
+          barcode,
+          req.userId,
+        );
         if (alreadyVerified) {
           return sendError(
             res,
@@ -123,6 +135,9 @@ export function register(app: Express): void {
 
         // Extract core nutrition from label data
         const extracted = extractVerificationNutrition(session.labelData);
+
+        // Get existing verifications for comparison
+        const existingHistory = await storage.getVerificationHistory(barcode);
         const existingNutrition: VerificationNutrition[] = existingHistory
           .filter((h) => h.isMatch !== false) // Only compare against matching entries
           .map((h) => {

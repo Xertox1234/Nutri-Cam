@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   View,
   Pressable,
@@ -50,6 +50,12 @@ function RecipeCardInner({
   const { theme } = useTheme();
   const [ingredientsExpanded, setIngredientsExpanded] = useState(false);
   const [instructionsExpanded, setInstructionsExpanded] = useState(false);
+
+  useEffect(() => {
+    if (allergenWarning) {
+      announceAllergenWarning(allergenWarning);
+    }
+  }, [allergenWarning]);
 
   const toggleIngredients = useCallback(() => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);

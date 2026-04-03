@@ -1,5 +1,5 @@
 import type { Express, Response } from "express";
-import { createHash, randomUUID } from "crypto";
+import { createHash } from "crypto";
 import { storage } from "../storage";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/auth";
 import {
@@ -14,8 +14,9 @@ import {
   RestoreRequestSchema,
 } from "@shared/schemas/subscription";
 import { sendError } from "../lib/api-errors";
+import { logger, toError } from "../lib/logger";
 import { ErrorCode } from "@shared/constants/error-codes";
-import { handleRouteError, subscriptionRateLimit } from "./_helpers";
+import { subscriptionRateLimit } from "./_rate-limiters";
 
 /** Store a hash + truncated prefix instead of the full receipt to avoid DB bloat. */
 function compactReceipt(receipt: string): string {
@@ -61,7 +62,16 @@ export function register(app: Express): void {
 
         res.json(response);
       } catch (error) {
-        handleRouteError(res, error, "fetch subscription status");
+        logger.error(
+          { err: toError(error) },
+          "error fetching subscription status",
+        );
+        sendError(
+          res,
+          500,
+          "Failed to fetch subscription status",
+          ErrorCode.INTERNAL_ERROR,
+        );
       }
     },
   );
@@ -75,7 +85,13 @@ export function register(app: Express): void {
         const count = await storage.getDailyScanCount(req.userId, new Date());
         res.json({ count });
       } catch (error) {
-        handleRouteError(res, error, "fetch scan count");
+        logger.error({ err: toError(error) }, "error fetching scan count");
+        sendError(
+          res,
+          500,
+          "Failed to fetch scan count",
+          ErrorCode.INTERNAL_ERROR,
+        );
       }
     },
   );
@@ -148,7 +164,13 @@ export function register(app: Express): void {
           expiresAt: expiresAt?.toISOString() || null,
         });
       } catch (error) {
-        handleRouteError(res, error, "process upgrade");
+        logger.error({ err: toError(error) }, "error processing upgrade");
+        sendError(
+          res,
+          500,
+          "Failed to process upgrade",
+          ErrorCode.INTERNAL_ERROR,
+        );
       }
     },
   );
@@ -179,7 +201,7 @@ export function register(app: Express): void {
           });
         }
 
-        const restoreId = `restore-${randomUUID()}`;
+        const restoreId = `restore-${Date.now()}-${req.userId}`;
         const expiresAt = validation.expiresAt || null;
         await storage.createTransactionAndUpgrade(
           {
@@ -200,7 +222,13 @@ export function register(app: Express): void {
           expiresAt: expiresAt?.toISOString() || null,
         });
       } catch (error) {
-        handleRouteError(res, error, "restore purchases");
+        logger.error({ err: toError(error) }, "error restoring purchases");
+        sendError(
+          res,
+          500,
+          "Failed to restore purchases",
+          ErrorCode.INTERNAL_ERROR,
+        );
       }
     },
   );

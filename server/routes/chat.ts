@@ -2,10 +2,9 @@ import type { Express, Response } from "express";
 import { z } from "zod";
 import { storage } from "../storage";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/auth";
+import { chatRateLimit } from "./_rate-limiters";
 import {
-  chatRateLimit,
   formatZodError,
-  handleRouteError,
   parsePositiveIntParam,
   parseQueryInt,
   checkPremiumFeature,
@@ -49,7 +48,13 @@ export function register(app: Express): void {
         );
         res.json(conversations);
       } catch (error) {
-        handleRouteError(res, error, "list conversations");
+        logger.error({ err: toError(error) }, "failed to list conversations");
+        sendError(
+          res,
+          500,
+          "Failed to list conversations",
+          ErrorCode.INTERNAL_ERROR,
+        );
       }
     },
   );
@@ -82,7 +87,13 @@ export function register(app: Express): void {
         );
         res.status(201).json(conversation);
       } catch (error) {
-        handleRouteError(res, error, "create conversation");
+        logger.error({ err: toError(error) }, "failed to create conversation");
+        sendError(
+          res,
+          500,
+          "Failed to create conversation",
+          ErrorCode.INTERNAL_ERROR,
+        );
       }
     },
   );
@@ -115,7 +126,13 @@ export function register(app: Express): void {
         const messages = await storage.getChatMessages(id, 100);
         res.json(messages);
       } catch (error) {
-        handleRouteError(res, error, "fetch messages");
+        logger.error({ err: toError(error) }, "failed to fetch messages");
+        sendError(
+          res,
+          500,
+          "Failed to fetch messages",
+          ErrorCode.INTERNAL_ERROR,
+        );
       }
     },
   );
@@ -367,22 +384,17 @@ export function register(app: Express): void {
             let fullResponse = "";
 
             if (cachedResponse) {
-              // Send cached response in 3 chunks with minimal delay
-              const len = cachedResponse.length;
-              const third = Math.ceil(len / 3);
-              const chunks = [
-                cachedResponse.slice(0, third),
-                cachedResponse.slice(third, third * 2),
-                cachedResponse.slice(third * 2),
-              ].filter((c) => c.length > 0);
-              for (let ci = 0; ci < chunks.length && !aborted; ci++) {
-                fullResponse += chunks[ci];
-                res.write(
-                  `data: ${JSON.stringify({ content: chunks[ci] })}\n\n`,
+              const words = cachedResponse.split(/(\s+)/);
+              let i = 0;
+              while (i < words.length && !aborted) {
+                const chunkSize = 5 + Math.floor(Math.random() * 4);
+                const chunk = words.slice(i, i + chunkSize).join("");
+                i += chunkSize;
+                fullResponse += chunk;
+                res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
+                await new Promise((r) =>
+                  setTimeout(r, 15 + Math.floor(Math.random() * 25)),
                 );
-                if (ci < chunks.length - 1) {
-                  await new Promise((r) => setTimeout(r, 15));
-                }
               }
             } else {
               for await (const chunk of generateCoachResponse(
@@ -436,10 +448,14 @@ export function register(app: Express): void {
         }
         res.end();
       } catch (error) {
+        logger.error({ err: toError(error) }, "failed to send message");
         if (!res.headersSent) {
-          handleRouteError(res, error, "send message");
-        } else {
-          logger.error({ err: toError(error) }, "send message error");
+          sendError(
+            res,
+            500,
+            "Failed to send message",
+            ErrorCode.INTERNAL_ERROR,
+          );
         }
       }
     },
@@ -471,7 +487,13 @@ export function register(app: Express): void {
           );
         res.status(204).send();
       } catch (error) {
-        handleRouteError(res, error, "delete conversation");
+        logger.error({ err: toError(error) }, "failed to delete conversation");
+        sendError(
+          res,
+          500,
+          "Failed to delete conversation",
+          ErrorCode.INTERNAL_ERROR,
+        );
       }
     },
   );

@@ -2,7 +2,8 @@ import type { Express, Response } from "express";
 import { z } from "zod";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/auth";
 import { sendError } from "../lib/api-errors";
-import { crudRateLimit, handleRouteError } from "./_helpers";
+import { crudRateLimit } from "./_rate-limiters";
+import { handleRouteError } from "./_helpers";
 import { storage } from "../storage";
 import { lookupNutrition } from "../services/nutrition-lookup";
 import {

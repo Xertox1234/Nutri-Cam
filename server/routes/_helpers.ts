@@ -1,11 +1,15 @@
 /**
- * Shared helpers, rate limiters, schemas, and utilities used across route modules.
+ * Generic utility functions used across route modules.
+ *
+ * Domain-specific concerns have been split into focused modules:
+ * - `./_rate-limiters` — Rate limiter factory + instances
+ * - `./_schemas` — Zod validation schemas
+ * - `./_upload` — Multer upload configuration
+ * - `./_admin` — Admin authorization
  */
 import type { Request, Response } from "express";
 import type { AuthenticatedRequest } from "../middleware/auth";
-import { rateLimit } from "express-rate-limit";
-import { z, ZodError } from "zod";
-import multer from "multer";
+import { ZodError } from "zod";
 import { storage } from "../storage";
 import { sendError } from "../lib/api-errors";
 import {
@@ -14,7 +18,6 @@ import {
   type PremiumFeatures,
 } from "@shared/types/premium";
 import { ErrorCode } from "@shared/constants/error-codes";
-import { insertUserProfileSchema, allergySchema } from "@shared/schema";
 import { isAiConfigured } from "../lib/openai";
 import { logger, toError } from "../lib/logger";
 
@@ -135,11 +138,6 @@ export function parseStringParam(
   return value;
 }
 
-/** Extract IP address for rate limiting fallback when user is not authenticated */
-export function ipKeyGenerator(req: Request): string {
-  return req.ip || req.socket.remoteAddress || "unknown";
-}
-
 /** Format Zod validation errors as a simple string */
 export function formatZodError(error: ZodError): string {
   return error.errors
@@ -148,19 +146,6 @@ export function formatZodError(error: ZodError): string {
     )
     .join("; ");
 }
-
-/** Zod schema: accepts string or number, coerces to string. Returns undefined if absent. */
-export const numericStringField = z
-  .union([z.string(), z.number()])
-  .optional()
-  .transform((v) => v?.toString());
-
-/** Zod schema: accepts string or number, coerces to string. Returns null if absent. */
-export const nullableNumericStringField = z
-  .union([z.string(), z.number()])
-  .optional()
-  .nullable()
-  .transform((v) => v?.toString() ?? null);
 
 /**
  * Standard catch handler for route endpoints with Zod validation.
@@ -177,274 +162,4 @@ export function handleRouteError(
   }
   logger.error({ err: toError(error) }, `${context} error`);
   sendError(res, 500, `Failed to ${context}`, ErrorCode.INTERNAL_ERROR);
-}
-
-// ============================================================================
-// RATE LIMITER FACTORY
-// ============================================================================
-
-/**
- * Factory for creating express-rate-limit middleware with consistent defaults.
- * Uses userId (falling back to IP) as the key for authenticated routes,
- * or default IP-based keying for unauthenticated routes.
- */
-export function createRateLimiter(options: {
-  windowMs: number;
-  max: number;
-  message: string;
-  keyByUser?: boolean;
-}) {
-  return rateLimit({
-    windowMs: options.windowMs,
-    max: options.max,
-    message: { error: options.message, code: "RATE_LIMITED" },
-    standardHeaders: true,
-    legacyHeaders: false,
-    ...(options.keyByUser !== false && {
-      keyGenerator: (req: Request) => req.userId || ipKeyGenerator(req),
-    }),
-  });
-}
-
-// ============================================================================
-// RATE LIMITERS
-// ============================================================================
-
-// --- Auth (IP-keyed, no userId available) ---
-export const loginLimiter = createRateLimiter({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  message: "Too many login attempts, please try again later",
-  keyByUser: false,
-});
-
-export const registerLimiter = createRateLimiter({
-  windowMs: 60 * 60 * 1000,
-  max: 5,
-  message: "Too many registration attempts, please try again later",
-  keyByUser: false,
-});
-
-export const accountDeletionLimiter = createRateLimiter({
-  windowMs: 60 * 60 * 1000,
-  max: 5,
-  message: "Too many account deletion attempts, please try again later",
-  keyByUser: false,
-});
-
-// --- User-keyed rate limiters ---
-export const photoRateLimit = createRateLimiter({
-  windowMs: 60 * 1000,
-  max: 10,
-  message: "Too many photo uploads. Please wait.",
-});
-
-export const suggestionsRateLimit = createRateLimiter({
-  windowMs: 60 * 1000,
-  max: 10,
-  message: "Too many suggestion requests. Please wait.",
-});
-
-export const instructionsRateLimit = createRateLimiter({
-  windowMs: 60 * 1000,
-  max: 20,
-  message: "Too many instruction requests. Please wait.",
-});
-
-export const nutritionLookupRateLimit = createRateLimiter({
-  windowMs: 60 * 1000,
-  max: 15,
-  message: "Too many nutrition lookups. Please wait.",
-});
-
-export const subscriptionRateLimit = createRateLimiter({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  message: "Too many subscription requests. Please wait.",
-});
-
-export const pantryRateLimit = createRateLimiter({
-  windowMs: 60 * 1000,
-  max: 30,
-  message: "Too many pantry requests. Please wait.",
-});
-
-export const mealConfirmRateLimit = createRateLimiter({
-  windowMs: 60 * 1000,
-  max: 20,
-  message: "Too many confirmation requests. Please wait.",
-});
-
-export const mealPlanRateLimit = createRateLimiter({
-  windowMs: 60 * 1000,
-  max: 30,
-  message: "Too many meal plan requests. Please wait.",
-});
-
-export const mealSuggestionRateLimit = createRateLimiter({
-  windowMs: 60 * 1000,
-  max: 10,
-  message: "Too many suggestion requests. Please wait.",
-});
-
-export const pantryMealPlanRateLimit = createRateLimiter({
-  windowMs: 60 * 1000,
-  max: 2,
-  message: "Too many meal plan generation requests. Please wait.",
-});
-
-export const recipeGenerationRateLimit = createRateLimiter({
-  windowMs: 60 * 1000,
-  max: 3,
-  message: "Too many recipe generation requests. Please wait.",
-});
-
-export const avatarRateLimit = createRateLimiter({
-  windowMs: 60 * 1000,
-  max: 5,
-  message: "Too many avatar uploads. Please wait.",
-});
-
-export const urlImportRateLimit = createRateLimiter({
-  windowMs: 60 * 1000,
-  max: 5,
-  message: "Too many import requests. Please wait.",
-});
-
-// --- General-purpose CRUD rate limiter (for routes without a domain-specific one) ---
-export const crudRateLimit = createRateLimiter({
-  windowMs: 60 * 1000,
-  max: 30,
-  message: "Too many requests. Please wait.",
-});
-
-// --- Route-specific rate limiters (consolidated from route files) ---
-export const fastingRateLimit = createRateLimiter({
-  windowMs: 60 * 1000,
-  max: 30,
-  message: "Too many fasting requests. Please wait.",
-});
-
-export const medicationRateLimit = createRateLimiter({
-  windowMs: 60 * 1000,
-  max: 30,
-  message: "Too many medication requests. Please wait.",
-});
-
-export const menuRateLimit = createRateLimiter({
-  windowMs: 60 * 1000,
-  max: 5,
-  message: "Too many menu scan requests. Please wait.",
-});
-
-export const chatRateLimit = createRateLimiter({
-  windowMs: 60 * 1000,
-  max: 20,
-  message: "Too many chat requests. Please wait.",
-});
-
-export const micronutrientRateLimit = createRateLimiter({
-  windowMs: 60 * 1000,
-  max: 20,
-  message: "Too many micronutrient requests. Please wait.",
-});
-
-export const foodParseRateLimit = createRateLimiter({
-  windowMs: 60 * 1000,
-  max: 20,
-  message: "Too many food parse requests. Please wait.",
-});
-
-export const allergenCheckRateLimit = createRateLimiter({
-  windowMs: 60 * 1000,
-  max: 20,
-  message: "Too many allergen check requests. Please wait.",
-});
-
-// ============================================================================
-// MULTER UPLOAD CONFIG
-// ============================================================================
-
-/** Factory for image upload multer configs with consistent fileFilter. */
-export function createImageUpload(maxSizeBytes: number) {
-  return multer({
-    limits: { fileSize: maxSizeBytes },
-    storage: multer.memoryStorage(),
-    fileFilter: (_req, file, cb) => {
-      const allowedMimes = ["image/jpeg", "image/png", "image/webp"];
-      if (allowedMimes.includes(file.mimetype)) {
-        cb(null, true);
-      } else {
-        cb(new Error("Invalid file type. Only JPEG, PNG, and WebP allowed."));
-      }
-    },
-  });
-}
-
-// Multer configuration for photo uploads (1MB limit for compressed images)
-export const upload = createImageUpload(1 * 1024 * 1024);
-
-// ============================================================================
-// COMMON VALIDATION SCHEMAS
-// ============================================================================
-
-// Login validation schema - lighter than registration (no format rules, just bounds)
-export const loginSchema = z.object({
-  username: z.string().min(1, "Username is required").max(30),
-  password: z.string().min(1, "Password is required").max(200),
-});
-
-// Registration validation schema with username format and password strength
-export const registerSchema = z.object({
-  username: z
-    .string()
-    .min(3, "Username must be at least 3 characters")
-    .max(30, "Username must be at most 30 characters")
-    .regex(
-      /^[a-zA-Z0-9_]+$/,
-      "Username can only contain letters, numbers, and underscores",
-    ),
-  password: z
-    .string()
-    .min(8, "Password must be at least 8 characters")
-    .max(200)
-    .regex(
-      /(?=.*[a-zA-Z])(?=.*\d)/,
-      "Password must contain at least one letter and one number",
-    ),
-});
-
-// Account deletion validation schema
-export const deleteAccountSchema = z.object({
-  password: z.string().min(1, "Password is required"),
-});
-
-// Profile update validation schema
-export const profileUpdateSchema = z.object({
-  displayName: z.string().max(100).optional(),
-  dailyCalorieGoal: z.number().int().min(500).max(10000).optional(),
-  onboardingCompleted: z.boolean().optional(),
-});
-
-// Enhanced user profile schema with proper validation for nested objects
-export const userProfileInputSchema = insertUserProfileSchema.extend({
-  allergies: z.array(allergySchema).max(30).optional(),
-  healthConditions: z.array(z.string().max(200)).max(20).optional(),
-  foodDislikes: z.array(z.string().max(100)).max(50).optional(),
-  cuisinePreferences: z.array(z.string().max(100)).max(20).optional(),
-  householdSize: z.number().int().min(1).max(20).optional(),
-  dietType: z.string().max(50).optional().nullable(),
-  primaryGoal: z.string().max(100).optional().nullable(),
-  activityLevel: z.string().max(50).optional().nullable(),
-  cookingSkillLevel: z.string().max(50).optional().nullable(),
-  cookingTimeAvailable: z.string().max(50).optional().nullable(),
-});
-
-/** Check if userId is in the ADMIN_USER_IDS env var */
-export function isAdmin(userId: string): boolean {
-  const adminIds = (process.env.ADMIN_USER_IDS ?? "")
-    .split(",")
-    .map((s: string) => s.trim())
-    .filter(Boolean);
-  return adminIds.includes(userId);
 }

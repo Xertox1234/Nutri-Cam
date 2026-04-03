@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { PantryItem, UserProfile } from "@shared/schema";
 import { openai, OPENAI_TIMEOUT_HEAVY_MS, MODEL_HEAVY } from "../lib/openai";
 import { sanitizeUserInput, SYSTEM_PROMPT_BOUNDARY } from "../lib/ai-safety";
-import { buildDietaryContext } from "./meal-suggestions";
+import { buildDietaryContext } from "../lib/dietary-context";
 import { createServiceLogger, toError } from "../lib/logger";
 
 const log = createServiceLogger("pantry-meal-plan");
