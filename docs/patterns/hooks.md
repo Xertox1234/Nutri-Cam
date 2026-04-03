@@ -419,6 +419,40 @@ export function useCurrentFast() {
 
 - `client/hooks/useFasting.ts` — `useCurrentFast()` with 60s polling
 
+### Client-Side Elapsed Time Tick (No Server Round-Trip)
+
+When displaying elapsed time from a server-provided timestamp (e.g., `startedAt`), use a local `setInterval` + `useState` tick to force re-render rather than `refetchInterval`. The server data hasn't changed — only `Date.now() - startedAt` has — so a network round-trip is wasteful.
+
+```typescript
+// client/components/profile/MiniWidgetRow.tsx — tick fasting timer every 60s
+const [, setTick] = useState(0);
+useEffect(() => {
+  if (!fasting.currentFast) return;
+  const id = setInterval(() => setTick((t) => t + 1), 60_000);
+  return () => clearInterval(id);
+}, [fasting.currentFast]);
+
+// getFastingTime reads Date.now() at render time — the tick forces the recalculation
+```
+
+**When to use:**
+
+- Elapsed time display derived from a stable `startedAt`/`createdAt` timestamp
+- Countdown timers where the target time is already on the client
+- Any "live" display that only depends on the clock, not fresh server state
+
+**When NOT to use (use `refetchInterval` instead):**
+
+- The server value itself changes over time (e.g., sync progress, queue depth)
+- You need to detect server-side state transitions (e.g., fast ended by another device)
+
+**Key distinction:** `refetchInterval` keeps the _data_ fresh. A local tick keeps the _derived calculation_ fresh. If only the calculation changes, skip the network.
+
+**References:**
+
+- `client/components/profile/MiniWidgetRow.tsx` — fasting elapsed time tick
+- See "refetchInterval for Live-Updating Queries" above for the server-data counterpart
+
 ### Query Key Stabilization for Array/Object Keys
 
 When a `useQuery` key includes an array or object that is derived on each render (e.g., from `.map()`), stabilize it with `JSON.stringify` inside `useMemo`. Without this, TanStack Query sees a new key on every render because arrays are compared by reference, causing unnecessary refetches.
@@ -728,3 +762,44 @@ for (const line of lines) {
 
 - `server/routes/chat.ts` — recipe chat path yields `recipe` and `imageUrl` fields
 - `client/hooks/useChat.ts` — `useSendMessage` parses optional `recipe`, `imageUrl`, `allergenWarning` fields
+
+### Override Parameter to Bypass Stale Closures on Async-Created IDs
+
+When a hook's callback closes over a state variable (e.g., `conversationId`), and the caller creates a new value via `setState` then immediately calls the callback, the callback still sees the old value because React state updates are asynchronous. The fix is an **explicit override parameter**:
+
+```typescript
+// Hook — accept optional override that takes precedence over state
+export function useSendMessage(conversationId: number | null) {
+  const sendMessage = useCallback(
+    async (content: string, screenContext?: string, conversationIdOverride?: number) => {
+      const effectiveId = conversationIdOverride ?? conversationId;
+      if (!effectiveId) return;
+      // ... use effectiveId everywhere (URL, query invalidation, etc.)
+    },
+    [conversationId, queryClient],
+  );
+  return { sendMessage, ... };
+}
+
+// Caller — pass the just-created ID directly
+const handleSend = useCallback(async () => {
+  let convId = conversationId;
+  if (!convId) {
+    const conv = await createConversation.mutateAsync({ title: "New Chat" });
+    convId = conv.id;
+    setConversationId(convId);  // Async — won't be visible to sendMessage's closure yet
+  }
+  sendMessage(content, undefined, convId);  // Pass directly — bypasses stale closure
+}, [conversationId, createConversation, sendMessage]);
+```
+
+**When to use:** Any time a caller (1) creates a resource, (2) stores its ID in state, and (3) immediately calls a hook callback that needs that ID — all in the same synchronous execution.
+
+**Why not just use a ref?** A ref would work for the hook's internal reads, but the caller still needs to pass the value somehow. The override parameter is the clearest API — it's explicit, type-safe, and doesn't require coordinating ref updates across component boundaries.
+
+**Why not restructure into a single API call?** Sometimes the resource creation and the subsequent action are intentionally separate concerns (e.g., creating a conversation is reusable, sending a message is a different mutation). Merging them couples unrelated operations.
+
+**References:**
+
+- `client/hooks/useChat.ts` — `useSendMessage` with `conversationIdOverride` parameter
+- `client/screens/RecipeChatScreen.tsx` — `handleSend` passes `convId` after async conversation creation

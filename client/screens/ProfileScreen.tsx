@@ -1,604 +1,22 @@
-import React, { ComponentProps } from "react";
-import {
-  StyleSheet,
-  View,
-  Pressable,
-  ActivityIndicator,
-  Image,
-  ScrollView,
-  useWindowDimensions,
-} from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import React, { useRef } from "react";
+import { StyleSheet, View, ScrollView } from "react-native";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
-import { Feather } from "@expo/vector-icons";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeInDown } from "react-native-reanimated";
-import { LinearGradient } from "expo-linear-gradient";
 
-import { ThemedText } from "@/components/ThemedText";
-import { Card } from "@/components/Card";
 import { SkeletonBox } from "@/components/SkeletonLoader";
 import { UpgradeModal } from "@/components/UpgradeModal";
-import { FallbackImage } from "@/components/FallbackImage";
-import { useTheme } from "@/hooks/useTheme";
+import { ProfileCard } from "@/components/profile/ProfileCard";
+import { MiniWidgetRow } from "@/components/profile/MiniWidgetRow";
+import { LibraryGrid } from "@/components/profile/LibraryGrid";
+import { InlineSettings } from "@/components/profile/InlineSettings";
 import { usePremiumFeature } from "@/hooks/usePremiumFeatures";
-import {
-  getTierLabel,
-  getNextTier,
-} from "@/components/verification-badge-utils";
-import {
-  Spacing,
-  BorderRadius,
-  FontFamily,
-  withOpacity,
-  FAB_CLEARANCE,
-} from "@/constants/theme";
-import { resolveImageUrl } from "@/lib/query-client";
-import type { ThemePreference } from "@/context/ThemeContext";
 import { useProfileData } from "@/hooks/useProfileData";
-import type { DailySummary, FeaturedRecipe } from "@/hooks/useProfileData";
+import { Spacing, FAB_CLEARANCE } from "@/constants/theme";
 
-type FeatherIconName = ComponentProps<typeof Feather>["name"];
-
-const COVER_HEIGHT = 153;
-const AVATAR_SIZE = 60;
-const AVATAR_RING_SIZE = 66;
-const GRID_GAP = 16;
-const GRID_ITEM_HEIGHT = 141;
-
-function useGridItemWidth() {
-  const { width } = useWindowDimensions();
-  return (width - Spacing.lg * 2 - GRID_GAP) / 2;
-}
-
-// ---------- Sub-components ----------
-
-const CoverPhotoSection = React.memo(function CoverPhotoSection({
-  topInset,
-}: {
-  topInset: number;
-}) {
-  const { theme } = useTheme();
-  const totalHeight = COVER_HEIGHT + topInset;
-
-  return (
-    <View
-      style={[styles.coverContainer, { height: totalHeight }]}
-      accessibilityElementsHidden={true}
-    >
-      <Image
-        source={require("../../assets/images/login-hero.jpg")}
-        style={styles.coverImage}
-        resizeMode="cover"
-      />
-      {/* Top gradient for status bar legibility */}
-      <LinearGradient
-        colors={[withOpacity("#000000", 0.45), "transparent"]} // hardcoded — dark overlay for status bar legibility
-        style={[styles.coverGradientTop, { height: topInset + 24 }]}
-      />
-      {/* Bottom gradient blending into background */}
-      <LinearGradient
-        colors={[
-          "transparent",
-          withOpacity(theme.backgroundRoot, 0.6),
-          theme.backgroundRoot,
-        ]}
-        locations={[0, 0.5, 1]}
-        style={[styles.coverGradientBottom, { height: totalHeight }]}
-      />
-    </View>
-  );
-});
-
-const AvatarWithRing = React.memo(function AvatarWithRing({
-  user,
-  isUploading,
-  onPress,
-}: {
-  user: {
-    avatarUrl?: string | null;
-  } | null;
-  isUploading: boolean;
-  onPress: () => void;
-}) {
-  const { theme } = useTheme();
-
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityLabel="Tap to change profile picture"
-      accessibilityRole="button"
-      style={({ pressed }) => [
-        styles.avatarRing,
-        {
-          borderColor: theme.link,
-          opacity: pressed ? 0.8 : 1,
-        },
-      ]}
-    >
-      {isUploading ? (
-        <ActivityIndicator size="small" color={theme.link} />
-      ) : (
-        <FallbackImage
-          source={{ uri: resolveImageUrl(user?.avatarUrl) ?? undefined }}
-          style={styles.avatarImage}
-          fallbackStyle={{
-            ...styles.avatarPlaceholder,
-            backgroundColor: withOpacity(theme.link, 0.12),
-          }}
-          fallbackIcon="user"
-          fallbackIconSize={28}
-          fallbackIconColor={theme.link}
-          accessible={false}
-        />
-      )}
-      <View
-        style={[
-          styles.avatarCameraBadge,
-          { backgroundColor: theme.link, borderColor: theme.backgroundRoot },
-        ]}
-      >
-        <Feather name="camera" size={10} color={theme.buttonText} />
-      </View>
-    </Pressable>
-  );
-});
-
-const UserNameBio = React.memo(function UserNameBio({
-  user,
-}: {
-  user: {
-    displayName?: string | null;
-    username: string;
-  } | null;
-}) {
-  const { theme } = useTheme();
-
-  return (
-    <View style={styles.userNameBioContainer}>
-      <ThemedText type="h4" style={styles.userNameText}>
-        {user?.displayName || user?.username || "User"}
-      </ThemedText>
-      <ThemedText
-        type="caption"
-        style={[styles.bioText, { color: theme.textSecondary }]}
-      >
-        Tracking my nutrition journey
-      </ThemedText>
-    </View>
-  );
-});
-
-const StatsRow = React.memo(function StatsRow({
-  todaySummary,
-  verifiedCount,
-  verifyStreak,
-}: {
-  todaySummary: DailySummary | undefined;
-  verifiedCount: number;
-  verifyStreak: number;
-}) {
-  const { theme } = useTheme();
-  const calories = todaySummary ? Math.round(todaySummary.totalCalories) : 0;
-  const itemCount = todaySummary?.itemCount ?? 0;
-
-  return (
-    <View style={styles.statsRow}>
-      <View style={styles.statItem}>
-        <ThemedText style={styles.statNumber}>
-          {calories.toLocaleString()}
-        </ThemedText>
-        <ThemedText style={[styles.statLabel, { color: theme.textSecondary }]}>
-          Calories
-        </ThemedText>
-      </View>
-      <View style={[styles.statDivider, { backgroundColor: theme.border }]} />
-      <View style={styles.statItem}>
-        <ThemedText style={styles.statNumber}>
-          {verifyStreak > 0
-            ? `${verifyStreak} ${verifyStreak === 1 ? "Day" : "Days"}`
-            : "—"}
-        </ThemedText>
-        <ThemedText style={[styles.statLabel, { color: theme.textSecondary }]}>
-          Streak
-        </ThemedText>
-      </View>
-      <View style={[styles.statDivider, { backgroundColor: theme.border }]} />
-      <View style={styles.statItem}>
-        <ThemedText style={styles.statNumber}>{itemCount}</ThemedText>
-        <ThemedText style={[styles.statLabel, { color: theme.textSecondary }]}>
-          Logged
-        </ThemedText>
-      </View>
-      <View style={[styles.statDivider, { backgroundColor: theme.border }]} />
-      <View style={styles.statItem}>
-        <ThemedText style={styles.statNumber}>{verifiedCount}</ThemedText>
-        <ThemedText style={[styles.statLabel, { color: theme.textSecondary }]}>
-          Verified
-        </ThemedText>
-      </View>
-    </View>
-  );
-});
-
-const ActionButtonsRow = React.memo(function ActionButtonsRow({
-  onEditProfile,
-  onGearPress,
-}: {
-  onEditProfile: () => void;
-  onGearPress: () => void;
-}) {
-  const { theme } = useTheme();
-
-  return (
-    <View style={styles.actionButtonsRow}>
-      <Pressable
-        onPress={onEditProfile}
-        accessibilityLabel="Edit Profile"
-        accessibilityRole="button"
-        style={({ pressed }) => [
-          styles.editProfileButton,
-          {
-            backgroundColor: theme.link,
-            opacity: pressed ? 0.85 : 1,
-          },
-        ]}
-      >
-        <ThemedText
-          style={[styles.editProfileButtonText, { color: theme.buttonText }]}
-        >
-          Edit Profile
-        </ThemedText>
-      </Pressable>
-      <Pressable
-        onPress={onGearPress}
-        accessibilityLabel="Settings"
-        accessibilityRole="button"
-        style={({ pressed }) => [
-          styles.gearButton,
-          {
-            backgroundColor: theme.backgroundSecondary,
-            opacity: pressed ? 0.7 : 1,
-          },
-        ]}
-      >
-        <Feather name="settings" size={18} color={theme.text} />
-      </Pressable>
-    </View>
-  );
-});
-
-const PhotoGridItem = React.memo(function PhotoGridItem({
-  item,
-  itemWidth,
-  onPress,
-}: {
-  item: FeaturedRecipe;
-  itemWidth: number;
-  onPress: () => void;
-}) {
-  const { theme } = useTheme();
-  const imageUri = resolveImageUrl(item.imageUrl);
-
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityLabel={item.title}
-      accessibilityRole="button"
-      accessibilityHint="View recipe details"
-      style={({ pressed }) => [
-        styles.gridItem,
-        {
-          backgroundColor: theme.backgroundSecondary,
-          width: itemWidth,
-          opacity: pressed ? 0.85 : 1,
-        },
-      ]}
-    >
-      <FallbackImage
-        source={{ uri: imageUri ?? undefined }}
-        style={StyleSheet.absoluteFill}
-        fallback={
-          <View style={styles.gridItemContent}>
-            <Feather name="image" size={32} color={theme.textSecondary} />
-          </View>
-        }
-        resizeMode="cover"
-        accessibilityLabel={`Photo of ${item.title}`}
-      />
-      <LinearGradient
-        colors={["transparent", withOpacity("#000000", 0.6)]} // hardcoded — dark overlay for white text
-        style={styles.gridItemGradient}
-      />
-      {/* Always white over dark gradient overlay, intentionally not theme-dependent */}
-      <ThemedText style={styles.gridItemName}>{item.title}</ThemedText>
-    </Pressable>
-  );
-});
-
-const PhotoGrid = React.memo(function PhotoGrid({
-  recipes,
-  onRecipePress,
-}: {
-  recipes: FeaturedRecipe[];
-  onRecipePress: (recipeId: number) => void;
-}) {
-  const gridItemWidth = useGridItemWidth();
-
-  if (recipes.length === 0) return null;
-
-  return (
-    <View style={styles.photoGrid}>
-      {recipes.slice(0, 6).map((item) => (
-        <PhotoGridItem
-          key={item.id}
-          item={item}
-          itemWidth={gridItemWidth}
-          onPress={() => onRecipePress(item.id)}
-        />
-      ))}
-    </View>
-  );
-});
-
-const SettingsItem = React.memo(function SettingsItem({
-  icon,
-  label,
-  value,
-  onPress,
-  showChevron = true,
-  danger = false,
-  locked = false,
-}: {
-  icon: FeatherIconName;
-  label: string;
-  value?: string;
-  onPress?: () => void;
-  showChevron?: boolean;
-  danger?: boolean;
-  locked?: boolean;
-}) {
-  const { theme } = useTheme();
-
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityLabel={
-        locked ? `${label} (Premium)` : value ? `${label}: ${value}` : label
-      }
-      accessibilityRole="button"
-      accessibilityHint={
-        locked ? "Tap to upgrade" : showChevron ? "Tap to open" : undefined
-      }
-      style={({ pressed }) => [
-        styles.settingsItem,
-        { opacity: pressed ? 0.7 : 1 },
-      ]}
-    >
-      <View style={styles.settingsIconWrapper}>
-        <View
-          style={[
-            styles.settingsIcon,
-            {
-              backgroundColor: danger
-                ? withOpacity(theme.error, 0.12)
-                : theme.backgroundSecondary,
-            },
-          ]}
-        >
-          <Feather
-            name={icon}
-            size={20}
-            color={danger ? theme.error : theme.text}
-            accessible={false}
-          />
-        </View>
-        {locked && (
-          <View
-            style={[
-              styles.lockBadge,
-              { backgroundColor: theme.backgroundRoot },
-            ]}
-          >
-            <Feather
-              name="lock"
-              size={10}
-              color={theme.textSecondary}
-              accessible={false}
-            />
-          </View>
-        )}
-      </View>
-      <View style={styles.settingsContent}>
-        <ThemedText type="body" style={[danger && { color: theme.error }]}>
-          {label}
-        </ThemedText>
-        {value ? (
-          <ThemedText type="small" style={styles.settingsValue}>
-            {value}
-          </ThemedText>
-        ) : null}
-      </View>
-      {showChevron ? (
-        <Feather
-          name="chevron-right"
-          size={20}
-          color={theme.textSecondary}
-          accessible={false}
-        />
-      ) : null}
-    </Pressable>
-  );
-});
-
-const SettingsSection = React.memo(function SettingsSection({
-  themePreference,
-  onWeightTracking,
-  onDietaryProfile,
-  onGLP1Companion,
-  onNutritionGoals,
-  onLibrary,
-  onScanHistory,
-  onThemeToggle,
-  onSubscription,
-  onLogout,
-  onLockedPress,
-}: {
-  themePreference: ThemePreference;
-  onWeightTracking: () => void;
-  onDietaryProfile: () => void;
-  onGLP1Companion: () => void;
-  onNutritionGoals: () => void;
-  onLibrary: () => void;
-  onScanHistory: () => void;
-  onThemeToggle: () => void;
-  onSubscription: () => void;
-  onLogout: () => void;
-  onLockedPress: () => void;
-}) {
-  const { theme } = useTheme();
-  const weightTrendUnlocked = usePremiumFeature("weightTrend");
-  const glp1Unlocked = usePremiumFeature("glp1Companion");
-  const adaptiveGoalsUnlocked = usePremiumFeature("adaptiveGoals");
-
-  return (
-    <View style={styles.settingsSection}>
-      <ThemedText type="h4" style={styles.settingsSectionTitle}>
-        Settings
-      </ThemedText>
-      <Card elevation={1} style={styles.settingsCard}>
-        <SettingsItem
-          icon="trending-down"
-          label="Weight Tracking"
-          locked={!weightTrendUnlocked}
-          onPress={weightTrendUnlocked ? onWeightTracking : onLockedPress}
-        />
-        <View style={[styles.divider, { backgroundColor: theme.border }]} />
-        <SettingsItem
-          icon="clipboard"
-          label="Dietary Profile"
-          onPress={onDietaryProfile}
-        />
-        <View style={[styles.divider, { backgroundColor: theme.border }]} />
-        <SettingsItem
-          icon="activity"
-          label="GLP-1 Companion"
-          locked={!glp1Unlocked}
-          onPress={glp1Unlocked ? onGLP1Companion : onLockedPress}
-        />
-        <View style={[styles.divider, { backgroundColor: theme.border }]} />
-        <SettingsItem
-          icon="target"
-          label="Nutrition Goals"
-          locked={!adaptiveGoalsUnlocked}
-          onPress={adaptiveGoalsUnlocked ? onNutritionGoals : onLockedPress}
-        />
-        <View style={[styles.divider, { backgroundColor: theme.border }]} />
-        <SettingsItem icon="bookmark" label="My Library" onPress={onLibrary} />
-        <View style={[styles.divider, { backgroundColor: theme.border }]} />
-        <SettingsItem
-          icon="clock"
-          label="Scan History"
-          onPress={onScanHistory}
-        />
-        <View style={[styles.divider, { backgroundColor: theme.border }]} />
-        <SettingsItem
-          icon={
-            themePreference === "dark"
-              ? "moon"
-              : themePreference === "light"
-                ? "sun"
-                : "smartphone"
-          }
-          label="Appearance"
-          value={THEME_LABELS[themePreference]}
-          onPress={onThemeToggle}
-          showChevron={false}
-        />
-        <View style={[styles.divider, { backgroundColor: theme.border }]} />
-        <SettingsItem
-          icon="star"
-          label="Subscription"
-          onPress={onSubscription}
-        />
-        <View style={[styles.divider, { backgroundColor: theme.border }]} />
-        <SettingsItem
-          icon="log-out"
-          label="Sign Out"
-          onPress={onLogout}
-          showChevron={false}
-          danger
-        />
-      </Card>
-    </View>
-  );
-});
-
-const ProfileSkeleton = React.memo(function ProfileSkeleton({
-  topInset,
-}: {
-  topInset: number;
-}) {
-  const gridItemWidth = useGridItemWidth();
-
-  return (
-    <View accessibilityElementsHidden>
-      <SkeletonBox width="100%" height={COVER_HEIGHT + topInset} />
-      <View style={styles.skeletonAvatarRow}>
-        <SkeletonBox
-          width={AVATAR_RING_SIZE}
-          height={AVATAR_RING_SIZE}
-          borderRadius={AVATAR_RING_SIZE / 2}
-        />
-      </View>
-      <View style={styles.skeletonNameRow}>
-        <SkeletonBox width={120} height={20} />
-      </View>
-      <View style={styles.skeletonStatsRow}>
-        <SkeletonBox width={50} height={30} />
-        <SkeletonBox width={50} height={30} />
-        <SkeletonBox width={50} height={30} />
-      </View>
-      <View style={styles.skeletonGridRow}>
-        <SkeletonBox
-          width={gridItemWidth}
-          height={GRID_ITEM_HEIGHT}
-          borderRadius={BorderRadius.sm}
-        />
-        <SkeletonBox
-          width={gridItemWidth}
-          height={GRID_ITEM_HEIGHT}
-          borderRadius={BorderRadius.sm}
-        />
-      </View>
-      <View style={styles.skeletonGridRow}>
-        <SkeletonBox
-          width={gridItemWidth}
-          height={GRID_ITEM_HEIGHT}
-          borderRadius={BorderRadius.sm}
-        />
-        <SkeletonBox
-          width={gridItemWidth}
-          height={GRID_ITEM_HEIGHT}
-          borderRadius={BorderRadius.sm}
-        />
-      </View>
-    </View>
-  );
-});
-
-// ---------- Constants ----------
-
-const THEME_LABELS: Record<ThemePreference, string> = {
-  system: "System",
-  light: "Light",
-  dark: "Dark",
-};
-
-// ---------- Main Screen ----------
+const STAGGER_DELAY = 80;
 
 export default function ProfileScreen() {
-  const insets = useSafeAreaInsets();
-  const tabBarHeight = useBottomTabBarHeight();
   const {
     theme,
     reducedMotion,
@@ -606,429 +24,225 @@ export default function ProfileScreen() {
     themePreference,
     showUpgradeModal,
     isUploadingAvatar,
-    scrollRef,
-    todaySummary,
-    featuredRecipes,
+    widgetData,
+    libraryCounts,
     verificationData,
     isInitialLoading,
-    handleLogout,
     handleThemeToggle,
     handleAvatarPress,
-    handleEditProfile,
     handleGearPress,
-    handleRecipePress,
-    handleSubscription,
     handleLockedPress,
-    handleWeightTracking,
+    handleCaloriePress,
+    handleFastingPress,
+    handleWeightPress,
     handleDietaryProfile,
-    handleGLP1Companion,
-    handleNutritionGoals,
-    handleLibrary,
-    handleScanHistory,
     handleCloseUpgradeModal,
-    handleSettingsLayout,
   } = useProfileData();
 
+  const weightUnlocked = usePremiumFeature("weightTrend");
+  const tabBarHeight = useBottomTabBarHeight();
+  const hasAnimated = useRef(false);
+
+  // Gate entrance animations — play only on first mount
+  const getEntering = (index: number) => {
+    if (hasAnimated.current || reducedMotion) return undefined;
+    return FadeInDown.delay(index * STAGGER_DELAY).duration(400);
+  };
+
+  // Mark animated after first render
+  React.useEffect(() => {
+    hasAnimated.current = true;
+  }, []);
+
+  if (!user) return null;
+
   if (isInitialLoading) {
-    return (
-      <ScrollView
-        style={{ flex: 1, backgroundColor: theme.backgroundRoot }}
-        contentContainerStyle={{
-          paddingBottom: tabBarHeight + Spacing.xl + FAB_CLEARANCE,
-        }}
-      >
-        <ProfileSkeleton topInset={insets.top} />
-      </ScrollView>
-    );
+    return <ProfileSkeleton theme={theme} />;
   }
 
   return (
-    <ScrollView
-      ref={scrollRef}
-      style={{ flex: 1, backgroundColor: theme.backgroundRoot }}
-      contentContainerStyle={{
-        paddingBottom: tabBarHeight + Spacing.xl + FAB_CLEARANCE,
-      }}
-      scrollIndicatorInsets={{ bottom: insets.bottom }}
-    >
-      {/* Cover Photo */}
-      <CoverPhotoSection topInset={insets.top} />
-
-      {/* Avatar + Name + Bio */}
-      <Animated.View
-        entering={
-          reducedMotion ? undefined : FadeInDown.delay(100).duration(400)
-        }
-        style={styles.profileInfoContainer}
-      >
-        <AvatarWithRing
-          user={user}
-          isUploading={isUploadingAvatar}
-          onPress={handleAvatarPress}
-        />
-        <UserNameBio user={user} />
-      </Animated.View>
-
-      {/* Stats Row */}
-      <Animated.View
-        entering={
-          reducedMotion ? undefined : FadeInDown.delay(200).duration(400)
-        }
-      >
-        <StatsRow
-          todaySummary={todaySummary}
-          verifiedCount={verificationData?.count ?? 0}
-          verifyStreak={verificationData?.streak ?? 0}
-        />
-      </Animated.View>
-
-      {/* Verification Tier Badge */}
-      {(() => {
-        const score =
-          verificationData?.compositeScore ?? verificationData?.count ?? 0;
-        const tierLabel = getTierLabel(score);
-        const nextTier = getNextTier(score);
-        if (!tierLabel) return null;
-        return (
-          <View
-            style={[
-              styles.tierBadge,
-              { backgroundColor: withOpacity(theme.success, 0.08) },
-            ]}
-            accessibilityLabel={`Verification rank: ${tierLabel}. ${nextTier ? `${Math.ceil(nextTier - score)} more to reach next tier.` : "Maximum tier reached."}`}
-            accessibilityRole="text"
-          >
-            <Feather
-              name="award"
-              size={16}
-              color={theme.success}
-              accessible={false}
-            />
-            <ThemedText
-              type="body"
-              style={{ color: theme.success, fontWeight: "600" }}
-            >
-              {tierLabel}
-            </ThemedText>
-            {nextTier && (
-              <ThemedText type="small" style={{ color: theme.textSecondary }}>
-                {Math.ceil(nextTier - score)} more to next rank
-              </ThemedText>
-            )}
-          </View>
-        );
-      })()}
-
-      {/* Action Buttons */}
-      <Animated.View
-        entering={
-          reducedMotion ? undefined : FadeInDown.delay(250).duration(400)
-        }
-      >
-        <ActionButtonsRow
-          onEditProfile={handleEditProfile}
-          onGearPress={handleGearPress}
-        />
-      </Animated.View>
-
-      {/* Separator */}
-      <View style={[styles.separator, { backgroundColor: theme.border }]} />
-
-      {/* Photo Grid */}
-      <Animated.View
-        entering={
-          reducedMotion ? undefined : FadeInDown.delay(300).duration(400)
-        }
-      >
-        <PhotoGrid
-          recipes={featuredRecipes ?? []}
-          onRecipePress={handleRecipePress}
-        />
-      </Animated.View>
-
-      {/* Settings */}
-      <Animated.View
-        entering={
-          reducedMotion ? undefined : FadeInDown.delay(400).duration(400)
-        }
-        onLayout={(e) => {
-          handleSettingsLayout(e.nativeEvent.layout.y);
+    <View style={[styles.root, { backgroundColor: theme.backgroundRoot }]}>
+      <ScrollView
+        contentContainerStyle={{
+          paddingBottom: tabBarHeight + FAB_CLEARANCE + Spacing.lg,
         }}
       >
-        <SettingsSection
-          themePreference={themePreference}
-          onWeightTracking={handleWeightTracking}
-          onDietaryProfile={handleDietaryProfile}
-          onGLP1Companion={handleGLP1Companion}
-          onNutritionGoals={handleNutritionGoals}
-          onLibrary={handleLibrary}
-          onScanHistory={handleScanHistory}
-          onThemeToggle={handleThemeToggle}
-          onSubscription={handleSubscription}
-          onLogout={handleLogout}
-          onLockedPress={handleLockedPress}
-        />
-      </Animated.View>
+        {/* 1. Profile Card */}
+        <Animated.View entering={getEntering(0)}>
+          <ProfileCard
+            displayName={user.displayName || ""}
+            username={user.username}
+            avatarUrl={user.avatarUrl || null}
+            compositeScore={verificationData?.compositeScore ?? 0}
+            isUploadingAvatar={isUploadingAvatar}
+            onAvatarPress={handleAvatarPress}
+            onGearPress={handleGearPress}
+          />
+        </Animated.View>
+
+        {/* 2. Mini Widget Row */}
+        {widgetData && (
+          <Animated.View entering={getEntering(1)} style={styles.widgetSection}>
+            <MiniWidgetRow
+              widgets={widgetData}
+              weightUnlocked={weightUnlocked}
+              onCaloriePress={handleCaloriePress}
+              onFastingPress={handleFastingPress}
+              onWeightPress={
+                weightUnlocked ? handleWeightPress : handleLockedPress
+              }
+            />
+          </Animated.View>
+        )}
+
+        {/* 3. Library Grid */}
+        {libraryCounts && (
+          <Animated.View
+            entering={getEntering(2)}
+            style={styles.librarySection}
+          >
+            <LibraryGrid
+              counts={libraryCounts}
+              onLockedPress={handleLockedPress}
+            />
+          </Animated.View>
+        )}
+
+        {/* 4. Inline Settings */}
+        <Animated.View entering={getEntering(3)} style={styles.settingsSection}>
+          <InlineSettings
+            themePreference={themePreference}
+            onThemeToggle={handleThemeToggle}
+            onDietaryProfile={handleDietaryProfile}
+          />
+        </Animated.View>
+      </ScrollView>
 
       <UpgradeModal
         visible={showUpgradeModal}
         onClose={handleCloseUpgradeModal}
       />
-    </ScrollView>
+    </View>
+  );
+}
+
+/** Skeleton loading state matching hub layout */
+function ProfileSkeleton({ theme }: { theme: any }) {
+  const insets = useSafeAreaInsets();
+  return (
+    <View style={[styles.root, { backgroundColor: theme.backgroundRoot }]}>
+      {/* Profile card skeleton */}
+      <View
+        style={[
+          styles.skeletonCard,
+          {
+            backgroundColor: theme.backgroundSecondary,
+            paddingTop: insets.top + Spacing.lg,
+          },
+        ]}
+      >
+        <View style={styles.skeletonRow}>
+          <SkeletonBox width={48} height={48} borderRadius={24} />
+          <View style={styles.skeletonInfo}>
+            <SkeletonBox width={120} height={18} borderRadius={4} />
+            <SkeletonBox width={80} height={28} borderRadius={14} />
+          </View>
+        </View>
+      </View>
+      {/* Widget row skeleton */}
+      <View style={styles.skeletonWidgetRow}>
+        <SkeletonBox
+          width="100%"
+          height={88}
+          borderRadius={15}
+          style={{ flex: 1 }}
+        />
+        <SkeletonBox
+          width="100%"
+          height={88}
+          borderRadius={15}
+          style={{ flex: 1 }}
+        />
+        <SkeletonBox
+          width="100%"
+          height={88}
+          borderRadius={15}
+          style={{ flex: 1 }}
+        />
+      </View>
+      {/* Grid skeleton */}
+      <View style={styles.skeletonGrid}>
+        <View style={styles.skeletonGridRow}>
+          <SkeletonBox
+            width="100%"
+            height={72}
+            borderRadius={15}
+            style={{ flex: 1 }}
+          />
+          <SkeletonBox
+            width="100%"
+            height={72}
+            borderRadius={15}
+            style={{ flex: 1 }}
+          />
+        </View>
+        <View style={styles.skeletonGridRow}>
+          <SkeletonBox
+            width="100%"
+            height={72}
+            borderRadius={15}
+            style={{ flex: 1 }}
+          />
+          <SkeletonBox
+            width="100%"
+            height={72}
+            borderRadius={15}
+            style={{ flex: 1 }}
+          />
+        </View>
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  // Cover photo
-  coverContainer: {
-    width: "100%",
-    position: "relative",
-  },
-  coverImage: {
-    width: "100%",
-    height: "100%",
-  },
-  coverGradientTop: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    top: 0,
-  },
-  coverGradientBottom: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-
-  // Avatar
-  profileInfoContainer: {
-    alignItems: "center",
-    paddingHorizontal: Spacing.lg,
-  },
-  avatarRing: {
-    width: AVATAR_RING_SIZE,
-    height: AVATAR_RING_SIZE,
-    borderRadius: AVATAR_RING_SIZE / 2,
-    borderWidth: 1.5,
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: -(AVATAR_RING_SIZE / 2),
-    position: "relative",
-  },
-  avatarImage: {
-    width: AVATAR_SIZE,
-    height: AVATAR_SIZE,
-    borderRadius: AVATAR_SIZE / 2,
-  },
-  avatarPlaceholder: {
-    width: AVATAR_SIZE,
-    height: AVATAR_SIZE,
-    borderRadius: AVATAR_SIZE / 2,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  avatarCameraBadge: {
-    position: "absolute",
-    bottom: -2,
-    right: -2,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 2,
-  },
-
-  // User name & bio
-  userNameBioContainer: {
-    alignItems: "center",
-    marginTop: Spacing.sm,
-  },
-  userNameText: {
-    textAlign: "center",
-  },
-  bioText: {
-    textAlign: "center",
-    marginTop: 2,
-  },
-
-  // Stats row
-  tierBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: Spacing.sm,
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.lg,
-    marginHorizontal: Spacing.lg,
-    marginBottom: Spacing.sm,
-    borderRadius: BorderRadius.full,
-  },
-  statsRow: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    paddingVertical: Spacing.lg,
-    paddingHorizontal: Spacing.lg,
-    gap: Spacing.xl,
-  },
-  statItem: {
-    alignItems: "center",
-  },
-  statNumber: {
-    fontSize: 16,
-    fontFamily: FontFamily.medium,
-    fontWeight: "500",
-  },
-  statLabel: {
-    fontSize: 12,
-    fontFamily: FontFamily.regular,
-    fontWeight: "400",
-  },
-  statDivider: {
-    width: 1,
-    height: 14,
-  },
-
-  // Action buttons
-  actionButtonsRow: {
-    flexDirection: "row",
-    paddingHorizontal: Spacing.lg,
-    gap: Spacing.sm,
-  },
-  editProfileButton: {
+  root: {
     flex: 1,
-    height: 44,
-    borderRadius: BorderRadius.xs,
-    justifyContent: "center",
-    alignItems: "center",
   },
-  editProfileButtonText: {
-    fontSize: 14,
-    fontFamily: FontFamily.medium,
-    fontWeight: "500",
+  widgetSection: {
+    marginTop: Spacing.xl,
   },
-  gearButton: {
-    width: 44,
-    height: 44,
-    borderRadius: BorderRadius.xs,
-    justifyContent: "center",
-    alignItems: "center",
+  librarySection: {
+    marginTop: Spacing["3xl"],
   },
-
-  // Separator
-  separator: {
-    height: 1,
-    marginHorizontal: Spacing.lg,
-    marginTop: Spacing.lg,
-  },
-
-  // Photo grid
-  photoGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.lg,
-    gap: GRID_GAP,
-  },
-  gridItem: {
-    height: GRID_ITEM_HEIGHT,
-    borderRadius: BorderRadius.sm,
-    overflow: "hidden",
-    position: "relative",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  gridItemContent: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  gridItemGradient: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: 60,
-  },
-  gridItemName: {
-    position: "absolute",
-    bottom: 8,
-    left: 12,
-    color: "#FFFFFF", // hardcoded — always white over dark gradient overlay
-    fontSize: 12,
-    fontFamily: FontFamily.medium,
-    fontWeight: "500",
-  },
-
-  // Settings section
   settingsSection: {
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.xl,
+    marginTop: Spacing["3xl"],
   },
-  settingsSectionTitle: {
-    marginBottom: Spacing.md,
+  // Skeleton styles
+  skeletonCard: {
+    padding: Spacing.lg,
   },
-  settingsCard: {
-    padding: 0,
-    overflow: "hidden",
-  },
-  settingsItem: {
+  skeletonRow: {
     flexDirection: "row",
     alignItems: "center",
-    padding: Spacing.lg,
     gap: Spacing.md,
   },
-  settingsIconWrapper: {
-    position: "relative",
+  skeletonInfo: {
+    gap: Spacing.sm,
   },
-  settingsIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: BorderRadius.xs,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  lockBadge: {
-    position: "absolute",
-    bottom: -2,
-    right: -2,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  settingsContent: {
-    flex: 1,
-  },
-  settingsValue: {
-    opacity: 0.6,
-  },
-  divider: {
-    height: 1,
-    marginLeft: Spacing.lg + 40 + Spacing.md,
-  },
-
-  // Skeleton
-  skeletonAvatarRow: {
-    alignItems: "center",
-    marginTop: -(AVATAR_RING_SIZE / 2),
-  },
-  skeletonNameRow: {
-    alignItems: "center",
-    marginTop: Spacing.sm,
-  },
-  skeletonStatsRow: {
+  skeletonWidgetRow: {
     flexDirection: "row",
-    justifyContent: "center",
-    gap: Spacing["2xl"],
-    marginTop: Spacing.lg,
+    gap: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    marginTop: Spacing.xl,
+  },
+  skeletonGrid: {
+    gap: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    marginTop: Spacing["3xl"],
   },
   skeletonGridRow: {
     flexDirection: "row",
-    paddingHorizontal: Spacing.lg,
-    gap: GRID_GAP,
-    marginTop: GRID_GAP,
+    gap: Spacing.md,
   },
 });

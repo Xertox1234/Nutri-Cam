@@ -78,8 +78,10 @@ export function CollapsibleSection({
         </Animated.View>
       </Pressable>
 
-      <Animated.View style={animatedStyle}>
-        <View onLayout={onContentLayout}>{children}</View>
+      <Animated.View style={[animatedStyle, styles.clipContainer]}>
+        <View style={styles.contentWrapper} onLayout={onContentLayout}>
+          {children}
+        </View>
       </Animated.View>
     </View>
   );
@@ -96,6 +98,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.md,
     minHeight: 44,
+  },
+  clipContainer: {
+    overflow: "hidden",
+  },
+  contentWrapper: {
+    // Position absolute ensures the content is laid out and measured
+    // even when the parent animated view has height 0. Without this,
+    // onLayout may not fire, leaving contentHeight at 0.
+    position: "absolute",
+    width: "100%",
   },
   title: {
     fontFamily: FontFamily.semiBold,
