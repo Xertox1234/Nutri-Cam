@@ -2,6 +2,7 @@ import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 
 import ProfileScreen from "@/screens/ProfileScreen";
+import SettingsScreen from "@/screens/SettingsScreen";
 import SavedItemsScreen from "@/screens/SavedItemsScreen";
 import HistoryScreen from "@/screens/HistoryScreen";
 import ItemDetailScreen from "@/screens/ItemDetailScreen";
@@ -12,6 +13,7 @@ import { useScreenOptions } from "@/hooks/useScreenOptions";
 
 export type ProfileStackParamList = {
   Profile: undefined;
+  Settings: undefined;
   SavedItems: undefined;
   ScanHistory: { showAll?: boolean } | undefined;
   ItemDetail: { itemId: number };
@@ -34,21 +36,10 @@ export default function ProfileStackNavigator() {
         }}
       />
       <Stack.Screen
-        name="HealthKitSettings"
-        component={HealthKitSettingsScreen}
+        name="Settings"
+        component={SettingsScreen}
         options={{
-          headerTitle: () => (
-            <HeaderTitle title="Apple Health" showIcon={false} />
-          ),
-        }}
-      />
-      <Stack.Screen
-        name="GLP1Companion"
-        component={GLP1CompanionScreen}
-        options={{
-          headerTitle: () => (
-            <HeaderTitle title="GLP-1 Companion" showIcon={false} />
-          ),
+          headerTitle: () => <HeaderTitle title="Settings" showIcon={false} />,
         }}
       />
       <Stack.Screen
@@ -74,6 +65,24 @@ export default function ProfileStackNavigator() {
         options={{
           headerTitle: () => (
             <HeaderTitle title="Item Details" showIcon={false} />
+          ),
+        }}
+      />
+      <Stack.Screen
+        name="HealthKitSettings"
+        component={HealthKitSettingsScreen}
+        options={{
+          headerTitle: () => (
+            <HeaderTitle title="Apple Health" showIcon={false} />
+          ),
+        }}
+      />
+      <Stack.Screen
+        name="GLP1Companion"
+        component={GLP1CompanionScreen}
+        options={{
+          headerTitle: () => (
+            <HeaderTitle title="GLP-1 Companion" showIcon={false} />
           ),
         }}
       />

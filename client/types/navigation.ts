@@ -48,6 +48,19 @@ export type HomeScreenNavigationProp = CompositeNavigationProp<
 >;
 
 /**
+ * Navigation prop for ProfileScreen and SettingsScreen.
+ * 3-level composite: ProfileStack → MainTab → RootStack.
+ * Allows navigating to other tabs (HomeTab, MealPlanTab) and root-level modals.
+ */
+export type ProfileScreenNavigationProp = CompositeNavigationProp<
+  NativeStackNavigationProp<ProfileStackParamList, "Profile">,
+  CompositeNavigationProp<
+    BottomTabNavigationProp<MainTabParamList, "ProfileTab">,
+    NativeStackNavigationProp<RootStackParamList>
+  >
+>;
+
+/**
  * Navigation prop for ScanScreen
  * Now a RootStack modal — can navigate to NutritionDetail, goBack, etc.
  */
