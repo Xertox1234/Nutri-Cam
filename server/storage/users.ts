@@ -83,9 +83,31 @@ export async function createUser(insertUser: InsertUser): Promise<User> {
   return user;
 }
 
+/** Whitelist of fields callers may update on a user.
+ *  Excludes dangerous fields: id, username, password, tokenVersion,
+ *  subscriptionTier, subscriptionExpiresAt, createdAt. */
+export type UpdatableUserFields = Pick<
+  User,
+  | "weight"
+  | "height"
+  | "age"
+  | "gender"
+  | "displayName"
+  | "avatarUrl"
+  | "dailyCalorieGoal"
+  | "dailyProteinGoal"
+  | "dailyCarbsGoal"
+  | "dailyFatGoal"
+  | "goalWeight"
+  | "goalsCalculatedAt"
+  | "adaptiveGoalsEnabled"
+  | "lastGoalAdjustmentAt"
+  | "onboardingCompleted"
+>;
+
 export async function updateUser(
   id: string,
-  updates: Partial<User>,
+  updates: Partial<UpdatableUserFields>,
 ): Promise<User | undefined> {
   const [user] = await db
     .update(users)
@@ -93,6 +115,42 @@ export async function updateUser(
     .where(eq(users.id, id))
     .returning();
   return user || undefined;
+}
+
+/**
+ * Atomically update user goals AND upsert profile data in a single transaction.
+ * Prevents partial writes where one table is updated but the other fails.
+ */
+export async function updateUserGoalsAndProfile(
+  userId: string,
+  userUpdates: Partial<UpdatableUserFields>,
+  profileData: Omit<InsertUserProfile, "userId">,
+): Promise<User | undefined> {
+  return db.transaction(async (tx) => {
+    const [user] = await tx
+      .update(users)
+      .set(userUpdates)
+      .where(eq(users.id, userId))
+      .returning();
+
+    if (!user) return undefined;
+
+    const [existing] = await tx
+      .select()
+      .from(userProfiles)
+      .where(eq(userProfiles.userId, userId));
+
+    if (existing) {
+      await tx
+        .update(userProfiles)
+        .set({ ...profileData, updatedAt: new Date() })
+        .where(eq(userProfiles.userId, userId));
+    } else {
+      await tx.insert(userProfiles).values({ ...profileData, userId });
+    }
+
+    return user;
+  });
 }
 
 /**

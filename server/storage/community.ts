@@ -75,7 +75,7 @@ export async function getCommunityRecipes(
     .select()
     .from(communityRecipes)
     .where(and(...conditions))
-    .orderBy(desc(communityRecipes.likeCount), desc(communityRecipes.createdAt))
+    .orderBy(desc(communityRecipes.createdAt))
     .limit(10);
 }
 

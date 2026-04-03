@@ -30,6 +30,12 @@ vi.mock("../../services/voice-transcription", () => ({
   transcribeAudio: vi.fn(),
 }));
 
+// Valid MP4/M4A magic bytes: 4 size bytes + "ftyp" at offset 4
+const VALID_M4A_HEADER = Buffer.from([
+  0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70, 0x4d, 0x34, 0x41, 0x20, 0x00,
+  0x00, 0x00, 0x00,
+]);
+
 function createApp() {
   const app = express();
   app.use(express.json());
@@ -164,7 +170,7 @@ describe("Food Routes", () => {
       const res = await request(app)
         .post("/api/food/transcribe")
         .set("Authorization", "Bearer token")
-        .attach("audio", Buffer.from("fake-audio-data"), {
+        .attach("audio", VALID_M4A_HEADER, {
           filename: "test.m4a",
           contentType: "audio/m4a",
         });
@@ -184,7 +190,7 @@ describe("Food Routes", () => {
       const res = await request(app)
         .post("/api/food/transcribe")
         .set("Authorization", "Bearer token")
-        .attach("audio", Buffer.from("silence"), {
+        .attach("audio", VALID_M4A_HEADER, {
           filename: "test.m4a",
           contentType: "audio/m4a",
         });

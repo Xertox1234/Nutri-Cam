@@ -8,13 +8,13 @@ import {
   checkPremiumFeature,
   checkAiConfigured,
   createImageUpload,
+  handleRouteError,
   menuRateLimit,
   crudRateLimit,
   parsePositiveIntParam,
   parseQueryInt,
 } from "./_helpers";
 import { detectImageMimeType } from "../lib/image-mime";
-import { logger, toError } from "../lib/logger";
 
 const menuUpload = createImageUpload(5 * 1024 * 1024);
 
@@ -69,8 +69,7 @@ export function register(app: Express): void {
 
         res.json({ ...result, id: saved.id });
       } catch (error) {
-        logger.error({ err: toError(error) }, "menu scan error");
-        sendError(res, 500, "Failed to analyze menu", ErrorCode.INTERNAL_ERROR);
+        handleRouteError(res, error, "analyze menu");
       }
     },
   );
@@ -94,13 +93,7 @@ export function register(app: Express): void {
         const scans = await storage.getMenuScans(req.userId, limit);
         res.json(scans);
       } catch (error) {
-        logger.error({ err: toError(error) }, "get menu history error");
-        sendError(
-          res,
-          500,
-          "Failed to get menu history",
-          ErrorCode.INTERNAL_ERROR,
-        );
+        handleRouteError(res, error, "get menu history");
       }
     },
   );
@@ -131,13 +124,7 @@ export function register(app: Express): void {
           );
         res.status(204).send();
       } catch (error) {
-        logger.error({ err: toError(error) }, "delete menu scan error");
-        sendError(
-          res,
-          500,
-          "Failed to delete menu scan",
-          ErrorCode.INTERNAL_ERROR,
-        );
+        handleRouteError(res, error, "delete menu scan");
       }
     },
   );

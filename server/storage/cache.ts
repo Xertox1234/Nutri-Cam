@@ -7,12 +7,13 @@ import {
   mealSuggestionCache,
   micronutrientCache,
   carouselSuggestionCache,
+  coachResponseCache,
 } from "@shared/schema";
 import type { MealSuggestion } from "@shared/types/meal-suggestions";
 import { db } from "../db";
 import { fireAndForget } from "../lib/fire-and-forget";
 import { logger, toError } from "../lib/logger";
-import { eq, and, gte, gt, lt, lte, sql } from "drizzle-orm";
+import { eq, and, gte, gt, lt, lte, sql, inArray } from "drizzle-orm";
 import { getDayBounds } from "./helpers";
 
 // ============================================================================
@@ -310,6 +311,7 @@ export async function purgeExpiredCacheRows(): Promise<number> {
     suggestionCache,
     mealSuggestionCache,
     carouselSuggestionCache,
+    coachResponseCache,
   ] as const;
 
   let totalDeleted = 0;
@@ -334,4 +336,93 @@ export function startCacheCleanupJob(): ReturnType<typeof setInterval> {
       logger.error({ err: toError(err) }, "cache cleanup error");
     });
   }, CLEANUP_INTERVAL_MS);
+}
+
+// ============================================================================
+// NUTRITION CACHE
+// ============================================================================
+
+/**
+ * Get cached nutrition data for a batch of query keys.
+ * Returns a Map from the original query string to the cached data (with source set to "cache").
+ */
+export async function getNutritionCacheBatch(
+  items: string[],
+  normalizeKey: (query: string) => string,
+): Promise<Map<string, { data: unknown; source: "cache" }>> {
+  const results = new Map<string, { data: unknown; source: "cache" }>();
+  if (items.length === 0) return results;
+
+  const normalizedKeys = items.map(normalizeKey);
+  const now = new Date();
+
+  const cached = await db
+    .select()
+    .from(nutritionCache)
+    .where(
+      and(
+        inArray(nutritionCache.queryKey, normalizedKeys),
+        gt(nutritionCache.expiresAt, now),
+      ),
+    );
+
+  for (const entry of cached) {
+    const index = normalizedKeys.indexOf(entry.queryKey);
+    if (index !== -1) {
+      results.set(items[index], { data: entry.data, source: "cache" });
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Cache a single nutrition lookup result (upsert).
+ */
+export async function setNutritionCache(
+  queryKey: string,
+  normalizedName: string,
+  source: string,
+  data: unknown,
+  expiresAt: Date,
+): Promise<void> {
+  await db
+    .insert(nutritionCache)
+    .values({
+      queryKey,
+      normalizedName,
+      source,
+      data,
+      expiresAt,
+    })
+    .onConflictDoUpdate({
+      target: nutritionCache.queryKey,
+      set: {
+        data,
+        expiresAt,
+      },
+    });
+}
+
+/**
+ * Cache a nutrition result only if not already present (insert-or-ignore).
+ * Used for seeding cache without overwriting existing entries.
+ */
+export async function setNutritionCacheIfAbsent(
+  queryKey: string,
+  normalizedName: string,
+  source: string,
+  data: unknown,
+  expiresAt: Date,
+): Promise<void> {
+  await db
+    .insert(nutritionCache)
+    .values({
+      queryKey,
+      normalizedName,
+      source,
+      data,
+      expiresAt,
+    })
+    .onConflictDoNothing({ target: nutritionCache.queryKey });
 }

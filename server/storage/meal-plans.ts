@@ -1013,3 +1013,70 @@ export async function getMealPlanIngredientsForDateRange(
     .from(recipeIngredients)
     .where(inArray(recipeIngredients.recipeId, recipeIds));
 }
+
+// ============================================================================
+// MEAL TYPE BACKFILL (used by meal-type-inference service)
+// ============================================================================
+
+/**
+ * Get recipes with empty or null mealTypes, along with their ingredients.
+ * Used by the meal-type inference backfill job.
+ */
+export async function getRecipesWithEmptyMealTypes(): Promise<{
+  recipes: { id: number; title: string }[];
+  ingredientsByRecipe: Map<number, string[]>;
+}> {
+  const recipes = await db
+    .select({
+      id: mealPlanRecipes.id,
+      title: mealPlanRecipes.title,
+    })
+    .from(mealPlanRecipes)
+    .where(
+      sql`${mealPlanRecipes.mealTypes}::jsonb = '[]'::jsonb OR ${mealPlanRecipes.mealTypes} IS NULL`,
+    );
+
+  if (recipes.length === 0) {
+    return { recipes: [], ingredientsByRecipe: new Map() };
+  }
+
+  const recipeIds = recipes.map((r) => r.id);
+  const allIngredients = await db
+    .select({
+      recipeId: recipeIngredients.recipeId,
+      name: recipeIngredients.name,
+    })
+    .from(recipeIngredients)
+    .where(sql`${recipeIngredients.recipeId} = ANY(${recipeIds})`);
+
+  const ingredientsByRecipe = new Map<number, string[]>();
+  for (const ing of allIngredients) {
+    const existing = ingredientsByRecipe.get(ing.recipeId) ?? [];
+    existing.push(ing.name);
+    ingredientsByRecipe.set(ing.recipeId, existing);
+  }
+
+  return { recipes, ingredientsByRecipe };
+}
+
+/**
+ * Update mealTypes for multiple recipes in a single transaction.
+ */
+export async function batchUpdateMealTypes(
+  updates: { id: number; mealTypes: string[] }[],
+): Promise<number> {
+  if (updates.length === 0) return 0;
+
+  let updated = 0;
+  await db.transaction(async (tx) => {
+    for (const { id, mealTypes } of updates) {
+      await tx
+        .update(mealPlanRecipes)
+        .set({ mealTypes })
+        .where(eq(mealPlanRecipes.id, id));
+      updated++;
+    }
+  });
+
+  return updated;
+}

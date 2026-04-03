@@ -31,23 +31,12 @@ export const MiniWidgetRow = React.memo(function MiniWidgetRow({
   const { theme } = useTheme();
   const { dailyBudget, fasting, latestWeight } = widgets;
 
-  // Tick every 60s while fasting to keep elapsed time fresh
-  const [, setTick] = useState(0);
-  useEffect(() => {
-    if (!fasting.currentFast) return;
-    const id = setInterval(() => setTick((t) => t + 1), 60_000);
-    return () => clearInterval(id);
-  }, [fasting.currentFast]);
-
   const calorieProgress =
     dailyBudget.calorieGoal > 0
       ? dailyBudget.foodCalories / dailyBudget.calorieGoal
       : 0;
 
   const caloriePercent = Math.round(calorieProgress * 100);
-
-  // Fasting display logic
-  const fastingLabel = getFastingLabel(fasting);
 
   return (
     <View style={styles.row}>
@@ -86,44 +75,7 @@ export const MiniWidgetRow = React.memo(function MiniWidgetRow({
       </Pressable>
 
       {/* Fasting Widget */}
-      <Pressable
-        onPress={onFastingPress}
-        accessibilityRole="button"
-        accessibilityLabel={`Fasting: ${fastingLabel}`}
-        accessibilityHint="Opens fasting details"
-        style={[
-          styles.widget,
-          { backgroundColor: withOpacity(theme.link, 0.06) },
-        ]}
-      >
-        <View
-          importantForAccessibility="no-hide-descendants"
-          accessible={false}
-        >
-          <Feather
-            name="clock"
-            size={22}
-            color={fasting.currentFast ? theme.link : theme.textSecondary}
-          />
-          <ThemedText
-            style={[
-              styles.widgetValue,
-              { color: fasting.currentFast ? theme.link : theme.textSecondary },
-            ]}
-          >
-            {getFastingTime(fasting)}
-          </ThemedText>
-          <ThemedText
-            style={[styles.widgetLabel, { color: theme.textSecondary }]}
-          >
-            {fasting.currentFast
-              ? "Fasting"
-              : fasting.schedule
-                ? "Eating"
-                : "Set up"}
-          </ThemedText>
-        </View>
-      </Pressable>
+      <FastingWidget fasting={fasting} onPress={onFastingPress} />
 
       {/* Weight Widget */}
       <Pressable
@@ -169,6 +121,64 @@ export const MiniWidgetRow = React.memo(function MiniWidgetRow({
         </View>
       </Pressable>
     </View>
+  );
+});
+
+const FastingWidget = React.memo(function FastingWidget({
+  fasting,
+  onPress,
+}: {
+  fasting: ProfileWidgetsResponse["fasting"];
+  onPress: () => void;
+}) {
+  const { theme } = useTheme();
+
+  // Tick every 60s while fasting to keep elapsed time fresh
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!fasting.currentFast) return;
+    const id = setInterval(() => setTick((t) => t + 1), 60_000);
+    return () => clearInterval(id);
+  }, [fasting.currentFast]);
+
+  const fastingLabel = getFastingLabel(fasting);
+
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Fasting: ${fastingLabel}`}
+      accessibilityHint="Opens fasting details"
+      style={[
+        styles.widget,
+        { backgroundColor: withOpacity(theme.link, 0.06) },
+      ]}
+    >
+      <View importantForAccessibility="no-hide-descendants" accessible={false}>
+        <Feather
+          name="clock"
+          size={22}
+          color={fasting.currentFast ? theme.link : theme.textSecondary}
+        />
+        <ThemedText
+          style={[
+            styles.widgetValue,
+            { color: fasting.currentFast ? theme.link : theme.textSecondary },
+          ]}
+        >
+          {getFastingTime(fasting)}
+        </ThemedText>
+        <ThemedText
+          style={[styles.widgetLabel, { color: theme.textSecondary }]}
+        >
+          {fasting.currentFast
+            ? "Fasting"
+            : fasting.schedule
+              ? "Eating"
+              : "Set up"}
+        </ThemedText>
+      </View>
+    </Pressable>
   );
 });
 

@@ -24,7 +24,33 @@ import { createServiceLogger, toError } from "../lib/logger";
 // Import shared type for use in this file, and re-export for consumers
 import type { LabelExtractionResult } from "@shared/types/label-analysis";
 
+// Import shared types for local use, re-export for existing consumers
+import type { FoodItem, AnalysisResult } from "@shared/types/photo-analysis";
+
 const log = createServiceLogger("photo-analysis");
+
+/** Default empty label result for validation failures and error cases */
+const EMPTY_LABEL_RESULT: LabelExtractionResult = {
+  servingSize: null,
+  servingsPerContainer: null,
+  calories: null,
+  totalFat: null,
+  saturatedFat: null,
+  transFat: null,
+  cholesterol: null,
+  sodium: null,
+  totalCarbs: null,
+  dietaryFiber: null,
+  totalSugars: null,
+  addedSugars: null,
+  protein: null,
+  vitaminD: null,
+  calcium: null,
+  iron: null,
+  potassium: null,
+  confidence: 0,
+  productName: null,
+};
 
 // Zod schemas for runtime validation (from institutional learning: unsafe-type-cast-zod-validation)
 const foodItemSchema = z.object({
@@ -42,9 +68,7 @@ const analysisResultSchema = z.object({
   overallConfidence: z.number().min(0).max(1),
   followUpQuestions: z.array(z.string()),
 });
-
-export type FoodItem = z.infer<typeof foodItemSchema>;
-export type AnalysisResult = z.infer<typeof analysisResultSchema>;
+export type { FoodItem, AnalysisResult };
 
 // Confidence threshold for triggering follow-up questions
 const CONFIDENCE_THRESHOLD = 0.7;
@@ -396,27 +420,7 @@ export async function analyzeLabelPhoto(
         { zodErrors: parsed.error.flatten() },
         "label extraction validation failed",
       );
-      return {
-        servingSize: null,
-        servingsPerContainer: null,
-        calories: null,
-        totalFat: null,
-        saturatedFat: null,
-        transFat: null,
-        cholesterol: null,
-        sodium: null,
-        totalCarbs: null,
-        dietaryFiber: null,
-        totalSugars: null,
-        addedSugars: null,
-        protein: null,
-        vitaminD: null,
-        calcium: null,
-        iron: null,
-        potassium: null,
-        confidence: 0,
-        productName: null,
-      };
+      return { ...EMPTY_LABEL_RESULT };
     }
 
     log.debug(
@@ -426,27 +430,7 @@ export async function analyzeLabelPhoto(
     return parsed.data;
   } catch (error) {
     log.error({ err: toError(error) }, "label analysis error");
-    return {
-      servingSize: null,
-      servingsPerContainer: null,
-      calories: null,
-      totalFat: null,
-      saturatedFat: null,
-      transFat: null,
-      cholesterol: null,
-      sodium: null,
-      totalCarbs: null,
-      dietaryFiber: null,
-      totalSugars: null,
-      addedSugars: null,
-      protein: null,
-      vitaminD: null,
-      calcium: null,
-      iron: null,
-      potassium: null,
-      confidence: 0,
-      productName: null,
-    };
+    return { ...EMPTY_LABEL_RESULT };
   }
 }
 
@@ -564,7 +548,8 @@ export async function refineAnalysis(
   question: string,
   answer: string,
 ): Promise<AnalysisResult> {
-  // Sanitize user answer before interpolation into prompt
+  // Sanitize user inputs before interpolation into prompt
+  const sanitizedQuestion = sanitizeUserInput(question);
   const sanitizedAnswer = sanitizeUserInput(answer);
 
   try {
@@ -603,7 +588,7 @@ Update the food names, quantities, confidence, and categories based on the user'
           },
           {
             role: "user",
-            content: `Question: "${question}"\nAnswer: "${sanitizedAnswer}"\n\nUpdate the analysis based on this clarification.`,
+            content: `Question: "${sanitizedQuestion}"\nAnswer: "${sanitizedAnswer}"\n\nUpdate the analysis based on this clarification.`,
           },
         ],
         response_format: { type: "json_object" },

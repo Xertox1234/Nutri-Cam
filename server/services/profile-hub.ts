@@ -1,5 +1,6 @@
 import { storage } from "../storage";
 import { DEFAULT_NUTRITION_GOALS } from "@shared/constants/nutrition";
+import type { FastingSchedule, FastingLog } from "@shared/schema";
 
 export interface ProfileWidgetData {
   dailyBudget: {
@@ -8,8 +9,8 @@ export interface ProfileWidgetData {
     remaining: number;
   };
   fasting: {
-    schedule: unknown;
-    currentFast: unknown;
+    schedule: FastingSchedule | null;
+    currentFast: FastingLog | null;
   };
   latestWeight: {
     value: number;

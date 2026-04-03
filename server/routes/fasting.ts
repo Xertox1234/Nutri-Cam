@@ -1,12 +1,17 @@
 import type { Express, Response } from "express";
 import { z } from "zod";
-import { fastingRateLimit, formatZodError, parseQueryInt } from "./_helpers";
+import {
+  fastingRateLimit,
+  formatZodError,
+  handleRouteError,
+  parseQueryInt,
+} from "./_helpers";
 import { sendError } from "../lib/api-errors";
 import { ErrorCode } from "@shared/constants/error-codes";
 import { storage } from "../storage";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/auth";
 import { calculateFastingStats } from "../services/fasting-stats";
-import { logger, toError } from "../lib/logger";
+import { toError } from "../lib/logger";
 
 export function register(app: Express): void {
   // GET /api/fasting/schedule
@@ -19,13 +24,7 @@ export function register(app: Express): void {
         const schedule = await storage.getFastingSchedule(req.userId);
         res.json(schedule || null);
       } catch (error) {
-        logger.error({ err: toError(error) }, "failed to get fasting schedule");
-        sendError(
-          res,
-          500,
-          "Failed to get fasting schedule",
-          ErrorCode.INTERNAL_ERROR,
-        );
+        handleRouteError(res, error, "get fasting schedule");
       }
     },
   );
@@ -69,16 +68,7 @@ export function register(app: Express): void {
         );
         res.json(result);
       } catch (error) {
-        logger.error(
-          { err: toError(error) },
-          "failed to update fasting schedule",
-        );
-        sendError(
-          res,
-          500,
-          "Failed to update fasting schedule",
-          ErrorCode.INTERNAL_ERROR,
-        );
+        handleRouteError(res, error, "update fasting schedule");
       }
     },
   );
@@ -118,8 +108,7 @@ export function register(app: Express): void {
             ErrorCode.CONFLICT,
           );
         }
-        logger.error({ err }, "failed to start fast");
-        sendError(res, 500, "Failed to start fast", ErrorCode.INTERNAL_ERROR);
+        handleRouteError(res, error, "start fast");
       }
     },
   );
@@ -161,8 +150,7 @@ export function register(app: Express): void {
         );
         res.json(updated);
       } catch (error) {
-        logger.error({ err: toError(error) }, "failed to end fast");
-        sendError(res, 500, "Failed to end fast", ErrorCode.INTERNAL_ERROR);
+        handleRouteError(res, error, "end fast");
       }
     },
   );
@@ -177,13 +165,7 @@ export function register(app: Express): void {
         const active = await storage.getActiveFastingLog(req.userId);
         res.json(active || null);
       } catch (error) {
-        logger.error({ err: toError(error) }, "failed to get current fast");
-        sendError(
-          res,
-          500,
-          "Failed to get current fast",
-          ErrorCode.INTERNAL_ERROR,
-        );
+        handleRouteError(res, error, "get current fast");
       }
     },
   );
@@ -201,13 +183,7 @@ export function register(app: Express): void {
         const stats = calculateFastingStats(logs);
         res.json({ logs, stats });
       } catch (error) {
-        logger.error({ err: toError(error) }, "failed to get fasting history");
-        sendError(
-          res,
-          500,
-          "Failed to get fasting history",
-          ErrorCode.INTERNAL_ERROR,
-        );
+        handleRouteError(res, error, "get fasting history");
       }
     },
   );

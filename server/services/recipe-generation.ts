@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import type { UserProfile } from "@shared/schema";
+import { parseUserAllergies } from "@shared/constants/allergens";
 import type {
   RecipeContent,
   GeneratedIngredient,
@@ -109,13 +110,10 @@ function buildDietaryContext(
   const parts: string[] = [];
 
   if (userProfile) {
-    if (
-      userProfile.allergies &&
-      Array.isArray(userProfile.allergies) &&
-      userProfile.allergies.length > 0
-    ) {
-      const allergyNames = (userProfile.allergies as { name: string }[]).map(
-        (a) => sanitizeUserInput(a.name),
+    const parsedAllergies = parseUserAllergies(userProfile.allergies);
+    if (parsedAllergies.length > 0) {
+      const allergyNames = parsedAllergies.map((a) =>
+        sanitizeUserInput(a.name),
       );
       parts.push(`MUST AVOID these allergens: ${allergyNames.join(", ")}`);
     }

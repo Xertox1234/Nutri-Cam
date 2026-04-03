@@ -17,6 +17,7 @@ vi.mock("../../storage", () => ({
     createUserProfile: vi.fn(),
     updateUserProfile: vi.fn(),
     upsertProfileWithOnboarding: vi.fn(),
+    updateUserGoalsAndProfile: vi.fn(),
   },
 }));
 
@@ -74,10 +75,7 @@ describe("Goals Routes", () => {
 
   describe("POST /api/goals/calculate", () => {
     it("calculates goals from physical profile", async () => {
-      vi.mocked(storage.updateUser).mockResolvedValue(mockUser);
-      vi.mocked(storage.upsertProfileWithOnboarding).mockResolvedValue(
-        createMockUserProfile(),
-      );
+      vi.mocked(storage.updateUserGoalsAndProfile).mockResolvedValue(mockUser);
 
       const res = await request(app)
         .post("/api/goals/calculate")
@@ -100,10 +98,7 @@ describe("Goals Routes", () => {
     });
 
     it("upserts profile with activity level and goal", async () => {
-      vi.mocked(storage.updateUser).mockResolvedValue(mockUser);
-      vi.mocked(storage.upsertProfileWithOnboarding).mockResolvedValue(
-        createMockUserProfile(),
-      );
+      vi.mocked(storage.updateUserGoalsAndProfile).mockResolvedValue(mockUser);
 
       const res = await request(app)
         .post("/api/goals/calculate")
@@ -118,8 +113,12 @@ describe("Goals Routes", () => {
         });
 
       expect(res.status).toBe(200);
-      expect(storage.upsertProfileWithOnboarding).toHaveBeenCalledWith(
+      expect(storage.updateUserGoalsAndProfile).toHaveBeenCalledWith(
         mockUser.id,
+        expect.objectContaining({
+          dailyCalorieGoal: expect.any(Number),
+          dailyProteinGoal: expect.any(Number),
+        }),
         expect.objectContaining({
           activityLevel: "sedentary",
           primaryGoal: "lose_weight",

@@ -1,5 +1,9 @@
 import type { Express, Response } from "express";
-import { allergenCheckRateLimit, formatZodError } from "./_helpers";
+import {
+  allergenCheckRateLimit,
+  formatZodError,
+  handleRouteError,
+} from "./_helpers";
 import { sendError } from "../lib/api-errors";
 import { ErrorCode } from "@shared/constants/error-codes";
 import { requireAuth } from "../middleware/auth";
@@ -16,7 +20,6 @@ import type {
 } from "@shared/types/allergen-check";
 import { getSubstitutions } from "../services/ingredient-substitution";
 import type { CookingSessionIngredient } from "@shared/types/cook-session";
-import { logger, toError } from "../lib/logger";
 
 export function register(app: Express): void {
   /**
@@ -105,13 +108,7 @@ export function register(app: Express): void {
         const result: AllergenCheckResult = { matches, substitutions };
         res.json(result);
       } catch (error) {
-        logger.error({ err: toError(error) }, "allergen check error");
-        sendError(
-          res,
-          500,
-          "Failed to check allergens",
-          ErrorCode.INTERNAL_ERROR,
-        );
+        handleRouteError(res, error, "check allergens");
       }
     },
   );

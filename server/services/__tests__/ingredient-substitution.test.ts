@@ -109,7 +109,10 @@ describe("ingredient-substitution", () => {
 
     it("includes allergies", () => {
       const profile = {
-        allergies: [{ name: "Peanuts" }, { name: "Dairy" }],
+        allergies: [
+          { name: "Peanuts", severity: "severe" },
+          { name: "Dairy", severity: "moderate" },
+        ],
       } as UserProfile;
       const summary = buildDietaryProfileSummary(profile);
       expect(summary).toContain("Allergies: Peanuts, Dairy");
@@ -156,7 +159,10 @@ describe("ingredient-substitution", () => {
 
     it("extracts tags from allergies", () => {
       const tags = extractDietaryTags({
-        allergies: [{ name: "Dairy" }, { name: "Gluten" }],
+        allergies: [
+          { name: "Dairy", severity: "moderate" },
+          { name: "Gluten", severity: "moderate" },
+        ],
       } as UserProfile);
       expect(tags).toContain("dairy-free");
       expect(tags).toContain("gluten-free");
@@ -165,7 +171,7 @@ describe("ingredient-substitution", () => {
     it("deduplicates tags", () => {
       const tags = extractDietaryTags({
         dietType: "vegan",
-        allergies: [{ name: "Dairy" }],
+        allergies: [{ name: "Dairy", severity: "moderate" }],
       } as UserProfile);
 
       // "dairy-free" should appear only once

@@ -6,7 +6,7 @@ import {
 } from "@shared/schema";
 import type { CarouselRecipeCard } from "@shared/types/carousel";
 import { db } from "../db";
-import { eq, and, desc, gte, sql, inArray, not } from "drizzle-orm";
+import { eq, and, desc, gte, notInArray } from "drizzle-orm";
 
 // ============================================================================
 // RECIPE DISMISSALS
@@ -108,36 +108,21 @@ export async function getRecentCommunityRecipes(
     filters.dismissedIds ?? (await getDismissedRecipeIds(userId));
   const limit = filters.limit ?? 8;
 
-  // Fetch more than needed so we can filter out dismissed ones in app
-  const fetchLimit = limit + dismissedIds.size;
+  // Extract numeric IDs from dismissed set (format: "community:<id>")
+  const dismissedNumericIds = [...dismissedIds]
+    .filter((id) => id.startsWith("community:"))
+    .map((id) => parseInt(id.replace("community:", ""), 10))
+    .filter((id) => !Number.isNaN(id));
 
-  let query = db
+  const conditions = [eq(communityRecipes.isPublic, true)];
+  if (dismissedNumericIds.length > 0) {
+    conditions.push(notInArray(communityRecipes.id, dismissedNumericIds));
+  }
+
+  return db
     .select()
     .from(communityRecipes)
-    .where(eq(communityRecipes.isPublic, true))
+    .where(and(...conditions))
     .orderBy(desc(communityRecipes.createdAt))
-    .limit(fetchLimit);
-
-  const rows = await query;
-
-  // Apply in-memory filters for diet/allergy matching and dismissal exclusion
-  return rows
-    .filter((r) => {
-      const identifier = `community:${r.id}`;
-      if (dismissedIds.has(identifier)) return false;
-      return true;
-    })
-    .filter((r) => {
-      // Basic diet type matching via dietTags
-      if (filters.dietType && r.dietTags && r.dietTags.length > 0) {
-        const dietLower = filters.dietType.toLowerCase();
-        const hasDietMatch = r.dietTags.some(
-          (tag) => tag.toLowerCase() === dietLower,
-        );
-        // Don't strictly exclude, but we could boost matching recipes
-        // For now, include all — ranking happens in the builder
-      }
-      return true;
-    })
-    .slice(0, limit);
+    .limit(limit);
 }

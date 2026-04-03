@@ -1,13 +1,26 @@
 import pLimit from "p-limit";
 import { z } from "zod";
-import { db } from "../db";
-import { nutritionCache } from "@shared/schema";
-import { and, gt, inArray } from "drizzle-orm";
 import { storage } from "../storage";
 import { getStandardizedFoodName } from "./cultural-food-map";
 import { createServiceLogger, toError } from "../lib/logger";
 
 const log = createServiceLogger("nutrition-lookup");
+
+/** Generic nutrient search by substring match across a list of candidate names. */
+function findNutrientValue<T>(
+  nutrients: T[],
+  getName: (n: T) => string,
+  getValue: (n: T) => number,
+  names: string[],
+): number {
+  for (const name of names) {
+    const n = nutrients.find((nut) =>
+      getName(nut).toLowerCase().includes(name.toLowerCase()),
+    );
+    if (n) return getValue(n);
+  }
+  return 0;
+}
 
 // Rate limiting for parallel requests
 const RATE_LIMIT = 5;
@@ -86,27 +99,15 @@ async function getCachedNutrition(
 
   if (items.length === 0) return results;
 
-  const normalizedKeys = items.map(normalizeForCache);
-  const now = new Date();
-
   try {
-    // Query only matching cache entries using inArray for efficiency
-    const cached = await db
-      .select()
-      .from(nutritionCache)
-      .where(
-        and(
-          inArray(nutritionCache.queryKey, normalizedKeys),
-          gt(nutritionCache.expiresAt, now),
-        ),
-      );
+    const cached = await storage.getNutritionCacheBatch(
+      items,
+      normalizeForCache,
+    );
 
-    for (const entry of cached) {
-      const index = normalizedKeys.indexOf(entry.queryKey);
-      if (index !== -1) {
-        const data = entry.data as NutritionData;
-        results.set(items[index], { ...data, source: "cache" });
-      }
+    for (const [key, entry] of cached) {
+      const data = entry.data as NutritionData;
+      results.set(key, { ...data, source: "cache" });
     }
   } catch (error) {
     log.error({ err: toError(error) }, "cache lookup error");
@@ -126,22 +127,13 @@ async function cacheNutrition(
   const expiresAt = new Date(Date.now() + CACHE_EXPIRY_MS);
 
   try {
-    await db
-      .insert(nutritionCache)
-      .values({
-        queryKey: key,
-        normalizedName: data.name,
-        source: data.source === "cache" ? "usda" : data.source,
-        data: data,
-        expiresAt,
-      })
-      .onConflictDoUpdate({
-        target: nutritionCache.queryKey,
-        set: {
-          data: data,
-          expiresAt,
-        },
-      });
+    await storage.setNutritionCache(
+      key,
+      data.name,
+      data.source === "cache" ? "usda" : data.source,
+      data,
+      expiresAt,
+    );
   } catch (error) {
     log.error({ err: toError(error) }, "cache write error");
   }
@@ -392,15 +384,13 @@ async function lookupCNF(query: string): Promise<NutritionData | null> {
     );
     const nutrients: CNFNutrientAmount[] = await nutRes.json();
 
-    const findNutrient = (names: string[]): number => {
-      for (const name of names) {
-        const n = nutrients.find((nut) =>
-          nut.nutrient_web_name.toLowerCase().includes(name.toLowerCase()),
-        );
-        if (n) return n.nutrient_value;
-      }
-      return 0;
-    };
+    const findNutrient = (names: string[]) =>
+      findNutrientValue(
+        nutrients,
+        (n) => n.nutrient_web_name,
+        (n) => n.nutrient_value,
+        names,
+      );
 
     const calories = findNutrient(["Energy (kcal)"]);
     // Skip results with 0 calories — likely wrong match
@@ -455,15 +445,13 @@ async function lookupUSDA(query: string): Promise<NutritionData | null> {
     const nutrients = food.foodNutrients;
 
     // Extract nutrients by name
-    const findNutrient = (names: string[]): number => {
-      for (const name of names) {
-        const nutrient = nutrients.find((n) =>
-          n.nutrientName.toLowerCase().includes(name.toLowerCase()),
-        );
-        if (nutrient) return nutrient.value || 0;
-      }
-      return 0;
-    };
+    const findNutrient = (names: string[]) =>
+      findNutrientValue(
+        nutrients,
+        (n) => n.nutrientName,
+        (n) => n.value || 0,
+        names,
+      );
 
     return {
       name: food.description,
@@ -525,15 +513,13 @@ async function lookupUSDAByUPC(
 
       const nutrients: { nutrientName: string; value: number }[] =
         match.foodNutrients || [];
-      const findNutrient = (names: string[]): number => {
-        for (const name of names) {
-          const nutrient = nutrients.find((n) =>
-            n.nutrientName?.toLowerCase().includes(name.toLowerCase()),
-          );
-          if (nutrient) return nutrient.value || 0;
-        }
-        return 0;
-      };
+      const findNutrient = (names: string[]) =>
+        findNutrientValue(
+          nutrients,
+          (n) => n.nutrientName ?? "",
+          (n) => n.value || 0,
+          names,
+        );
 
       return {
         product: {
@@ -1187,16 +1173,13 @@ async function cacheNutritionIfAbsent(
   const expiresAt = new Date(Date.now() + CACHE_EXPIRY_MS);
 
   try {
-    await db
-      .insert(nutritionCache)
-      .values({
-        queryKey: key,
-        normalizedName: data.name,
-        source: data.source === "cache" ? "usda" : data.source,
-        data: data,
-        expiresAt,
-      })
-      .onConflictDoNothing({ target: nutritionCache.queryKey });
+    await storage.setNutritionCacheIfAbsent(
+      key,
+      data.name,
+      data.source === "cache" ? "usda" : data.source,
+      data,
+      expiresAt,
+    );
   } catch (error) {
     log.error({ err: toError(error) }, "cache seed write error");
   }

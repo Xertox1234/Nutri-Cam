@@ -164,7 +164,10 @@ function setupErrorHandler(app: express.Application) {
   app.use(requestContextMiddleware);
 
   // Serve static assets
-  app.use("/assets", express.static(path.resolve(process.cwd(), "assets")));
+  app.use(
+    "/assets",
+    express.static(path.resolve(process.cwd(), "assets"), { dotfiles: "deny" }),
+  );
 
   // Serve uploaded avatar images (intentionally public — no auth required)
   app.use(
