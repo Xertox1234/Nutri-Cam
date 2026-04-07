@@ -75,8 +75,6 @@ export type RootStackParamList = {
     recipeId: number;
     /** "community" (default) fetches from /api/recipes/:id; "mealPlan" fetches from /api/meal-plan/recipes/:id */
     recipeType?: "community" | "mealPlan";
-    /** When provided, the screen uses this data directly instead of fetching by ID */
-    carouselCard?: import("@shared/types/carousel").CarouselRecipeCard;
   };
   QuickLog: undefined;
   DailyNutritionDetail: undefined;

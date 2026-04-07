@@ -1,10 +1,10 @@
 import React, { useCallback } from "react";
 import {
+  AccessibilityInfo,
   StyleSheet,
   View,
   Pressable,
   Dimensions,
-  AccessibilityInfo,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import Animated, {
@@ -38,9 +38,7 @@ const BUTTON_SIZE = 44;
 interface CarouselRecipeCardProps {
   card: CarouselCardType;
   onPress: (card: CarouselCardType) => void;
-  onSave: (card: CarouselCardType) => void;
   onDismiss: (card: CarouselCardType) => void;
-  isSaved?: boolean;
 }
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -48,9 +46,7 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 export const CarouselRecipeCard = React.memo(function CarouselRecipeCard({
   card,
   onPress,
-  onSave,
   onDismiss,
-  isSaved = false,
 }: CarouselRecipeCardProps) {
   const { theme } = useTheme();
   const { reducedMotion } = useAccessibility();
@@ -71,15 +67,6 @@ export const CarouselRecipeCard = React.memo(function CarouselRecipeCard({
   }, [scale]);
 
   const handlePress = useCallback(() => onPress(card), [onPress, card]);
-
-  const handleSave = useCallback(() => {
-    haptics.notification(
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      require("expo-haptics").NotificationFeedbackType.Success,
-    );
-    AccessibilityInfo.announceForAccessibility("Recipe saved");
-    onSave(card);
-  }, [onSave, card, haptics]);
 
   const handleDismiss = useCallback(() => {
     haptics.impact();
@@ -192,31 +179,6 @@ export const CarouselRecipeCard = React.memo(function CarouselRecipeCard({
                 name="thumbs-down"
                 size={18}
                 color={theme.error}
-                accessible={false}
-              />
-            </Pressable>
-
-            <Pressable
-              onPress={handleSave}
-              disabled={isSaved}
-              style={[
-                styles.actionButton,
-                {
-                  backgroundColor: isSaved
-                    ? withOpacity(theme.success, 0.2)
-                    : withOpacity(theme.success, 0.1),
-                },
-              ]}
-              hitSlop={4}
-              accessibilityRole="button"
-              accessibilityLabel={
-                isSaved ? "Recipe already saved" : "Save recipe"
-              }
-            >
-              <Feather
-                name={isSaved ? "check" : "thumbs-up"}
-                size={18}
-                color={theme.success}
                 accessible={false}
               />
             </Pressable>

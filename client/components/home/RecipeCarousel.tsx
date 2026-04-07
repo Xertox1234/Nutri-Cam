@@ -1,4 +1,4 @@
-import React, { useCallback, useRef } from "react";
+import React, { useCallback } from "react";
 import {
   FlatList,
   StyleSheet,
@@ -13,7 +13,6 @@ import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
 import {
   useCarouselRecipes,
-  useSaveCarouselRecipe,
   useDismissCarouselRecipe,
 } from "@/hooks/useCarouselRecipes";
 import { Spacing, FontFamily } from "@/constants/theme";
@@ -26,66 +25,23 @@ export const RecipeCarousel = React.memo(function RecipeCarousel() {
   const { theme } = useTheme();
   const navigation = useNavigation<HomeScreenNavigationProp>();
   const { data, isLoading } = useCarouselRecipes();
-  const saveRecipe = useSaveCarouselRecipe();
   const dismissRecipe = useDismissCarouselRecipe();
-  const savedIdsRef = useRef<Set<string>>(new Set());
 
   const cards = data?.cards ?? [];
 
   const handlePress = useCallback(
     (card: CarouselCardType) => {
-      if (card.source === "community" && "id" in card.recipeData) {
-        const communityId =
-          typeof card.recipeData.id === "number"
-            ? card.recipeData.id
-            : parseInt(String(card.recipeData.id), 10);
-        navigation.navigate("FeaturedRecipeDetail", {
-          recipeId: communityId,
-          recipeType: "community",
-        });
-      } else {
-        // AI and catalog cards — pass full card data for inline display
-        navigation.navigate("FeaturedRecipeDetail", {
-          recipeId: 0,
-          carouselCard: card,
-        });
-      }
+      navigation.navigate("FeaturedRecipeDetail", {
+        recipeId: card.id,
+        recipeType: "community",
+      });
     },
     [navigation],
   );
 
-  const handleSave = useCallback(
-    (card: CarouselCardType) => {
-      savedIdsRef.current.add(card.id);
-      const recipeData = card.recipeData;
-      saveRecipe.mutate({
-        recipeId: card.id,
-        source: card.source,
-        title: card.title,
-        description:
-          "description" in recipeData
-            ? ((recipeData.description as string) ?? undefined)
-            : undefined,
-        instructions:
-          "instructions" in recipeData
-            ? ((recipeData.instructions as string[]) ?? undefined)
-            : undefined,
-        difficulty:
-          "difficulty" in recipeData
-            ? ((recipeData.difficulty as string) ?? undefined)
-            : undefined,
-        timeEstimate:
-          "timeEstimate" in recipeData
-            ? ((recipeData.timeEstimate as string) ?? undefined)
-            : undefined,
-      });
-    },
-    [saveRecipe],
-  );
-
   const handleDismiss = useCallback(
     (card: CarouselCardType) => {
-      dismissRecipe.mutate({ recipeId: card.id, source: card.source });
+      dismissRecipe.mutate({ recipeId: card.id });
     },
     [dismissRecipe],
   );
@@ -95,15 +51,16 @@ export const RecipeCarousel = React.memo(function RecipeCarousel() {
       <CarouselRecipeCard
         card={item}
         onPress={handlePress}
-        onSave={handleSave}
         onDismiss={handleDismiss}
-        isSaved={savedIdsRef.current.has(item.id)}
       />
     ),
-    [handlePress, handleSave, handleDismiss],
+    [handlePress, handleDismiss],
   );
 
-  const keyExtractor = useCallback((item: CarouselCardType) => item.id, []);
+  const keyExtractor = useCallback(
+    (item: CarouselCardType) => String(item.id),
+    [],
+  );
 
   const getItemLayout = useCallback(
     (_: unknown, index: number) => ({

@@ -1,10 +1,8 @@
 import {
   recipeDismissals,
-  carouselSuggestionCache,
   communityRecipes,
   type Allergy,
 } from "@shared/schema";
-import type { CarouselRecipeCard } from "@shared/types/carousel";
 import { db } from "../db";
 import { eq, and, desc, gte, notInArray } from "drizzle-orm";
 
@@ -14,7 +12,7 @@ import { eq, and, desc, gte, notInArray } from "drizzle-orm";
 
 export async function getDismissedRecipeIds(
   userId: string,
-): Promise<Set<string>> {
+): Promise<Set<number>> {
   const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
   const rows = await db
     .select({ recipeIdentifier: recipeDismissals.recipeIdentifier })
@@ -27,69 +25,30 @@ export async function getDismissedRecipeIds(
     )
     .limit(500);
 
-  return new Set(rows.map((r) => r.recipeIdentifier));
+  const ids = new Set<number>();
+  for (const r of rows) {
+    const num = parseInt(r.recipeIdentifier, 10);
+    if (!Number.isNaN(num)) ids.add(num);
+  }
+  return ids;
 }
 
 export async function dismissRecipe(
   userId: string,
-  recipeIdentifier: string,
-  source: string,
+  recipeId: number,
 ): Promise<void> {
   await db
     .insert(recipeDismissals)
-    .values({ userId, recipeIdentifier, source })
+    .values({
+      userId,
+      recipeIdentifier: String(recipeId),
+      source: "community",
+    })
     .onConflictDoNothing();
 }
 
 // ============================================================================
-// CAROUSEL SUGGESTION CACHE
-// ============================================================================
-
-export async function getCarouselCache(
-  userId: string,
-  profileHash: string,
-  mealType: string,
-): Promise<CarouselRecipeCard[] | null> {
-  const [row] = await db
-    .select({ suggestions: carouselSuggestionCache.suggestions })
-    .from(carouselSuggestionCache)
-    .where(
-      and(
-        eq(carouselSuggestionCache.userId, userId),
-        eq(carouselSuggestionCache.profileHash, profileHash),
-        eq(carouselSuggestionCache.mealType, mealType),
-        gte(carouselSuggestionCache.expiresAt, new Date()),
-      ),
-    )
-    .limit(1);
-
-  return row ? (row.suggestions as CarouselRecipeCard[]) : null;
-}
-
-export async function setCarouselCache(
-  userId: string,
-  profileHash: string,
-  mealType: string,
-  suggestions: CarouselRecipeCard[],
-  ttlMs: number,
-): Promise<void> {
-  const expiresAt = new Date(Date.now() + ttlMs);
-
-  await db
-    .insert(carouselSuggestionCache)
-    .values({ userId, profileHash, mealType, suggestions, expiresAt })
-    .onConflictDoUpdate({
-      target: [
-        carouselSuggestionCache.userId,
-        carouselSuggestionCache.profileHash,
-        carouselSuggestionCache.mealType,
-      ],
-      set: { suggestions, expiresAt },
-    });
-}
-
-// ============================================================================
-// RECENT COMMUNITY RECIPES (free user carousel)
+// RECENT COMMUNITY RECIPES
 // ============================================================================
 
 interface RecentRecipeFilters {
@@ -97,7 +56,7 @@ interface RecentRecipeFilters {
   allergies?: Allergy[] | null;
   cuisinePreferences?: string[] | null;
   limit?: number;
-  dismissedIds?: Set<string>;
+  dismissedIds?: Set<number>;
 }
 
 export async function getRecentCommunityRecipes(
@@ -108,11 +67,7 @@ export async function getRecentCommunityRecipes(
     filters.dismissedIds ?? (await getDismissedRecipeIds(userId));
   const limit = filters.limit ?? 8;
 
-  // Extract numeric IDs from dismissed set (format: "community:<id>")
-  const dismissedNumericIds = [...dismissedIds]
-    .filter((id) => id.startsWith("community:"))
-    .map((id) => parseInt(id.replace("community:", ""), 10))
-    .filter((id) => !Number.isNaN(id));
+  const dismissedNumericIds = [...dismissedIds];
 
   const conditions = [eq(communityRecipes.isPublic, true)];
   if (dismissedNumericIds.length > 0) {

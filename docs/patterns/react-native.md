@@ -733,36 +733,34 @@ When the same content is displayed from multiple entry points across different n
 FeaturedRecipeDetail: {
   recipeId: number;
   recipeType?: "community" | "mealPlan";  // defaults to "community"
-  carouselCard?: CarouselRecipeCard;       // inline data bypasses fetch
 };
 ```
 
 ```typescript
 // Single screen with dual-fetch + normalization
 export default function FeaturedRecipeDetailScreen() {
-  const { recipeId, recipeType = "community", carouselCard } = route.params;
+  const { recipeId, recipeType = "community" } = route.params;
 
   // Only one query fires — mutually exclusive `enabled` flags
   const { data: community, isLoading: communityLoading } = useQuery({
     queryKey: [`/api/recipes/${recipeId}`],
-    enabled: !carouselCard && recipeType === "community",
+    enabled: recipeType === "community",
   });
   const { data: mealPlan, isLoading: mealPlanLoading } = useQuery({
     queryKey: ["/api/meal-plan/recipes", recipeId],
-    enabled: !carouselCard && recipeType === "mealPlan",
+    enabled: recipeType === "mealPlan",
   });
 
   // Normalize all sources into shared props interface
   const normalized = useMemo((): NormalizedRecipe | null => {
-    if (carouselCard) return normalizeCarouselCard(carouselCard);
     if (recipeType === "mealPlan" && mealPlan) return normalizeMealPlan(mealPlan);
     if (community) return normalizeCommunity(community);
     return null;
-  }, [carouselCard, recipeType, mealPlan, community]);
+  }, [recipeType, mealPlan, community]);
 
   // Check only the active query
-  const isLoading = !carouselCard &&
-    (recipeType === "community" ? communityLoading : mealPlanLoading);
+  const isLoading =
+    recipeType === "community" ? communityLoading : mealPlanLoading;
 
   return (
     <View accessibilityViewIsModal>
@@ -779,7 +777,7 @@ export default function FeaturedRecipeDetailScreen() {
 
 - **Discriminator param with default**: `recipeType` defaults to `"community"` so deep links and existing callers work without changes.
 - **Mutually exclusive queries**: Two `useQuery` hooks with opposite `enabled` flags — only the active source fetches. Check `isLoading`/`error` on the active query only, not with OR.
-- **Inline data bypass**: An optional param (e.g., `carouselCard`) skips the fetch entirely when data is already available from the caller.
+- **Always fetch from API**: The detail screen always fetches the full recipe from the server, ensuring complete data (ingredients, instructions, etc.) is available regardless of the entry point.
 - **Normalization in `useMemo`**: A typed interface (e.g., `NormalizedRecipe`) unifies different API shapes. Each source gets its own normalizer function.
 - **Shared content component**: The layout lives in a separate `*Content` component (`RecipeDetailContent`) that accepts the normalized interface. The screen handles chrome (drag handle, safe areas), the content component handles layout.
 - **Hide missing sections**: Use conditional rendering (`{data && <Section />}`), not placeholders. Different data sources have different fields available.
