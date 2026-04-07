@@ -241,6 +241,11 @@ if (cacheId) {
 - [ ] **Soft-delete filter on new queries** — Any new query against a table with a `discardedAt` column must include `AND discarded_at IS NULL` unless explicitly fetching deleted items. This is a recurring regression. (Ref: `docs/patterns/database.md`, audit M5)
 - [ ] **Update functions use pick types** — Storage update functions must use a `Pick<Entity, ...>` whitelist type, never `Partial<FullEntity>`. Dangerous fields (`id`, `password`, `tokenVersion`, `subscriptionTier`) must be excluded. (Ref: `docs/patterns/security.md`, audit H1)
 - [ ] **Use `handleRouteError` in catch blocks** — All route catch blocks must use `handleRouteError(res, err, "context")` from `_helpers.ts`, not manual `logger.error` + `sendError`. This ensures ZodErrors return 400 not 500. (Ref: audit M14)
+- [ ] **Lightweight ownership checks for mutation endpoints** — IDOR checks on mutation endpoints (PUT, PATCH, DELETE) should use a lightweight ownership query (e.g., `verifyGroceryListOwnership`) instead of fetching the full entity with all relations. Only fetch full data when the handler actually uses it. (Ref: audit #6 H3)
+- [ ] **Polymorphic FK counts must verify target existence** — Any `count()` or aggregation on a polymorphic junction table (no DB-level FK) must use EXISTS subqueries to exclude orphaned rows. A simple `LEFT JOIN + count` will inflate counts when targets are deleted. (Ref: audit #6 H5)
+- [ ] **Fire-and-forget uses `fireAndForget()` helper** — Non-critical background operations must use `fireAndForget(label, promise)` from `server/lib/fire-and-forget.ts`, not `.catch(() => {})` or `.catch(console.error)`. The helper provides structured logging with request context. (Ref: audit #6 L5)
+- [ ] **URL fields restrict protocol** — Zod schemas for user-provided URLs must include `.url()` and `.refine(url => /^https?:\/\//.test(url))` to reject `data:`, `javascript:`, `ftp:`, and other non-HTTP protocols. (Ref: audit #6 L3)
+- [ ] **Collection endpoints need per-user count limits** — Any endpoint that creates unbounded user-owned items (pantry, saved items, bookmarks) must enforce a per-user count limit checked before insert. (Ref: audit #6 M9)
 
 ### 12. Code Quality
 
