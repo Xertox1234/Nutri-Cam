@@ -898,7 +898,7 @@ export async function batchLookupMicronutrients(
 
 1. **Private raw function** — `async function lookupX()` without `export` prevents direct access from other modules
 2. **Public cached wrapper** — `export async function lookupXWithCache()` is the only exported entry point
-3. **Fire-and-forget cache write** — `.catch(console.error)` on the cache set so responses are not blocked (see [Fire-and-Forget](#fire-and-forget-for-non-critical-background-operations))
+3. **Fire-and-forget cache write** — `fireAndForget(label, promise)` on the cache set so responses are not blocked (see [Fire-and-Forget](#fire-and-forget-for-non-critical-background-operations))
 4. **Batch wrapper delegates to cached wrapper** — `Promise.all(names.map(lookupXWithCache))` ensures every item benefits from the cache
 5. **Cache key normalization** — normalize inputs (trim, lowercase) before cache lookup to maximize hit rate
 

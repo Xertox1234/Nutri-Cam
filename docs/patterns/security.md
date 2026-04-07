@@ -125,6 +125,45 @@ export async function getCookbookRecipes(
 - `server/storage/cookbooks.ts` — `getCookbookRecipes(cookbookId, userId)`
 - See also: [Storage-Layer Defense-in-Depth](#storage-layer-defense-in-depth) (the parent pattern for direct-owned tables)
 
+#### Lightweight Ownership Verification for Mutations
+
+Mutation endpoints (PUT, PATCH, DELETE) that only need to confirm the resource belongs to the user should use a lightweight ownership query — not fetch the full entity with all relations.
+
+**When to use:** Any mutation route where the handler doesn't use the fetched data for its logic (e.g., toggling a boolean, adding a child item).
+
+```typescript
+// ❌ Bad: Fetches full list + all items just to check ownership
+const list = await storage.getGroceryListWithItems(listId, req.userId);
+if (!list) return sendError(res, 404, ...);
+// ... handler never uses list.items
+
+// ✅ Good: Lightweight boolean check
+const ownsList = await storage.verifyGroceryListOwnership(listId, req.userId);
+if (!ownsList) return sendError(res, 404, ...);
+```
+
+The storage function selects only the ID:
+
+```typescript
+export async function verifyGroceryListOwnership(
+  id: number,
+  userId: string,
+): Promise<boolean> {
+  const [row] = await db
+    .select({ id: groceryLists.id })
+    .from(groceryLists)
+    .where(and(eq(groceryLists.id, id), eq(groceryLists.userId, userId)));
+  return !!row;
+}
+```
+
+**When NOT to use:** Read endpoints or mutations where the handler needs the fetched data (e.g., add-to-pantry needs the grocery item details).
+
+**References:**
+
+- `server/storage/meal-plans.ts` — `verifyGroceryListOwnership`
+- Audit #6 H3
+
 ### SSRF Protection for Server-Side URL Fetching
 
 When the server fetches a user-provided URL (e.g., recipe import, link previews), use the hardened `safeFetch` implementation in `server/services/recipe-import.ts`. It provides:
