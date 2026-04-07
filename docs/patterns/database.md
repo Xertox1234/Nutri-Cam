@@ -1853,6 +1853,82 @@ The lock is **transaction-scoped** (`pg_advisory_xact_lock`, not `pg_advisory_lo
 
 - `server/storage/chat.ts` — `createChatMessageWithLimitCheck()`
 
+### Orphan-Safe Counts on Polymorphic Junction Tables
+
+When counting rows in a polymorphic junction table (no DB-level FK), a simple `LEFT JOIN + count` inflates the result because deleted parent rows leave orphaned junction entries. Use EXISTS subqueries to count only rows whose targets still exist.
+
+```typescript
+// ❌ Bad: counts orphaned junction rows where target recipe was deleted
+const rows = await db
+  .select({ recipeCount: count(cookbookRecipes.id) })
+  .from(cookbooks)
+  .leftJoin(cookbookRecipes, eq(cookbookRecipes.cookbookId, cookbooks.id))
+  .groupBy(cookbooks.id);
+
+// ✅ Good: EXISTS subquery verifies each target exists
+const recipeCountSql = sql<number>`(
+  SELECT count(*) FROM ${cookbookRecipes} cr
+  WHERE cr.cookbook_id = ${cookbooks.id}
+  AND (
+    (cr.recipe_type = 'mealPlan' AND EXISTS (
+      SELECT 1 FROM ${mealPlanRecipes} WHERE ${mealPlanRecipes.id} = cr.recipe_id
+    ))
+    OR
+    (cr.recipe_type = 'community' AND EXISTS (
+      SELECT 1 FROM ${communityRecipes} WHERE ${communityRecipes.id} = cr.recipe_id
+    ))
+  )
+)`;
+```
+
+**When to use:** Any aggregation (count, sum) on a junction table where the FK is application-enforced (polymorphic `recipeId` + `recipeType` discriminator) rather than DB-enforced.
+
+**Why not just rely on eager orphan cleanup?** Orphan cleanup runs on detail-view access (`getResolvedCookbookRecipes`), so list views show stale counts until the user opens the detail. The EXISTS approach gives accurate counts without requiring prior cleanup.
+
+**References:**
+
+- `server/storage/cookbooks.ts` — `getUserCookbooks()`
+- Audit #6 H5
+
+### TOCTOU Race Recovery via Unique Constraint Catch
+
+When a read-then-write pattern has a unique constraint as a safety net, catch the Postgres 23505 (unique_violation) error in the route handler and return the existing record. This turns a 500 error into a graceful idempotent response.
+
+```typescript
+// Dedup check (TOCTOU: second request may pass this before first insert commits)
+const existing = await storage.findByExternalId(userId, externalId);
+if (existing) { res.json(existing); return; }
+
+// ... create the record ...
+const saved = await storage.createRecord(data);
+res.status(201).json(saved);
+
+// In the catch block:
+} catch (error) {
+  // Handle TOCTOU race: concurrent request created the record after our dedup check
+  if (
+    error instanceof Error &&
+    "code" in error &&
+    (error as { code: string }).code === "23505"
+  ) {
+    const existing = await storage.findByExternalId(userId, externalId);
+    if (existing) { res.json(existing); return; }
+  }
+  handleRouteError(res, error, "create record");
+}
+```
+
+**When to use:** Endpoints that check for duplicates before insert, where a unique index prevents actual data duplication but concurrent requests can race past the dedup check.
+
+**When NOT to use:** If the endpoint can use `onConflictDoUpdate` or `onConflictDoNothing` directly — that's simpler. This pattern is for cases where the insert is complex (e.g., inserts into multiple tables) and can't easily use `ON CONFLICT`.
+
+**Prerequisites:** The target table must have a unique constraint that catches the duplicate. Without it, the race creates actual duplicates.
+
+**References:**
+
+- `server/routes/recipes.ts` — catalog recipe save endpoint
+- Audit #6 M10
+
 ### JSONB Metadata Versioning
 
 When storing structured data in a JSONB column that may evolve over time, include a `metadataVersion` field and validate with Zod at write time:
