@@ -191,7 +191,7 @@ describe("Verification Routes", () => {
 
       const res = await request(app)
         .post("/api/verification/front-label/confirm")
-        .send({ barcode: "WRONG_BARCODE", sessionId: "test-session" });
+        .send({ barcode: "99999999999", sessionId: "test-session" });
 
       expect(res.status).toBe(400);
       expect(res.body.error).toContain("does not match");

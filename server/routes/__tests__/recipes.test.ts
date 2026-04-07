@@ -10,7 +10,7 @@ import {
 } from "../../services/recipe-catalog";
 import { importRecipeFromUrl } from "../../services/recipe-import";
 import { register } from "../recipes";
-import type { CommunityRecipe } from "@shared/schema";
+
 import {
   createMockCommunityRecipe,
   createMockMealPlanRecipe,

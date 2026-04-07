@@ -87,7 +87,8 @@ export async function getUserVerificationStats(userId: string): Promise<{
           eq(verificationHistory.userId, userId),
           sql`${verificationHistory.createdAt} >= NOW() - INTERVAL '90 days'`,
         ),
-      ),
+      )
+      .limit(90), // Performance guard: max 90 distinct dates in 90 days; multiple per day is fine
   ]);
 
   const count = countResult[0]?.count ?? 0;

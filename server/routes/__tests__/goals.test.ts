@@ -4,10 +4,7 @@ import request from "supertest";
 
 import { storage } from "../../storage";
 import { register } from "../goals";
-import {
-  createMockUser,
-  createMockUserProfile,
-} from "../../__tests__/factories";
+import { createMockUser } from "../../__tests__/factories";
 
 vi.mock("../../storage", () => ({
   storage: {

@@ -18,7 +18,6 @@ import {
   ALL_ICONS,
   CATEGORY_ICONS,
   INGREDIENT_ICONS,
-  type IngredientIconEntry,
 } from "./ingredient-icon-list";
 
 // ── Dynamic imports (ESM/CJS compat for sharp + dotenv) ─────────────────────

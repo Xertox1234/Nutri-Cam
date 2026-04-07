@@ -86,6 +86,18 @@ export function register(app: Express): void {
           return;
         }
 
+        const MAX_PANTRY_ITEMS = 500;
+        const pantryCount = await storage.getPantryItemCount(req.userId);
+        if (pantryCount >= MAX_PANTRY_ITEMS) {
+          sendError(
+            res,
+            400,
+            `Maximum of ${MAX_PANTRY_ITEMS} pantry items reached`,
+            ErrorCode.LIMIT_REACHED,
+          );
+          return;
+        }
+
         const item = await storage.createPantryItem({
           userId: req.userId,
           name: parsed.data.name,

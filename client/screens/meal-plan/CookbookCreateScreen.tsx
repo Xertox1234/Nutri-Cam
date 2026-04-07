@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { useHeaderHeight } from "@react-navigation/elements";
 import { useBottomTabBarHeight } from "@react-navigation/bottom-tabs";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+
 import { useNavigation, useRoute } from "@react-navigation/native";
 import type { RouteProp } from "@react-navigation/native";
 import { NotificationFeedbackType } from "expo-haptics";
@@ -45,7 +45,6 @@ export default function CookbookCreateScreen() {
 
   const headerHeight = useHeaderHeight();
   const tabBarHeight = useBottomTabBarHeight();
-  const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const haptics = useHaptics();
   const createMutation = useCreateCookbook();

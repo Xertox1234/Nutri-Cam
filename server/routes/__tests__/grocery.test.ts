@@ -26,6 +26,7 @@ vi.mock("../../storage", () => ({
     addGroceryListItem: vi.fn(),
     addGroceryListItems: vi.fn(),
     getGroceryListWithItems: vi.fn(),
+    verifyGroceryListOwnership: vi.fn(),
     updateGroceryListItemChecked: vi.fn(),
     updateGroceryListItemPantryFlag: vi.fn(),
     deleteGroceryList: vi.fn(),
@@ -218,10 +219,7 @@ describe("Grocery Routes", () => {
 
   describe("PUT /api/meal-plan/grocery-lists/:id/items/:itemId", () => {
     it("toggles item checked status", async () => {
-      vi.mocked(storage.getGroceryListWithItems).mockResolvedValue({
-        ...mockList,
-        items: [],
-      });
+      vi.mocked(storage.verifyGroceryListOwnership).mockResolvedValue(true);
       vi.mocked(storage.updateGroceryListItemChecked).mockResolvedValue(
         createMockGroceryListItem({ isChecked: true }),
       );
@@ -235,7 +233,7 @@ describe("Grocery Routes", () => {
     });
 
     it("returns 404 when list not found", async () => {
-      vi.mocked(storage.getGroceryListWithItems).mockResolvedValue(undefined);
+      vi.mocked(storage.verifyGroceryListOwnership).mockResolvedValue(false);
 
       const res = await request(app)
         .put("/api/meal-plan/grocery-lists/999/items/1")
@@ -246,10 +244,7 @@ describe("Grocery Routes", () => {
     });
 
     it("returns 400 when no update fields", async () => {
-      vi.mocked(storage.getGroceryListWithItems).mockResolvedValue({
-        ...mockList,
-        items: [],
-      });
+      vi.mocked(storage.verifyGroceryListOwnership).mockResolvedValue(true);
 
       const res = await request(app)
         .put("/api/meal-plan/grocery-lists/1/items/1")
@@ -260,10 +255,7 @@ describe("Grocery Routes", () => {
     });
 
     it("handles addedToPantry-only flag", async () => {
-      vi.mocked(storage.getGroceryListWithItems).mockResolvedValue({
-        ...mockList,
-        items: [],
-      });
+      vi.mocked(storage.verifyGroceryListOwnership).mockResolvedValue(true);
       vi.mocked(storage.updateGroceryListItemPantryFlag).mockResolvedValue(
         createMockGroceryListItem({ addedToPantry: true }),
       );
@@ -277,10 +269,7 @@ describe("Grocery Routes", () => {
     });
 
     it("returns 404 when item not found on addedToPantry-only update", async () => {
-      vi.mocked(storage.getGroceryListWithItems).mockResolvedValue({
-        ...mockList,
-        items: [],
-      });
+      vi.mocked(storage.verifyGroceryListOwnership).mockResolvedValue(true);
       vi.mocked(storage.updateGroceryListItemPantryFlag).mockResolvedValue(
         undefined,
       );
@@ -294,10 +283,7 @@ describe("Grocery Routes", () => {
     });
 
     it("handles isChecked + addedToPantry combo", async () => {
-      vi.mocked(storage.getGroceryListWithItems).mockResolvedValue({
-        ...mockList,
-        items: [],
-      });
+      vi.mocked(storage.verifyGroceryListOwnership).mockResolvedValue(true);
       vi.mocked(storage.updateGroceryListItemChecked).mockResolvedValue(
         createMockGroceryListItem({ isChecked: true }),
       );
@@ -317,10 +303,7 @@ describe("Grocery Routes", () => {
 
   describe("POST /api/meal-plan/grocery-lists/:id/items", () => {
     it("adds manual item to list", async () => {
-      vi.mocked(storage.getGroceryListWithItems).mockResolvedValue({
-        ...mockList,
-        items: [],
-      });
+      vi.mocked(storage.verifyGroceryListOwnership).mockResolvedValue(true);
       vi.mocked(storage.addGroceryListItem).mockResolvedValue(
         createMockGroceryListItem({ id: 2, name: "Bread" }),
       );
@@ -334,7 +317,7 @@ describe("Grocery Routes", () => {
     });
 
     it("returns 404 for unknown list", async () => {
-      vi.mocked(storage.getGroceryListWithItems).mockResolvedValue(undefined);
+      vi.mocked(storage.verifyGroceryListOwnership).mockResolvedValue(false);
 
       const res = await request(app)
         .post("/api/meal-plan/grocery-lists/999/items")
@@ -345,10 +328,7 @@ describe("Grocery Routes", () => {
     });
 
     it("returns 400 for missing name", async () => {
-      vi.mocked(storage.getGroceryListWithItems).mockResolvedValue({
-        ...mockList,
-        items: [],
-      });
+      vi.mocked(storage.verifyGroceryListOwnership).mockResolvedValue(true);
 
       const res = await request(app)
         .post("/api/meal-plan/grocery-lists/1/items")
@@ -437,7 +417,7 @@ describe("Grocery Routes", () => {
     });
 
     it("PUT /api/meal-plan/grocery-lists/:id/items/:itemId returns 500 on storage error", async () => {
-      vi.mocked(storage.getGroceryListWithItems).mockRejectedValue(
+      vi.mocked(storage.verifyGroceryListOwnership).mockRejectedValue(
         new Error("DB error"),
       );
 
@@ -450,10 +430,7 @@ describe("Grocery Routes", () => {
     });
 
     it("PUT toggle returns 404 when item not found on isChecked update", async () => {
-      vi.mocked(storage.getGroceryListWithItems).mockResolvedValue({
-        ...mockList,
-        items: [],
-      });
+      vi.mocked(storage.verifyGroceryListOwnership).mockResolvedValue(true);
       vi.mocked(storage.updateGroceryListItemChecked).mockResolvedValue(
         undefined,
       );

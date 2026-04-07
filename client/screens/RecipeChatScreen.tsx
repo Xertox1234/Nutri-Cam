@@ -86,22 +86,22 @@ export default function RecipeChatScreen() {
   const { sendMessage, streamingContent, streamingRecipe, isStreaming } =
     useSendMessage(conversationId);
   const saveRecipeMutation = useSaveRecipeFromChat();
-  const [savedMessageIds, setSavedMessageIds] = useState<Set<number>>(
-    new Set(),
-  );
+  const savedMessageIdsRef = useRef(new Set<number>());
+  const [, forceRender] = useState(0);
 
   const handleSaveRecipe = useCallback(
     async (messageId: number) => {
-      if (!conversationId || savedMessageIds.has(messageId)) return;
+      if (!conversationId || savedMessageIdsRef.current.has(messageId)) return;
       try {
         await saveRecipeMutation.mutateAsync({ conversationId, messageId });
-        setSavedMessageIds((prev) => new Set(prev).add(messageId));
+        savedMessageIdsRef.current.add(messageId);
+        forceRender((n) => n + 1);
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       } catch {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
       }
     },
-    [conversationId, savedMessageIds, saveRecipeMutation],
+    [conversationId, saveRecipeMutation],
   );
 
   const handleSend = useCallback(
@@ -170,7 +170,7 @@ export default function RecipeChatScreen() {
       const metadata = item.metadata as Record<string, unknown> | null;
       const recipe = metadata?.recipe as StreamingRecipe | undefined;
       const allergenWarning = metadata?.allergenWarning as string | undefined;
-      const isAlreadySaved = savedMessageIds.has(item.id);
+      const isAlreadySaved = savedMessageIdsRef.current.has(item.id);
       const isStreaming_ = item.id === -1;
 
       return (
@@ -219,7 +219,7 @@ export default function RecipeChatScreen() {
         </View>
       );
     },
-    [theme, savedMessageIds, saveRecipeMutation.isPending, handleSaveRecipe],
+    [theme, saveRecipeMutation.isPending, handleSaveRecipe],
   );
 
   return (

@@ -10,6 +10,7 @@ vi.mock("../../storage", () => ({
   storage: {
     getSubscriptionStatus: vi.fn(),
     getPantryItems: vi.fn(),
+    getPantryItemCount: vi.fn().mockResolvedValue(0),
     createPantryItem: vi.fn(),
     updatePantryItem: vi.fn(),
     deletePantryItem: vi.fn(),

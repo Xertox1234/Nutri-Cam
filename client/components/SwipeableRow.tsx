@@ -10,7 +10,7 @@ import * as Haptics from "expo-haptics";
 
 import { SwipeAction } from "./SwipeAction";
 import { ThemedText } from "@/components/ThemedText";
-import { useTheme } from "@/hooks/useTheme";
+
 import { useHaptics } from "@/hooks/useHaptics";
 import { useAccessibility } from "@/hooks/useAccessibility";
 import {
@@ -132,7 +132,6 @@ function ReducedMotionActions({
   leftAction,
   rightAction,
 }: Pick<SwipeableRowProps, "leftAction" | "rightAction">) {
-  const { theme } = useTheme();
   const haptics = useHaptics();
 
   const actions = [leftAction, rightAction].filter(Boolean) as NonNullable<

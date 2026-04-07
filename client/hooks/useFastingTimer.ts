@@ -137,7 +137,7 @@ export function useFastingTimer() {
       haptics.notification(Haptics.NotificationFeedbackType.Success);
     }
     prevPhaseRef.current = currentPhase.name;
-  }, [currentPhase]);
+  }, [currentPhase, haptics]);
 
   // Random idle tip — stable per mount (LEARNINGS.md:59)
   const [idleTip] = useState(

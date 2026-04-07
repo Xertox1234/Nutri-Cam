@@ -25,7 +25,6 @@ import {
   parsePositiveIntParam,
   parseQueryInt,
 } from "./_helpers";
-import { logger, toError } from "../lib/logger";
 
 const generateGroceryListSchema = z.object({
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -33,6 +32,18 @@ const generateGroceryListSchema = z.object({
   title: z.string().min(1).max(200).optional(),
   deductPantry: z.boolean().optional(),
 });
+
+const groceryItemUpdateSchema = z
+  .object({
+    isChecked: z.boolean().optional(),
+    addedToPantry: z.boolean().optional(),
+  })
+  .refine(
+    (data) => data.isChecked !== undefined || data.addedToPantry !== undefined,
+    {
+      message: "At least one of isChecked or addedToPantry must be provided",
+    },
+  );
 
 const addManualGroceryItemSchema = z.object({
   name: z.string().min(1).max(200),
@@ -115,11 +126,7 @@ export function register(app: Express): void {
 
         // Optionally deduct pantry items (premium feature)
         if (parsed.data.deductPantry) {
-          const subscription = await storage.getSubscriptionStatus(req.userId);
-          const tier = subscription?.tier || "free";
-          const features =
-            TIER_FEATURES[isValidSubscriptionTier(tier) ? tier : "free"];
-          if (features.pantryTracking) {
+          if (TIER_FEATURES[tier].pantryTracking) {
             const userPantry = await storage.getPantryItems(req.userId);
             aggregated = deductPantryFromGrocery(aggregated, userPantry);
           }
@@ -175,13 +182,7 @@ export function register(app: Express): void {
         const lists = await storage.getGroceryLists(req.userId, limit);
         res.json(lists);
       } catch (error) {
-        logger.error({ err: toError(error) }, "failed to fetch grocery lists");
-        sendError(
-          res,
-          500,
-          "Failed to fetch grocery lists",
-          ErrorCode.INTERNAL_ERROR,
-        );
+        handleRouteError(res, error, "fetch grocery lists");
       }
     },
   );
@@ -233,13 +234,7 @@ export function register(app: Express): void {
 
         res.json({ ...list, allergenFlags });
       } catch (error) {
-        logger.error({ err: toError(error) }, "failed to fetch grocery list");
-        sendError(
-          res,
-          500,
-          "Failed to fetch grocery list",
-          ErrorCode.INTERNAL_ERROR,
-        );
+        handleRouteError(res, error, "fetch grocery list");
       }
     },
   );
@@ -258,30 +253,44 @@ export function register(app: Express): void {
           return;
         }
 
-        // IDOR: verify list belongs to user
-        const list = await storage.getGroceryListWithItems(listId, req.userId);
-        if (!list) {
+        // IDOR: verify list belongs to user (lightweight — no item fetch)
+        const ownsList = await storage.verifyGroceryListOwnership(
+          listId,
+          req.userId,
+        );
+        if (!ownsList) {
           sendError(res, 404, "Grocery list not found", ErrorCode.NOT_FOUND);
           return;
         }
 
+        const parsed = groceryItemUpdateSchema.safeParse(req.body);
+        if (!parsed.success) {
+          sendError(
+            res,
+            400,
+            formatZodError(parsed.error),
+            ErrorCode.VALIDATION_ERROR,
+          );
+          return;
+        }
+
         // Handle isChecked toggle
-        if (typeof req.body.isChecked === "boolean") {
+        if (parsed.data.isChecked !== undefined) {
           const updated = await storage.updateGroceryListItemChecked(
             itemId,
             listId,
-            req.body.isChecked,
+            parsed.data.isChecked,
           );
           if (!updated) {
             sendError(res, 404, "Item not found", ErrorCode.NOT_FOUND);
             return;
           }
           // Also handle addedToPantry if provided in same request
-          if (typeof req.body.addedToPantry === "boolean") {
+          if (parsed.data.addedToPantry !== undefined) {
             const flagged = await storage.updateGroceryListItemPantryFlag(
               itemId,
               listId,
-              req.body.addedToPantry,
+              parsed.data.addedToPantry,
             );
             if (flagged) {
               res.json(flagged);
@@ -293,11 +302,11 @@ export function register(app: Express): void {
         }
 
         // Handle addedToPantry flag only
-        if (typeof req.body.addedToPantry === "boolean") {
+        if (parsed.data.addedToPantry !== undefined) {
           const updated = await storage.updateGroceryListItemPantryFlag(
             itemId,
             listId,
-            req.body.addedToPantry,
+            parsed.data.addedToPantry,
           );
           if (!updated) {
             sendError(res, 404, "Item not found", ErrorCode.NOT_FOUND);
@@ -306,16 +315,8 @@ export function register(app: Express): void {
           res.json(updated);
           return;
         }
-
-        sendError(
-          res,
-          400,
-          "No update fields provided",
-          ErrorCode.VALIDATION_ERROR,
-        );
       } catch (error) {
-        logger.error({ err: toError(error) }, "failed to toggle grocery item");
-        sendError(res, 500, "Failed to update item", ErrorCode.INTERNAL_ERROR);
+        handleRouteError(res, error, "toggle grocery item");
       }
     },
   );
@@ -371,16 +372,7 @@ export function register(app: Express): void {
 
         res.status(201).json(pantryItem);
       } catch (error) {
-        logger.error(
-          { err: toError(error) },
-          "failed to add grocery item to pantry",
-        );
-        sendError(
-          res,
-          500,
-          "Failed to add item to pantry",
-          ErrorCode.INTERNAL_ERROR,
-        );
+        handleRouteError(res, error, "add grocery item to pantry");
       }
     },
   );
@@ -398,9 +390,12 @@ export function register(app: Express): void {
           return;
         }
 
-        // IDOR: verify list belongs to user
-        const list = await storage.getGroceryListWithItems(listId, req.userId);
-        if (!list) {
+        // IDOR: verify list belongs to user (lightweight — no item fetch)
+        const ownsList = await storage.verifyGroceryListOwnership(
+          listId,
+          req.userId,
+        );
+        if (!ownsList) {
           sendError(res, 404, "Grocery list not found", ErrorCode.NOT_FOUND);
           return;
         }
@@ -453,13 +448,7 @@ export function register(app: Express): void {
 
         res.status(204).send();
       } catch (error) {
-        logger.error({ err: toError(error) }, "failed to delete grocery list");
-        sendError(
-          res,
-          500,
-          "Failed to delete grocery list",
-          ErrorCode.INTERNAL_ERROR,
-        );
+        handleRouteError(res, error, "delete grocery list");
       }
     },
   );
