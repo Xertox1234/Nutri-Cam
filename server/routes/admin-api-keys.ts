@@ -69,6 +69,7 @@ export function register(app: Express): void {
   app.get(
     "/api/admin/api-keys",
     requireAuth,
+    crudRateLimit,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         if (!isAdmin(req.userId)) {

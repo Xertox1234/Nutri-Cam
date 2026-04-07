@@ -35,7 +35,7 @@ import {
   getPremiumFeatures,
   parseStringParam,
 } from "./_helpers";
-import { photoRateLimit } from "./_rate-limiters";
+import { photoRateLimit, crudRateLimit } from "./_rate-limiters";
 import { upload, createImageUpload } from "./_upload";
 import { detectImageMimeType } from "../lib/image-mime";
 import { logger, toError } from "../lib/logger";
@@ -381,6 +381,7 @@ export function register(app: Express): void {
   app.post(
     "/api/photos/confirm",
     requireAuth,
+    crudRateLimit,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const validated = confirmPhotoSchema.parse(req.body);
@@ -573,6 +574,7 @@ export function register(app: Express): void {
   app.post(
     "/api/photos/confirm-label",
     requireAuth,
+    crudRateLimit,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const validated = confirmLabelSchema.parse(req.body);

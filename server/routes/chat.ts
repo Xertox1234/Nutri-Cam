@@ -11,6 +11,7 @@ import {
   checkAiConfigured,
 } from "./_helpers";
 import { chatRateLimit } from "./_rate-limiters";
+import { fireAndForget } from "../lib/fire-and-forget";
 import { sendError } from "../lib/api-errors";
 import { ErrorCode } from "@shared/constants/error-codes";
 import {
@@ -290,16 +291,17 @@ export function register(app: Express): void {
               );
             }
 
-            // Auto-title from recipe name on first exchange
-            if (!aborted && recipeData) {
-              const history2 = await storage.getChatMessages(id, 3);
-              if (history2.length <= 3) {
-                await storage.updateChatConversationTitle(
+            // Auto-title from recipe name on first exchange (fire-and-forget — non-critical)
+            // history.length is the count before this exchange; +2 for user+assistant messages
+            if (!aborted && recipeData && history.length <= 1) {
+              fireAndForget(
+                "recipe-chat-auto-title",
+                storage.updateChatConversationTitle(
                   id,
                   req.userId,
                   recipeData.title,
-                );
-              }
+                ),
+              );
             }
           } else {
             // ─── COACH CHAT PATH (existing) ──────────────────────
@@ -395,13 +397,14 @@ export function register(app: Express): void {
               }
 
               if (questionHash && fullResponse && !aborted) {
-                storage
-                  .setCoachCachedResponse(
+                fireAndForget(
+                  "coach-cache-response",
+                  storage.setCoachCachedResponse(
                     questionHash,
                     parsed.data.content,
                     fullResponse,
-                  )
-                  .catch(() => {});
+                  ),
+                );
               }
             }
 
@@ -413,10 +416,9 @@ export function register(app: Express): void {
               const shortTitle =
                 parsed.data.content.slice(0, 50) +
                 (parsed.data.content.length > 50 ? "..." : "");
-              await storage.updateChatConversationTitle(
-                id,
-                req.userId,
-                shortTitle,
+              fireAndForget(
+                "coach-chat-auto-title",
+                storage.updateChatConversationTitle(id, req.userId, shortTitle),
               );
             }
           }

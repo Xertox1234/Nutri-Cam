@@ -47,13 +47,15 @@ export function useScanClassification({
   const resetTimeoutRef = useRef<TimeoutRef>(null);
 
   useEffect(() => {
+    const navTimeout = navigationTimeoutRef.current;
+    const resetTimeout = resetTimeoutRef.current;
+    const classifyTimeout = classifyTimeoutRef.current;
+    const autoRouteTimeout = autoRouteTimeoutRef.current;
     return () => {
-      if (navigationTimeoutRef.current)
-        clearTimeout(navigationTimeoutRef.current);
-      if (resetTimeoutRef.current) clearTimeout(resetTimeoutRef.current);
-      if (classifyTimeoutRef.current) clearTimeout(classifyTimeoutRef.current);
-      if (autoRouteTimeoutRef.current)
-        clearTimeout(autoRouteTimeoutRef.current);
+      if (navTimeout) clearTimeout(navTimeout);
+      if (resetTimeout) clearTimeout(resetTimeout);
+      if (classifyTimeout) clearTimeout(classifyTimeout);
+      if (autoRouteTimeout) clearTimeout(autoRouteTimeout);
     };
   }, []);
 

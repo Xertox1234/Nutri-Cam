@@ -107,7 +107,7 @@ export const scannedItems = pgTable(
     sugar: decimal("sugar", { precision: 10, scale: 2 }),
     sodium: decimal("sodium", { precision: 10, scale: 2 }),
     imageUrl: text("image_url"),
-    sourceType: text("source_type").default("barcode"),
+    sourceType: text("source_type").notNull().default("barcode"),
     photoUrl: text("photo_url"),
     aiConfidence: decimal("ai_confidence", { precision: 3, scale: 2 }),
     preparationMethods: jsonb("preparation_methods").$type<
@@ -157,7 +157,7 @@ export const dailyLogs = pgTable(
       () => mealPlanItems.id,
       { onDelete: "set null" },
     ),
-    source: text("source").default("scan"),
+    source: text("source").notNull().default("scan"),
     servings: decimal("servings", { precision: 5, scale: 2 }).default("1"),
     mealType: text("meal_type"),
     loggedAt: timestamp("logged_at")

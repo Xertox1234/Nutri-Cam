@@ -14,9 +14,9 @@ import {
   checkPremiumFeature,
   checkAiConfigured,
   formatZodError,
+  handleRouteError,
 } from "./_helpers";
 import { detectImageMimeType } from "../lib/image-mime";
-import { logger, toError } from "../lib/logger";
 
 const receiptRateLimit = createRateLimiter({
   windowMs: 60 * 1000,
@@ -127,13 +127,7 @@ export function register(app: Express): void {
 
         res.json(result);
       } catch (error) {
-        logger.error({ err: toError(error) }, "receipt scan error");
-        sendError(
-          res,
-          500,
-          "Failed to analyze receipt",
-          ErrorCode.INTERNAL_ERROR,
-        );
+        handleRouteError(res, error, "receipt scan");
       }
     },
   );
@@ -181,13 +175,7 @@ export function register(app: Express): void {
 
         res.json({ added: created.length, items: created });
       } catch (error) {
-        logger.error({ err: toError(error) }, "receipt confirm error");
-        sendError(
-          res,
-          500,
-          "Failed to add items to pantry",
-          ErrorCode.INTERNAL_ERROR,
-        );
+        handleRouteError(res, error, "receipt confirm");
       }
     },
   );
@@ -218,13 +206,7 @@ export function register(app: Express): void {
           remaining: Math.max(0, features.monthlyReceiptScans - count),
         });
       } catch (error) {
-        logger.error({ err: toError(error) }, "receipt scan count error");
-        sendError(
-          res,
-          500,
-          "Failed to get scan count",
-          ErrorCode.INTERNAL_ERROR,
-        );
+        handleRouteError(res, error, "get scan count");
       }
     },
   );

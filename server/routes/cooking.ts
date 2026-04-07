@@ -8,6 +8,7 @@ import {
   formatZodError,
   checkPremiumFeature,
   checkAiConfigured,
+  handleRouteError,
   parseStringParam,
 } from "./_helpers";
 import {
@@ -34,7 +35,7 @@ import {
   parseUserAllergies,
   type AllergenMatch,
 } from "@shared/constants/allergens";
-import { logger, toError } from "../lib/logger";
+
 import { storage } from "../storage";
 import { createSessionStore } from "../storage/sessions";
 
@@ -177,13 +178,7 @@ export function register(app: Express): void {
           createdAt: session.createdAt,
         });
       } catch (error) {
-        logger.error({ err: toError(error) }, "create cooking session failed");
-        sendError(
-          res,
-          500,
-          "Failed to create cooking session",
-          ErrorCode.INTERNAL_ERROR,
-        );
+        handleRouteError(res, error, "create cooking session");
       }
     },
   );
@@ -209,13 +204,7 @@ export function register(app: Express): void {
           createdAt: session.createdAt,
         });
       } catch (error) {
-        logger.error({ err: toError(error) }, "get cooking session failed");
-        sendError(
-          res,
-          500,
-          "Failed to get cooking session",
-          ErrorCode.INTERNAL_ERROR,
-        );
+        handleRouteError(res, error, "get cooking session");
       }
     },
   );
@@ -307,13 +296,7 @@ export function register(app: Express): void {
           allergenWarnings,
         });
       } catch (error) {
-        logger.error({ err: toError(error) }, "add cooking photo failed");
-        sendError(
-          res,
-          500,
-          "Failed to analyze ingredient photo",
-          ErrorCode.INTERNAL_ERROR,
-        );
+        handleRouteError(res, error, "add cooking photo");
       }
     },
   );
@@ -368,13 +351,7 @@ export function register(app: Express): void {
 
         res.json({ ingredient });
       } catch (error) {
-        logger.error({ err: toError(error) }, "edit ingredient failed");
-        sendError(
-          res,
-          500,
-          "Failed to edit ingredient",
-          ErrorCode.INTERNAL_ERROR,
-        );
+        handleRouteError(res, error, "edit ingredient");
       }
     },
   );
@@ -411,13 +388,7 @@ export function register(app: Express): void {
 
         res.json({ ingredients: session.ingredients });
       } catch (error) {
-        logger.error({ err: toError(error) }, "delete ingredient failed");
-        sendError(
-          res,
-          500,
-          "Failed to delete ingredient",
-          ErrorCode.INTERNAL_ERROR,
-        );
+        handleRouteError(res, error, "delete ingredient");
       }
     },
   );
@@ -461,13 +432,7 @@ export function register(app: Express): void {
         );
         res.json(summary);
       } catch (error) {
-        logger.error({ err: toError(error) }, "nutrition summary failed");
-        sendError(
-          res,
-          500,
-          "Failed to calculate nutrition",
-          ErrorCode.INTERNAL_ERROR,
-        );
+        handleRouteError(res, error, "nutrition summary");
       }
     },
   );
@@ -530,8 +495,7 @@ export function register(app: Express): void {
 
         res.status(201).json(scannedItem);
       } catch (error) {
-        logger.error({ err: toError(error) }, "log cooking session failed");
-        sendError(res, 500, "Failed to log meal", ErrorCode.INTERNAL_ERROR);
+        handleRouteError(res, error, "log cooking session");
       }
     },
   );
@@ -583,16 +547,7 @@ export function register(app: Express): void {
 
         res.json(recipe);
       } catch (error) {
-        logger.error(
-          { err: toError(error) },
-          "generate recipe from session failed",
-        );
-        sendError(
-          res,
-          500,
-          "Failed to generate recipe",
-          ErrorCode.INTERNAL_ERROR,
-        );
+        handleRouteError(res, error, "generate recipe from session");
       }
     },
   );
@@ -651,16 +606,7 @@ export function register(app: Express): void {
 
         res.json(result);
       } catch (error) {
-        logger.error(
-          { err: toError(error) },
-          "substitution suggestions failed",
-        );
-        sendError(
-          res,
-          500,
-          "Failed to get substitutions",
-          ErrorCode.INTERNAL_ERROR,
-        );
+        handleRouteError(res, error, "substitution suggestions");
       }
     },
   );

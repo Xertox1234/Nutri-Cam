@@ -36,10 +36,15 @@ export async function createMedicationLog(
   return result;
 }
 
+type UpdatableMedicationLogFields = Pick<
+  InsertMedicationLog,
+  "medicationName" | "dosage" | "notes" | "appetiteLevel" | "sideEffects"
+>;
+
 export async function updateMedicationLog(
   id: number,
   userId: string,
-  updates: Partial<InsertMedicationLog>,
+  updates: Partial<UpdatableMedicationLogFields>,
 ): Promise<MedicationLog | undefined> {
   const [result] = await db
     .update(medicationLogs)

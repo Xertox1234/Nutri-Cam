@@ -190,10 +190,23 @@ export async function createMealPlanFromSuggestions(
   });
 }
 
+type UpdatableMealPlanRecipeFields = Pick<
+  InsertMealPlanRecipe,
+  | "title"
+  | "description"
+  | "imageUrl"
+  | "servings"
+  | "prepTimeMinutes"
+  | "cookTimeMinutes"
+  | "difficulty"
+  | "cuisine"
+  | "mealTypes"
+>;
+
 export async function updateMealPlanRecipe(
   id: number,
   userId: string,
-  updates: Partial<InsertMealPlanRecipe>,
+  updates: Partial<UpdatableMealPlanRecipeFields>,
 ): Promise<MealPlanRecipe | undefined> {
   const [recipe] = await db
     .update(mealPlanRecipes)
@@ -512,19 +525,31 @@ export async function getGroceryListWithItems(
   id: number,
   userId: string,
 ): Promise<(GroceryList & { items: GroceryListItem[] }) | undefined> {
-  const [list] = await db
-    .select()
+  const [lists, items] = await Promise.all([
+    db
+      .select()
+      .from(groceryLists)
+      .where(and(eq(groceryLists.id, id), eq(groceryLists.userId, userId))),
+    db
+      .select()
+      .from(groceryListItems)
+      .where(eq(groceryListItems.groceryListId, id))
+      .orderBy(groceryListItems.category, groceryListItems.name),
+  ]);
+  if (lists.length === 0) return undefined;
+
+  return { ...lists[0], items };
+}
+
+export async function verifyGroceryListOwnership(
+  id: number,
+  userId: string,
+): Promise<boolean> {
+  const [row] = await db
+    .select({ id: groceryLists.id })
     .from(groceryLists)
     .where(and(eq(groceryLists.id, id), eq(groceryLists.userId, userId)));
-  if (!list) return undefined;
-
-  const items = await db
-    .select()
-    .from(groceryListItems)
-    .where(eq(groceryListItems.groceryListId, id))
-    .orderBy(groceryListItems.category, groceryListItems.name);
-
-  return { ...list, items };
+  return !!row;
 }
 
 export async function deleteGroceryList(
@@ -646,6 +671,14 @@ export async function updateGroceryListItemPantryFlag(
 // ============================================================================
 // PANTRY ITEMS
 // ============================================================================
+
+export async function getPantryItemCount(userId: string): Promise<number> {
+  const [result] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(pantryItems)
+    .where(eq(pantryItems.userId, userId));
+  return result?.count ?? 0;
+}
 
 export async function getPantryItems(
   userId: string,

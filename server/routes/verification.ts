@@ -4,7 +4,7 @@ import { storage } from "../storage";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/auth";
 import { sendError } from "../lib/api-errors";
 import { ErrorCode } from "@shared/constants/error-codes";
-import { logger, toError } from "../lib/logger";
+import { logger } from "../lib/logger";
 import { detectImageMimeType } from "../lib/image-mime";
 import {
   compareWithVerifications,
@@ -19,6 +19,7 @@ import { consensusNutritionSchema } from "@shared/types/verification";
 import { frontLabelDataSchema } from "@shared/types/front-label";
 import {
   checkAiConfigured,
+  handleRouteError,
   parseQueryInt,
   parseQueryString,
   parseStringParam,
@@ -45,13 +46,15 @@ const frontLabelRateLimit = createRateLimiter({
   message: "Too many front-label scan requests, please try again later",
 });
 
+const barcodeField = z.string().regex(/^\d{8,14}$/, "Invalid barcode format");
+
 const submitSchema = z.object({
-  barcode: z.string().min(1),
+  barcode: barcodeField,
   sessionId: z.string().min(1),
 });
 
 const frontLabelConfirmSchema = z.object({
-  barcode: z.string().min(1),
+  barcode: barcodeField,
   sessionId: z.string().min(1),
 });
 
@@ -276,21 +279,7 @@ export function register(app: Express): void {
           canScanFrontLabel,
         });
       } catch (error) {
-        if (error instanceof z.ZodError) {
-          return sendError(
-            res,
-            400,
-            "Invalid request body",
-            ErrorCode.VALIDATION_ERROR,
-          );
-        }
-        logger.error({ err: toError(error) }, "verification submit failed");
-        sendError(
-          res,
-          500,
-          "Failed to submit verification",
-          ErrorCode.INTERNAL_ERROR,
-        );
+        handleRouteError(res, error, "verification submit");
       }
     },
   );
@@ -366,13 +355,7 @@ export function register(app: Express): void {
 
         res.json({ sessionId, data });
       } catch (error) {
-        logger.error({ err: toError(error) }, "front label analysis failed");
-        sendError(
-          res,
-          500,
-          "Failed to analyze front label",
-          ErrorCode.INTERNAL_ERROR,
-        );
+        handleRouteError(res, error, "front label analysis");
       }
     },
   );
@@ -458,21 +441,7 @@ export function register(app: Express): void {
 
         res.json({ success: true, frontLabelScanned: true });
       } catch (error) {
-        if (error instanceof z.ZodError) {
-          return sendError(
-            res,
-            400,
-            "Invalid request body",
-            ErrorCode.VALIDATION_ERROR,
-          );
-        }
-        logger.error({ err: toError(error) }, "front label confirm failed");
-        sendError(
-          res,
-          500,
-          "Failed to confirm front label data",
-          ErrorCode.INTERNAL_ERROR,
-        );
+        handleRouteError(res, error, "front label confirm");
       }
     },
   );
@@ -514,13 +483,7 @@ export function register(app: Express): void {
 
         res.json({ flags, total: totalCount, limit, offset });
       } catch (error) {
-        logger.error({ err: toError(error) }, "get reformulation flags failed");
-        sendError(
-          res,
-          500,
-          "Failed to get reformulation flags",
-          ErrorCode.INTERNAL_ERROR,
-        );
+        handleRouteError(res, error, "get reformulation flags");
       }
     },
   );
@@ -565,16 +528,7 @@ export function register(app: Express): void {
 
         res.json({ success: true });
       } catch (error) {
-        logger.error(
-          { err: toError(error) },
-          "resolve reformulation flag failed",
-        );
-        sendError(
-          res,
-          500,
-          "Failed to resolve reformulation flag",
-          ErrorCode.INTERNAL_ERROR,
-        );
+        handleRouteError(res, error, "resolve reformulation flag");
       }
     },
   );
@@ -592,16 +546,7 @@ export function register(app: Express): void {
         const stats = await storage.getUserVerificationStats(req.userId);
         res.json(stats);
       } catch (error) {
-        logger.error(
-          { err: toError(error) },
-          "get user verification stats failed",
-        );
-        sendError(
-          res,
-          500,
-          "Failed to get verification stats",
-          ErrorCode.INTERNAL_ERROR,
-        );
+        handleRouteError(res, error, "get verification stats");
       }
     },
   );
@@ -655,13 +600,7 @@ export function register(app: Express): void {
           hasFrontLabelData: verification.frontLabelData != null,
         });
       } catch (error) {
-        logger.error({ err: toError(error) }, "get verification status failed");
-        sendError(
-          res,
-          500,
-          "Failed to get verification status",
-          ErrorCode.INTERNAL_ERROR,
-        );
+        handleRouteError(res, error, "get verification status");
       }
     },
   );

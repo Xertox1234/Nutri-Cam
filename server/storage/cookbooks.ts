@@ -11,7 +11,7 @@ import {
 } from "@shared/schema";
 import { db } from "../db";
 import { fireAndForget } from "../lib/fire-and-forget";
-import { eq, and, desc, sql, inArray, count } from "drizzle-orm";
+import { eq, and, desc, sql, inArray } from "drizzle-orm";
 
 // ============================================================================
 // COOKBOOKS
@@ -26,6 +26,21 @@ export async function getUserCookbooks(
   userId: string,
   limit = 50,
 ): Promise<CookbookWithCount[]> {
+  // Count only junction rows whose target recipes still exist (polymorphic FK — no DB-level FK)
+  const recipeCountSql = sql<number>`(
+    SELECT count(*) FROM ${cookbookRecipes} cr
+    WHERE cr.cookbook_id = ${cookbooks.id}
+    AND (
+      (cr.recipe_type = 'mealPlan' AND EXISTS (
+        SELECT 1 FROM ${mealPlanRecipes} WHERE ${mealPlanRecipes.id} = cr.recipe_id
+      ))
+      OR
+      (cr.recipe_type = 'community' AND EXISTS (
+        SELECT 1 FROM ${communityRecipes} WHERE ${communityRecipes.id} = cr.recipe_id
+      ))
+    )
+  )`;
+
   const rows = await db
     .select({
       id: cookbooks.id,
@@ -35,12 +50,10 @@ export async function getUserCookbooks(
       coverImageUrl: cookbooks.coverImageUrl,
       createdAt: cookbooks.createdAt,
       updatedAt: cookbooks.updatedAt,
-      recipeCount: count(cookbookRecipes.id),
+      recipeCount: recipeCountSql,
     })
     .from(cookbooks)
-    .leftJoin(cookbookRecipes, eq(cookbookRecipes.cookbookId, cookbooks.id))
     .where(eq(cookbooks.userId, userId))
-    .groupBy(cookbooks.id)
     .orderBy(desc(cookbooks.updatedAt))
     .limit(limit);
   return rows.map((r) => ({ ...r, recipeCount: Number(r.recipeCount) }));

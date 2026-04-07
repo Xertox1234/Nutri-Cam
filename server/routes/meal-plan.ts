@@ -32,7 +32,16 @@ const createMealPlanRecipeSchema = z.object({
   servings: z.number().int().min(1).max(50).optional(),
   prepTimeMinutes: z.number().int().min(0).max(1440).optional().nullable(),
   cookTimeMinutes: z.number().int().min(0).max(1440).optional().nullable(),
-  imageUrl: z.string().max(2000).optional().nullable(),
+  imageUrl: z
+    .string()
+    .url()
+    .max(2000)
+    .refine(
+      (url) => /^https?:\/\//.test(url),
+      "Only http:// or https:// URLs allowed",
+    )
+    .optional()
+    .nullable(),
   instructions: z.array(z.string()).max(100).optional(),
   dietTags: z.array(z.string().max(50)).max(20).optional(),
   caloriesPerServing: nullableNumericStringField,

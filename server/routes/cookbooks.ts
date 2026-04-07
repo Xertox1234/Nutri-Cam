@@ -15,7 +15,16 @@ import { crudRateLimit } from "./_rate-limiters";
 const createCookbookSchema = z.object({
   name: z.string().min(1, "Name is required").max(200),
   description: z.string().max(1000).optional().nullable(),
-  coverImageUrl: z.string().url().max(2000).optional().nullable(),
+  coverImageUrl: z
+    .string()
+    .url()
+    .max(2000)
+    .refine(
+      (url) => /^https?:\/\//.test(url),
+      "Only http:// or https:// URLs allowed",
+    )
+    .optional()
+    .nullable(),
 });
 
 const updateCookbookSchema = createCookbookSchema

@@ -15,6 +15,15 @@ Append-only history of all code audits performed on this project. Each entry lin
 
 ---
 
+## 2026-04-07 — Full Codebase Audit
+
+- **Trigger:** Periodic full codebase audit
+- **Manifest:** [docs/audits/2026-04-07-full.md](2026-04-07-full.md)
+- **Findings:** 0 critical, 5 high, 14 medium, 11 low (30 total)
+- **Resolved:** 23 verified, 6 deferred (H1/H2/M5/M14/L10 architectural refactors + H1 service extraction), 1 false-positive (L4 defense-in-depth filter)
+- **Commit:** (pending)
+- **Note:** Key fixes: `verifyGroceryListOwnership` for IDOR checks, cookbook orphan-aware `recipeCount`, `handleRouteError` migration (23 catch blocks in 4 files), Zod body validation on grocery update, CORS PATCH method, update function whitelists (M7/M8), pantry item limit (M9), TOCTOU race catch (M10), barcode format validation, photo endpoint rate limiters, `notNull` on source columns. Lint warnings reduced from 9 to 0.
+
 ## 2026-04-02 — Full Codebase Audit
 
 - **Trigger:** Periodic full codebase audit

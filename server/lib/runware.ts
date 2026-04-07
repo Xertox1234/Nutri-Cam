@@ -12,12 +12,6 @@ if (!apiKey) {
 /** Whether Runware API is configured */
 export const isRunwareConfigured = !!apiKey;
 
-interface RunwareImageResult {
-  taskType: string;
-  imageBase64Data?: string;
-  imageURL?: string;
-}
-
 const runwareResponseSchema = z.object({
   data: z.array(
     z.object({

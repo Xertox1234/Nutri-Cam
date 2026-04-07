@@ -669,13 +669,22 @@ export function register(app: Express): void {
           sendError(res, 402, error.message, ErrorCode.CATALOG_QUOTA_EXCEEDED);
           return;
         }
-        logger.error({ err: toError(error) }, "catalog save failed");
-        sendError(
-          res,
-          500,
-          "Failed to save catalog recipe",
-          ErrorCode.INTERNAL_ERROR,
-        );
+        // Handle TOCTOU race: concurrent save creates duplicate — return existing
+        if (
+          error instanceof Error &&
+          "code" in error &&
+          (error as { code: string }).code === "23505"
+        ) {
+          const existing = await storage.findMealPlanRecipeByExternalId(
+            req.userId,
+            String(parsePositiveIntParam(req.params.id)),
+          );
+          if (existing) {
+            res.json(existing);
+            return;
+          }
+        }
+        handleRouteError(res, error, "catalog save");
       }
     },
   );
