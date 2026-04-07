@@ -29,6 +29,7 @@ import type {
   BarcodeResult,
   ExpoBarcodeType,
 } from "../types";
+import { useOCRDetection } from "../hooks/useOCRDetection";
 
 /**
  * Maps a 0-1 quality value to vision-camera's qualityPrioritization format.
@@ -95,6 +96,9 @@ export const CameraView = forwardRef<CameraRef, CameraViewProps>(
       isActive = true,
       photoQuality,
       style,
+      enableOCR = false,
+      onTextDetected,
+      onOCRResult,
     },
     ref,
   ) => {
@@ -115,6 +119,12 @@ export const CameraView = forwardRef<CameraRef, CameraViewProps>(
         },
         [onBarcodeScanned],
       ),
+    });
+
+    const { frameProcessor, latestOCRResult } = useOCRDetection({
+      enabled: enableOCR && barcodeTypes.length === 0,
+      onTextDetected,
+      onOCRResult,
     });
 
     useImperativeHandle(ref, () => ({
@@ -142,6 +152,7 @@ export const CameraView = forwardRef<CameraRef, CameraViewProps>(
           return null;
         }
       },
+      getLatestOCRResult: () => latestOCRResult.current,
     }));
 
     if (!device) {
@@ -183,7 +194,9 @@ export const CameraView = forwardRef<CameraRef, CameraViewProps>(
         isActive={isActive}
         photo
         photoQualityBalance={mapQualityToPhotoQualityBalance(photoQuality)}
-        codeScanner={codeScanner}
+        {...(enableOCR && barcodeTypes.length === 0
+          ? { frameProcessor }
+          : { codeScanner })}
         torch={enableTorch ? "on" : "off"}
       />
     );
