@@ -1,8 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  parseNutritionFromOCR,
-  type LocalNutritionData,
-} from "../nutrition-ocr-parser";
+import { parseNutritionFromOCR } from "../nutrition-ocr-parser";
 
 describe("parseNutritionFromOCR", () => {
   it("extracts all fields from a standard US nutrition label", () => {
