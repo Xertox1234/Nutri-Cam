@@ -258,8 +258,6 @@ export const storage = {
   // Carousel (recipe discovery)
   getDismissedRecipeIds: carousel.getDismissedRecipeIds,
   dismissRecipe: carousel.dismissRecipe,
-  getCarouselCache: carousel.getCarouselCache,
-  setCarouselCache: carousel.setCarouselCache,
   getRecentCommunityRecipes: carousel.getRecentCommunityRecipes,
 
   // Profile hub (aggregated counts)

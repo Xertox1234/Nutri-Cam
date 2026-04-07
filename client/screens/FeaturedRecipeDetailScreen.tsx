@@ -23,8 +23,6 @@ import type {
   MealPlanRecipe,
   RecipeIngredient,
 } from "@shared/schema";
-import type { CarouselRecipeCard } from "@shared/types/carousel";
-import type { MealSuggestion } from "@shared/types/meal-suggestions";
 
 const HANDLE_WIDTH = 36;
 const HANDLE_HEIGHT = 5;
@@ -51,59 +49,9 @@ interface NormalizedRecipe {
   nutrition?: ReturnType<typeof parseNutritionData>;
 }
 
-/** Normalize a carousel card into the props RecipeDetailContent needs. */
-function normalizeCarouselCard(card: CarouselRecipeCard): NormalizedRecipe {
-  const data = card.recipeData;
-
-  if (card.source === "ai") {
-    const ai = data as MealSuggestion;
-    return {
-      title: card.title,
-      description: ai.description,
-      difficulty: ai.difficulty,
-      timeDisplay: ai.prepTimeMinutes ? `${ai.prepTimeMinutes} minutes` : null,
-      servings: 2,
-      dietTags: ai.dietTags ?? [],
-      instructions: ai.instructions ?? [],
-      ingredients: [] as IngredientItem[],
-      imageUrl: card.imageUrl,
-    };
-  }
-
-  if (card.source === "community" && "instructions" in data) {
-    const community = data as unknown as CommunityRecipe;
-    return {
-      title: community.title,
-      description: community.description,
-      difficulty: community.difficulty,
-      timeDisplay: community.timeEstimate,
-      servings: community.servings,
-      dietTags: community.dietTags ?? [],
-      instructions: community.instructions ?? [],
-      ingredients: (community.ingredients ?? []) as IngredientItem[],
-      imageUrl: community.imageUrl,
-    };
-  }
-
-  // Catalog recipes (minimal data)
-  return {
-    title: card.title,
-    description: card.recommendationReason,
-    difficulty: null,
-    timeDisplay: card.prepTimeMinutes
-      ? `${card.prepTimeMinutes} minutes`
-      : null,
-    servings: null,
-    dietTags: [] as string[],
-    instructions: [] as string[],
-    ingredients: [] as IngredientItem[],
-    imageUrl: card.imageUrl,
-  };
-}
-
 export default function FeaturedRecipeDetailScreen() {
   const route = useRoute<FeaturedRecipeDetailRouteProp>();
-  const { recipeId, recipeType = "community", carouselCard } = route.params;
+  const { recipeId, recipeType = "community" } = route.params;
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
@@ -115,7 +63,7 @@ export default function FeaturedRecipeDetailScreen() {
     error: communityError,
   } = useQuery<CommunityRecipe>({
     queryKey: [`/api/recipes/${recipeId}`],
-    enabled: !carouselCard && recipeType === "community" && recipeId > 0,
+    enabled: recipeType === "community" && recipeId > 0,
   });
 
   // --- Meal plan recipe fetch ---
@@ -130,13 +78,11 @@ export default function FeaturedRecipeDetailScreen() {
       if (!res.ok) throw new Error(`${res.status}`);
       return res.json();
     },
-    enabled: !carouselCard && recipeType === "mealPlan" && recipeId > 0,
+    enabled: recipeType === "mealPlan" && recipeId > 0,
   });
 
-  // --- Normalize all sources into RecipeDetailContent props ---
+  // --- Normalize into RecipeDetailContent props ---
   const normalized = useMemo((): NormalizedRecipe | null => {
-    if (carouselCard) return normalizeCarouselCard(carouselCard);
-
     if (recipeType === "mealPlan" && mealPlanRecipe) {
       return {
         title: mealPlanRecipe.title,
@@ -170,11 +116,10 @@ export default function FeaturedRecipeDetailScreen() {
     }
 
     return null;
-  }, [carouselCard, recipeType, mealPlanRecipe, communityRecipe]);
+  }, [recipeType, mealPlanRecipe, communityRecipe]);
 
   const isLoading =
-    !carouselCard &&
-    (recipeType === "community" ? communityLoading : mealPlanLoading);
+    recipeType === "community" ? communityLoading : mealPlanLoading;
   const error = recipeType === "community" ? communityError : mealPlanError;
 
   const imageUri = useMemo(
