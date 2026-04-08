@@ -142,7 +142,10 @@ describe("Meal Plan Routes", () => {
       const res = await request(app)
         .post("/api/meal-plan/recipes")
         .set("Authorization", "Bearer token")
-        .send({ title: "Chicken Salad" });
+        .send({
+          title: "Chicken Salad",
+          ingredients: [{ name: "Chicken", quantity: "200", unit: "g" }],
+        });
 
       expect(res.status).toBe(201);
     });
@@ -162,12 +165,13 @@ describe("Meal Plan Routes", () => {
           title: "Chicken Stir Fry",
           sourceType: "quick_entry",
           caloriesPerServing: "350",
+          ingredients: [{ name: "Chicken", quantity: "200", unit: "g" }],
         });
 
       expect(res.status).toBe(201);
       expect(vi.mocked(storage.createMealPlanRecipe)).toHaveBeenCalledWith(
         expect.objectContaining({ sourceType: "quick_entry" }),
-        undefined,
+        expect.any(Array),
       );
     });
 
@@ -177,11 +181,14 @@ describe("Meal Plan Routes", () => {
       await request(app)
         .post("/api/meal-plan/recipes")
         .set("Authorization", "Bearer token")
-        .send({ title: "Test Recipe" });
+        .send({
+          title: "Test Recipe",
+          ingredients: [{ name: "Flour", quantity: "1", unit: "cup" }],
+        });
 
       expect(vi.mocked(storage.createMealPlanRecipe)).toHaveBeenCalledWith(
         expect.objectContaining({ sourceType: "user_created" }),
-        undefined,
+        expect.any(Array),
       );
     });
 
@@ -200,12 +207,13 @@ describe("Meal Plan Routes", () => {
           title: "AI Suggested Oatmeal",
           sourceType: "ai_suggestion",
           caloriesPerServing: "300",
+          ingredients: [{ name: "Oats", quantity: "0.5", unit: "cup" }],
         });
 
       expect(res.status).toBe(201);
       expect(vi.mocked(storage.createMealPlanRecipe)).toHaveBeenCalledWith(
         expect.objectContaining({ sourceType: "ai_suggestion" }),
-        undefined,
+        expect.any(Array),
       );
     });
 
@@ -419,7 +427,10 @@ describe("Meal Plan Routes", () => {
       const res = await request(app)
         .post("/api/meal-plan/recipes")
         .set("Authorization", "Bearer token")
-        .send({ title: "Test" });
+        .send({
+          title: "Test Recipe",
+          ingredients: [{ name: "Flour", quantity: "1", unit: "cup" }],
+        });
 
       expect(res.status).toBe(500);
     });

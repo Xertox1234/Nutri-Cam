@@ -191,8 +191,17 @@ export default function RecipeCreateScreen() {
 
   // ── Save ──
   const handleSave = useCallback(async () => {
-    if (!form.title.trim()) {
-      setValidationError("Please enter a recipe title.");
+    if (form.title.trim().length < 3) {
+      setValidationError("Recipe title must be at least 3 characters.");
+      return;
+    }
+
+    const hasIngredients = form.ingredients.some((i) => i.text.trim());
+    const hasInstructions = form.steps.some((s) => s.text.trim());
+    if (!hasIngredients && !hasInstructions) {
+      setValidationError(
+        "Please add at least one ingredient or instruction step.",
+      );
       return;
     }
     setValidationError("");
