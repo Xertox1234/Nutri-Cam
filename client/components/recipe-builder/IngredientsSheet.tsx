@@ -6,6 +6,7 @@ import {
 } from "@gorhom/bottom-sheet";
 import { Feather } from "@expo/vector-icons";
 import { ThemedText } from "@/components/ThemedText";
+import { IngredientIcon } from "@/components/IngredientIcon";
 import { useTheme } from "@/hooks/useTheme";
 import { useHaptics } from "@/hooks/useHaptics";
 import {
@@ -47,6 +48,7 @@ const IngredientItem = React.memo(function IngredientItem({
 
   return (
     <View style={styles.ingredientRow}>
+      <IngredientIcon name={item.text} size={24} />
       <BottomSheetTextInput
         style={[
           styles.input,

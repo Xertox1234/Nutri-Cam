@@ -12,6 +12,7 @@ import * as Haptics from "expo-haptics";
 import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
 
 import { ThemedText } from "@/components/ThemedText";
+import { IngredientIcon } from "@/components/IngredientIcon";
 import { useTheme } from "@/hooks/useTheme";
 import { useHaptics } from "@/hooks/useHaptics";
 import {
@@ -491,12 +492,17 @@ function MealCard({
             Ingredients
           </ThemedText>
           {meal.ingredients.map((ing, i) => (
-            <ThemedText
-              key={i}
-              style={[styles.ingredientText, { color: theme.textSecondary }]}
-            >
-              {ing.quantity} {ing.unit} {ing.name}
-            </ThemedText>
+            <View key={i} style={styles.ingredientRow}>
+              <IngredientIcon name={ing.name} size={20} />
+              <ThemedText
+                style={[
+                  styles.ingredientText,
+                  { color: theme.textSecondary, flex: 1 },
+                ]}
+              >
+                {ing.quantity} {ing.unit} {ing.name}
+              </ThemedText>
+            </View>
           ))}
 
           {/* Instructions */}
@@ -744,6 +750,11 @@ const styles = StyleSheet.create({
   ingredientText: {
     fontSize: 13,
     lineHeight: 20,
+  },
+  ingredientRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   instructionsText: {
     fontSize: 13,
