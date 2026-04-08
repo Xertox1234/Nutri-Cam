@@ -22,10 +22,18 @@ import {
 import { logger, toError } from "../lib/logger";
 import { generateMealPlanFromPantry } from "../services/pantry-meal-plan";
 import { inferMealTypes } from "../services/meal-type-inference";
+import { validateRecipeQuality } from "../lib/recipe-validation";
+import {
+  normalizeTitle,
+  normalizeDescription,
+  normalizeDifficulty,
+  normalizeInstructions,
+  normalizeIngredient,
+} from "../lib/recipe-normalization";
 
 // Zod schemas for meal plan endpoints
 const createMealPlanRecipeSchema = z.object({
-  title: z.string().min(1).max(200),
+  title: z.string().min(3).max(200),
   description: z.string().max(2000).optional().nullable(),
   cuisine: z.string().max(100).optional().nullable(),
   difficulty: z.string().max(50).optional().nullable(),
@@ -140,16 +148,57 @@ export function register(app: Express): void {
         }
 
         const { ingredients, sourceType, ...recipeData } = parsed.data;
+
+        // Quality gate
+        const quality = validateRecipeQuality({
+          title: recipeData.title,
+          instructions: recipeData.instructions,
+          ingredients: ingredients ?? null,
+        });
+        if (!quality.valid) {
+          sendError(res, 400, quality.reason!, ErrorCode.VALIDATION_ERROR);
+          return;
+        }
+
+        // Normalize data
+        const normalizedTitle = normalizeTitle(recipeData.title);
+        const normalizedDescription = normalizeDescription(
+          recipeData.description ?? null,
+        );
+        const normalizedDifficulty = normalizeDifficulty(
+          recipeData.difficulty ?? null,
+        );
+        const normalizedInstructions = recipeData.instructions
+          ? normalizeInstructions(recipeData.instructions)
+          : recipeData.instructions;
+
+        const normalizedIngredients = ingredients?.map((ing) =>
+          normalizeIngredient({
+            name: ing.name,
+            quantity: ing.quantity ?? "",
+            unit: ing.unit ?? "",
+          }),
+        );
+
         // Infer meal types from title + ingredients (moved from storage layer to maintain layering)
         const mealTypes = inferMealTypes(
-          recipeData.title,
-          ingredients?.map((i) => i.name),
+          normalizedTitle,
+          normalizedIngredients?.map((i) => i.name),
         );
         const recipe = await storage.createMealPlanRecipe(
-          { ...recipeData, userId: req.userId, sourceType, mealTypes },
-          ingredients?.map((ing) => ({
+          {
+            ...recipeData,
+            title: normalizedTitle,
+            description: normalizedDescription,
+            difficulty: normalizedDifficulty,
+            instructions: normalizedInstructions,
+            userId: req.userId,
+            sourceType,
+            mealTypes,
+          },
+          normalizedIngredients?.map((ing) => ({
             ...ing,
-            recipeId: 0, // Will be set by storage method
+            recipeId: 0,
           })),
         );
 
