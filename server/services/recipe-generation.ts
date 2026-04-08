@@ -50,7 +50,7 @@ const recipeContentSchema = z.object({
   description: z.string().min(1).max(500),
   difficulty: z.enum(["Easy", "Medium", "Hard"]),
   timeEstimate: z.string().min(1).max(50),
-  ingredients: z.array(ingredientSchema).min(1),
+  ingredients: z.array(ingredientSchema).default([]),
   instructions: z
     .union([z.string(), z.array(instructionItemSchema)])
     .transform((v): string[] => {
@@ -98,6 +98,42 @@ export interface GeneratedRecipe {
   instructions: string[];
   dietTags: string[];
   imageUrl: string | null;
+}
+
+/**
+ * Parse a raw ingredient string like "200g rice noodles" or "3 tbsp fish sauce"
+ * into a structured {name, quantity, unit} object.
+ */
+function parseIngredientString(raw: string): {
+  name: string;
+  quantity: string;
+  unit: string;
+} {
+  // Try to match: quantity + unit + name
+  const match = raw.match(
+    /^(\d+(?:[\/\.]\d+)?)\s*(g|kg|ml|l|oz|lb|lbs|cup|cups|tbsp|tsp|tablespoons?|teaspoons?|ounces?|pounds?|bunch|head|clove|cloves|stalk|stalks|piece|pieces|slice|slices|can|cans|handful|pinch)?\s+(.+)$/i,
+  );
+
+  if (match) {
+    return {
+      quantity: match[1],
+      unit: match[2] ?? "",
+      name: match[3].trim(),
+    };
+  }
+
+  // Try: "1 cucumber" (quantity + name, no unit)
+  const simpleMatch = raw.match(/^(\d+(?:[\/\.]\d+)?)\s+(.+)$/);
+  if (simpleMatch) {
+    return {
+      quantity: simpleMatch[1],
+      unit: "",
+      name: simpleMatch[2].trim(),
+    };
+  }
+
+  // No quantity found — entire string is the name
+  return { quantity: "", unit: "", name: raw };
 }
 
 /**
@@ -192,7 +228,70 @@ ${SYSTEM_PROMPT_BOUNDARY}`,
     throw new Error("Failed to generate valid recipe content");
   }
 
-  return parsed.data;
+  // Post-process: detect ingredients mixed into instructions
+  const data = parsed.data;
+
+  if (data.ingredients.length === 0 && data.instructions.length > 0) {
+    // Handle edge case: "Instructions:" marker embedded at end of last ingredient line
+    const normalizedInstructions = data.instructions.flatMap((s) => {
+      const parts = s.split(/\n+/);
+      return parts.map((p) => p.trim()).filter((p) => p.length > 0);
+    });
+
+    // Find the split point — look for "Instructions:" and "Ingredients:" markers
+    const instructionsMarkerIdx = normalizedInstructions.findIndex((s) =>
+      /^instructions:?\s*$/i.test(s.trim()),
+    );
+    const ingredientsMarkerIdx = normalizedInstructions.findIndex((s) =>
+      /^ingredients:?\s*$/i.test(s.trim()),
+    );
+
+    if (ingredientsMarkerIdx !== -1 && instructionsMarkerIdx !== -1) {
+      // Both markers found — extract ingredients between them
+      const rawIngredients = normalizedInstructions.slice(
+        ingredientsMarkerIdx + 1,
+        instructionsMarkerIdx,
+      );
+      const actualInstructions = normalizedInstructions.slice(
+        instructionsMarkerIdx + 1,
+      );
+
+      data.ingredients = rawIngredients
+        .filter((s) => s.trim().length > 0)
+        .map((s) => parseIngredientString(s.trim()));
+      data.instructions = actualInstructions.filter((s) => s.trim().length > 0);
+    } else if (ingredientsMarkerIdx !== -1) {
+      // Only "Ingredients:" found — split: lines after marker until a cooking-verb line are ingredients
+      const afterMarker = normalizedInstructions.slice(
+        ingredientsMarkerIdx + 1,
+      );
+      const splitIdx = afterMarker.findIndex((s) =>
+        /^(heat|preheat|cook|mix|combine|blend|stir|whisk|boil|bake|grill|sauté|roast|fry|place|arrange|serve|season|add|toss|drain|bring|set|pour|spread|layer|slice|chop|prepare|marinate|remove|transfer|let|allow|cover|simmer|reduce|fold|brush|drizzle|assemble|garnish|top|cut|dice|mince|julienne|shred|grate|peel|trim|rinse|pat|pound|flatten|stuff|wrap|roll|fill|line|grease|spray|dust|coat|dredge|bread|flour|dip|soak|squeeze|press|crush|smash|mash|puree|whip|beat|cream|knead|shape|form|scoop|spoon|ladle|sift)\b/i.test(
+          s.trim(),
+        ),
+      );
+
+      if (splitIdx > 0) {
+        data.ingredients = afterMarker
+          .slice(0, splitIdx)
+          .filter((s) => s.trim().length > 0)
+          .map((s) => parseIngredientString(s.trim()));
+        data.instructions = afterMarker
+          .slice(splitIdx)
+          .filter((s) => s.trim().length > 0);
+      }
+    }
+  }
+
+  if (data.ingredients.length === 0) {
+    log.warn(
+      { title: data.title },
+      "recipe generation produced no ingredients after post-processing",
+    );
+    throw new Error("Failed to generate valid recipe content");
+  }
+
+  return data;
 }
 
 /**
