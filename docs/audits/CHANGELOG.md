@@ -21,7 +21,7 @@ Append-only history of all code audits performed on this project. Each entry lin
 - **Manifest:** [docs/audits/2026-04-07-full-2.md](2026-04-07-full-2.md)
 - **Findings:** 0 critical, 2 high, 13 medium, 13 low (28 total, 43 raw from 6 agents)
 - **Resolved:** 27 verified, 0 deferred, 4 false-positive (incl. L6 reclassified)
-- **Commit:** (pending)
+- **Commit:** `0367744`, `81d7fbb`
 - **Note:** Key fixes: calories regex negative lookahead for "from Fat", mutation dep destructuring for stable useCallback, `cancelAnimation` on reducedMotion toggle, barcode Zod validation on 3 endpoints, OCR parser negative/upper-bound guards, `barcodeNutrition` CHECK constraints, `useScanClassification` timeout cleanup bug, label-analysis-utils extraction with 13 tests, useOCRDetection 10 tests, parser 6 edge-case tests. +28 tests net.
 
 ## 2026-04-07 — Full Codebase Audit
