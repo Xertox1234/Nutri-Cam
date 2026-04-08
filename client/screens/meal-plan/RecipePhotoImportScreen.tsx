@@ -16,6 +16,7 @@ import { Feather } from "@expo/vector-icons";
 import { NotificationFeedbackType } from "expo-haptics";
 
 import { ThemedText } from "@/components/ThemedText";
+import { IngredientIcon } from "@/components/IngredientIcon";
 import { useTheme } from "@/hooks/useTheme";
 import { useHaptics } from "@/hooks/useHaptics";
 import {
@@ -378,21 +379,30 @@ export default function RecipePhotoImportScreen() {
                     {result.ingredients.length} ingredient
                     {result.ingredients.length !== 1 ? "s" : ""}
                   </ThemedText>
-                  <ThemedText
-                    style={[
-                      styles.ingredientsList,
-                      { color: theme.textSecondary },
-                    ]}
-                    numberOfLines={2}
-                  >
-                    {result.ingredients
-                      .slice(0, 5)
-                      .map((i) => i.name)
-                      .join(", ")}
-                    {result.ingredients.length > 5
-                      ? `, +${result.ingredients.length - 5} more`
-                      : ""}
-                  </ThemedText>
+                  {result.ingredients.slice(0, 5).map((ing, idx) => (
+                    <View key={idx} style={styles.ingredientRow}>
+                      <IngredientIcon name={ing.name} size={20} />
+                      <ThemedText
+                        style={[
+                          styles.ingredientsList,
+                          { color: theme.textSecondary, flex: 1 },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {ing.quantity} {ing.unit} {ing.name}
+                      </ThemedText>
+                    </View>
+                  ))}
+                  {result.ingredients.length > 5 && (
+                    <ThemedText
+                      style={[
+                        styles.ingredientsList,
+                        { color: theme.textSecondary },
+                      ]}
+                    >
+                      +{result.ingredients.length - 5} more
+                    </ThemedText>
+                  )}
                 </View>
               )}
             </View>
@@ -554,6 +564,12 @@ const styles = StyleSheet.create({
   ingredientsLabel: {
     fontSize: 13,
     fontFamily: FontFamily.semiBold,
+  },
+  ingredientRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 4,
   },
   ingredientsList: {
     fontSize: 13,
