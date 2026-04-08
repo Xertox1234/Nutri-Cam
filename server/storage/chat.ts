@@ -8,7 +8,7 @@ import {
   coachResponseCache,
 } from "@shared/schema";
 import { db } from "../db";
-import { eq, desc, and, gte, lt, sql, inArray } from "drizzle-orm";
+import { eq, desc, and, gte, lt, sql } from "drizzle-orm";
 import { getDayBounds } from "./helpers";
 import { recipeChatMetadataSchema } from "@shared/schemas/recipe-chat";
 
@@ -239,8 +239,54 @@ export async function createChatMessageWithLimitCheck(
         }
       }
       // If hasExistingMessage, skip quota check — refinements are free
+    } else if (conversationType === "recipe") {
+      // Recipe messages share quota with remix conversations.
+      // Count recipe user messages + distinct remix conversations (not remix messages).
+      const recipeMessageCount = await tx
+        .select({ count: sql<number>`count(*)` })
+        .from(chatMessages)
+        .innerJoin(
+          chatConversations,
+          eq(chatMessages.conversationId, chatConversations.id),
+        )
+        .where(
+          and(
+            eq(chatConversations.userId, userId),
+            eq(chatConversations.type, "recipe"),
+            eq(chatMessages.role, "user"),
+            gte(chatMessages.createdAt, startOfDay),
+            lt(chatMessages.createdAt, endOfDay),
+          ),
+        );
+
+      const remixConvCount = await tx
+        .select({
+          count: sql<number>`count(DISTINCT ${chatConversations.id})`,
+        })
+        .from(chatConversations)
+        .innerJoin(
+          chatMessages,
+          eq(chatMessages.conversationId, chatConversations.id),
+        )
+        .where(
+          and(
+            eq(chatConversations.userId, userId),
+            eq(chatConversations.type, "remix"),
+            eq(chatMessages.role, "user"),
+            gte(chatConversations.createdAt, startOfDay),
+            lt(chatConversations.createdAt, endOfDay),
+          ),
+        );
+
+      const totalGenerations =
+        Number(recipeMessageCount[0]?.count ?? 0) +
+        Number(remixConvCount[0]?.count ?? 0);
+
+      if (totalGenerations >= dailyLimit) {
+        return null;
+      }
     } else {
-      // Original per-message counting for coach and recipe types
+      // Coach type — per-message counting
       const conditions = [
         eq(chatConversations.userId, userId),
         eq(chatMessages.role, "user"),
@@ -248,12 +294,7 @@ export async function createChatMessageWithLimitCheck(
         lt(chatMessages.createdAt, endOfDay),
       ];
       if (conversationType) {
-        // For recipe type, also count remix conversations in the shared quota
-        if (conversationType === "recipe") {
-          conditions.push(inArray(chatConversations.type, ["recipe", "remix"]));
-        } else {
-          conditions.push(eq(chatConversations.type, conversationType));
-        }
+        conditions.push(eq(chatConversations.type, conversationType));
       }
 
       const countResult = await tx

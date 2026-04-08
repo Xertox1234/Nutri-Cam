@@ -24,6 +24,7 @@ import {
   buildRemixSystemPrompt,
   type RecipeChatRecipe,
 } from "../services/recipe-chat";
+import { remixConversationMetadataSchema } from "@shared/schemas/recipe-chat";
 import { logger, toError } from "../lib/logger";
 import { createHash } from "crypto";
 
@@ -83,6 +84,9 @@ export function register(app: Express): void {
         let conversationMetadata: Record<string, unknown> | null = null;
         let defaultTitle =
           parsed.data.type === "recipe" ? "New Recipe Chat" : "New Chat";
+        let remixSourceRecipe: Awaited<
+          ReturnType<typeof storage.getCommunityRecipe>
+        > = undefined;
 
         if (parsed.data.type === "remix") {
           if (!parsed.data.sourceRecipeId) {
@@ -94,11 +98,24 @@ export function register(app: Express): void {
             );
           }
 
-          // Fetch source recipe to validate it exists
-          const sourceRecipe = await storage.getCommunityRecipe(
+          // Fetch source recipe to validate it exists and is accessible
+          remixSourceRecipe = await storage.getCommunityRecipe(
             parsed.data.sourceRecipeId,
           );
-          if (!sourceRecipe) {
+          if (!remixSourceRecipe) {
+            return sendError(
+              res,
+              404,
+              "Source recipe not found",
+              ErrorCode.NOT_FOUND,
+            );
+          }
+
+          // Block remixing private recipes the user doesn't own
+          if (
+            !remixSourceRecipe.isPublic &&
+            remixSourceRecipe.authorId !== req.userId
+          ) {
             return sendError(
               res,
               404,
@@ -108,10 +125,10 @@ export function register(app: Express): void {
           }
 
           conversationMetadata = {
-            sourceRecipeId: sourceRecipe.id,
-            sourceRecipeTitle: sourceRecipe.title,
+            sourceRecipeId: remixSourceRecipe.id,
+            sourceRecipeTitle: remixSourceRecipe.title,
           };
-          defaultTitle = `Remix: ${sourceRecipe.title}`;
+          defaultTitle = `Remix: ${remixSourceRecipe.title}`;
         }
 
         const conversation = await storage.createChatConversation(
@@ -121,27 +138,23 @@ export function register(app: Express): void {
           conversationMetadata,
         );
 
-        // For remix conversations, insert the source recipe as a system message
-        if (parsed.data.type === "remix" && conversationMetadata) {
-          const sourceRecipe = await storage.getCommunityRecipe(
-            parsed.data.sourceRecipeId!,
+        // For remix conversations, insert the source recipe as a system message.
+        // Reuses remixSourceRecipe fetched above — no duplicate DB query.
+        if (remixSourceRecipe) {
+          await storage.createChatMessage(
+            conversation.id,
+            "system",
+            JSON.stringify({
+              title: remixSourceRecipe.title,
+              description: remixSourceRecipe.description,
+              difficulty: remixSourceRecipe.difficulty,
+              timeEstimate: remixSourceRecipe.timeEstimate,
+              servings: remixSourceRecipe.servings,
+              ingredients: remixSourceRecipe.ingredients,
+              instructions: remixSourceRecipe.instructions,
+              dietTags: remixSourceRecipe.dietTags,
+            }),
           );
-          if (sourceRecipe) {
-            await storage.createChatMessage(
-              conversation.id,
-              "system",
-              JSON.stringify({
-                title: sourceRecipe.title,
-                description: sourceRecipe.description,
-                difficulty: sourceRecipe.difficulty,
-                timeEstimate: sourceRecipe.timeEstimate,
-                servings: sourceRecipe.servings,
-                ingredients: sourceRecipe.ingredients,
-                instructions: sourceRecipe.instructions,
-                dietTags: sourceRecipe.dietTags,
-              }),
-            );
-          }
         }
 
         res.status(201).json(conversation);
@@ -311,13 +324,12 @@ export function register(app: Express): void {
             // For remix, build a specialized system prompt with the original recipe
             let remixPromptOverride: string | undefined;
             if (isRemixChat) {
-              const metadata = conversation.metadata as Record<
-                string,
-                unknown
-              > | null;
-              const sourceRecipeId = metadata?.sourceRecipeId as
-                | number
-                | undefined;
+              const parsedMeta = remixConversationMetadataSchema.safeParse(
+                conversation.metadata,
+              );
+              const sourceRecipeId = parsedMeta.success
+                ? parsedMeta.data.sourceRecipeId
+                : undefined;
               if (sourceRecipeId) {
                 const sourceRecipe =
                   await storage.getCommunityRecipe(sourceRecipeId);

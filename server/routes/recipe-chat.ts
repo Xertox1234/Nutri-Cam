@@ -18,6 +18,7 @@ import {
   analyzeImageForRecipe,
   RECIPE_SUGGESTION_CHIPS,
 } from "../services/recipe-chat";
+import { remixConversationMetadataSchema } from "@shared/schemas/recipe-chat";
 
 // 5MB limit for recipe ingredient photos
 const recipeImageUpload = createImageUpload(5 * 1024 * 1024);
@@ -72,18 +73,13 @@ export function register(app: Express): void {
           | { remixedFromId: number; remixedFromTitle: string }
           | undefined;
         if (conversation?.type === "remix") {
-          const metadata = conversation.metadata as Record<
-            string,
-            unknown
-          > | null;
-          const sourceRecipeId = metadata?.sourceRecipeId as number | undefined;
-          const sourceRecipeTitle = metadata?.sourceRecipeTitle as
-            | string
-            | undefined;
-          if (sourceRecipeId && sourceRecipeTitle) {
+          const parsedMeta = remixConversationMetadataSchema.safeParse(
+            conversation.metadata,
+          );
+          if (parsedMeta.success) {
             lineage = {
-              remixedFromId: sourceRecipeId,
-              remixedFromTitle: sourceRecipeTitle,
+              remixedFromId: parsedMeta.data.sourceRecipeId,
+              remixedFromTitle: parsedMeta.data.sourceRecipeTitle,
             };
           }
         }
