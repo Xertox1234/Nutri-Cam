@@ -212,6 +212,124 @@ describe("Recipe Generation", () => {
       ).rejects.toThrow();
     });
 
+    it("extracts ingredients from instructions when AI returns both markers", async () => {
+      const mockRecipe = {
+        title: "Pad Thai",
+        description: "Classic Thai noodle dish.",
+        difficulty: "Medium",
+        timeEstimate: "30 min",
+        ingredients: [],
+        instructions: [
+          "Ingredients:",
+          "200g rice noodles",
+          "300g chicken thighs",
+          "3 tbsp fish sauce",
+          "Instructions:",
+          "Mix fish sauce with garlic",
+          "Cook chicken until golden",
+        ],
+        dietTags: [],
+      };
+
+      mockCreate.mockResolvedValue({
+        choices: [{ message: { content: JSON.stringify(mockRecipe) } }],
+      } as any);
+
+      const result = await generateRecipeContent({
+        productName: "Rice noodles",
+      });
+
+      expect(result.ingredients).toHaveLength(3);
+      expect(result.ingredients[0]).toMatchObject({
+        name: "rice noodles",
+        quantity: "200",
+        unit: "g",
+      });
+      expect(result.ingredients[1]).toMatchObject({
+        name: "chicken thighs",
+        quantity: "300",
+        unit: "g",
+      });
+      expect(result.ingredients[2]).toMatchObject({
+        name: "fish sauce",
+        quantity: "3",
+        unit: "tbsp",
+      });
+      expect(result.instructions).toHaveLength(2);
+      expect(result.instructions[0]).toBe("Mix fish sauce with garlic");
+      expect(result.instructions[1]).toBe("Cook chicken until golden");
+    });
+
+    it("extracts ingredients when only Ingredients: marker is present", async () => {
+      const mockRecipe = {
+        title: "Simple Salad",
+        description: "A fresh salad.",
+        difficulty: "Easy",
+        timeEstimate: "10 min",
+        ingredients: [],
+        instructions: [
+          "Ingredients:",
+          "2 cucumbers",
+          "1 tomato",
+          "Toss everything together in a bowl",
+          "Season with salt and pepper",
+          "Serve immediately",
+        ],
+        dietTags: ["vegan"],
+      };
+
+      mockCreate.mockResolvedValue({
+        choices: [{ message: { content: JSON.stringify(mockRecipe) } }],
+      } as any);
+
+      const result = await generateRecipeContent({ productName: "Cucumber" });
+
+      expect(result.ingredients).toHaveLength(2);
+      expect(result.ingredients[0]).toMatchObject({
+        name: "cucumbers",
+        quantity: "2",
+      });
+      expect(result.ingredients[1]).toMatchObject({
+        name: "tomato",
+        quantity: "1",
+      });
+      expect(result.instructions).toHaveLength(3);
+      expect(result.instructions[0]).toBe("Toss everything together in a bowl");
+    });
+
+    it("handles Instructions: marker embedded in last ingredient line via newline", async () => {
+      const mockRecipe = {
+        title: "Noodle Soup",
+        description: "Warm noodle soup.",
+        difficulty: "Easy",
+        timeEstimate: "20 min",
+        ingredients: [],
+        instructions: [
+          "Ingredients:",
+          "200g rice noodles",
+          "Optional: sliced red chili for garnish\n\nInstructions:",
+          "Boil water and cook noodles",
+          "Serve hot",
+        ],
+        dietTags: [],
+      };
+
+      mockCreate.mockResolvedValue({
+        choices: [{ message: { content: JSON.stringify(mockRecipe) } }],
+      } as any);
+
+      const result = await generateRecipeContent({
+        productName: "Rice noodles",
+      });
+
+      expect(result.ingredients).toHaveLength(2);
+      expect(result.ingredients[1]).toMatchObject({
+        name: "Optional: sliced red chili for garnish",
+      });
+      expect(result.instructions).toHaveLength(2);
+      expect(result.instructions[0]).toBe("Boil water and cook noodles");
+    });
+
     it("passes dietary context from user profile", async () => {
       const validRecipe = {
         title: "Vegan Bowl",
