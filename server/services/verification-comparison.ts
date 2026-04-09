@@ -2,6 +2,7 @@ import type {
   ConsensusNutritionData,
   VerificationNutrition,
 } from "@shared/types/verification";
+import { roundToOneDecimal } from "../lib/math";
 
 // Re-export so existing consumers continue to work
 export type { VerificationNutrition } from "@shared/types/verification";
@@ -110,12 +111,9 @@ export function computeConsensus(
     calories:
       counts.calories > 0 ? Math.round(sums.calories / counts.calories) : 0,
     protein:
-      counts.protein > 0
-        ? Math.round((sums.protein / counts.protein) * 10) / 10
-        : 0,
-    carbs:
-      counts.carbs > 0 ? Math.round((sums.carbs / counts.carbs) * 10) / 10 : 0,
-    fat: counts.fat > 0 ? Math.round((sums.fat / counts.fat) * 10) / 10 : 0,
+      counts.protein > 0 ? roundToOneDecimal(sums.protein / counts.protein) : 0,
+    carbs: counts.carbs > 0 ? roundToOneDecimal(sums.carbs / counts.carbs) : 0,
+    fat: counts.fat > 0 ? roundToOneDecimal(sums.fat / counts.fat) : 0,
   };
 }
 

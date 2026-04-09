@@ -3,6 +3,7 @@ import { z } from "zod";
 import { storage } from "../storage";
 import { getStandardizedFoodName } from "./cultural-food-map";
 import { createServiceLogger, toError } from "../lib/logger";
+import { roundToOneDecimal } from "../lib/math";
 
 const log = createServiceLogger("nutrition-lookup");
 
@@ -700,7 +701,7 @@ function parseServingGrams(raw: string): number | null {
  */
 function scaleNutrients(n: BarcodePer100g, factor: number): BarcodePer100g {
   const s = (v: number | undefined) =>
-    v !== undefined ? Math.round(v * factor * 10) / 10 : undefined;
+    v !== undefined ? roundToOneDecimal(v * factor) : undefined;
   return {
     calories:
       n.calories !== undefined ? Math.round(n.calories * factor) : undefined,
@@ -722,12 +723,12 @@ function normalizeToPerHundredGrams(data: NutritionData): BarcodePer100g {
   const factor = 100 / grams;
   return {
     calories: Math.round(data.calories * factor),
-    protein: Math.round(data.protein * factor * 10) / 10,
-    carbs: Math.round(data.carbs * factor * 10) / 10,
-    fat: Math.round(data.fat * factor * 10) / 10,
-    fiber: Math.round(data.fiber * factor * 10) / 10,
-    sugar: Math.round(data.sugar * factor * 10) / 10,
-    sodium: Math.round(data.sodium * factor * 10) / 10,
+    protein: roundToOneDecimal(data.protein * factor),
+    carbs: roundToOneDecimal(data.carbs * factor),
+    fat: roundToOneDecimal(data.fat * factor),
+    fiber: roundToOneDecimal(data.fiber * factor),
+    sugar: roundToOneDecimal(data.sugar * factor),
+    sodium: roundToOneDecimal(data.sodium * factor),
   };
 }
 
@@ -883,7 +884,7 @@ export async function lookupBarcode(
     sugar: nm.sugars_100g,
     sodium:
       nm.sodium_100g !== undefined
-        ? Math.round(nm.sodium_100g * 1000 * 10) / 10
+        ? roundToOneDecimal(nm.sodium_100g * 1000)
         : undefined,
   };
 

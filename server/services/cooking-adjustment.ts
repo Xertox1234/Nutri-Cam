@@ -9,6 +9,7 @@
  */
 
 import type { FoodCategory } from "@shared/constants/preparation";
+import { roundToOneDecimal } from "../lib/math";
 
 export type CookingMethod =
   | "raw"
@@ -242,11 +243,11 @@ export function calculateCookedNutrition(
   if (cookingMethod === "raw") {
     return {
       calories: Math.round(rawCalories),
-      protein: Math.round(rawProtein * 10) / 10,
-      carbs: Math.round(rawCarbs * 10) / 10,
-      fat: Math.round(rawFat * 10) / 10,
-      fiber: Math.round(rawFiber * 10) / 10,
-      sugar: Math.round(rawSugar * 10) / 10,
+      protein: roundToOneDecimal(rawProtein),
+      carbs: roundToOneDecimal(rawCarbs),
+      fat: roundToOneDecimal(rawFat),
+      fiber: roundToOneDecimal(rawFiber),
+      sugar: roundToOneDecimal(rawSugar),
       sodium: Math.round(rawSodium),
       cookedWeightG: rawWeightG,
       cookingMethod,
@@ -276,11 +277,11 @@ export function calculateCookedNutrition(
 
   return {
     calories: Math.round(cookedCalories),
-    protein: Math.round(cookedProtein * 10) / 10,
-    carbs: Math.round(cookedCarbs * 10) / 10,
-    fat: Math.round(cookedFat * 10) / 10,
-    fiber: Math.round(cookedFiber * 10) / 10,
-    sugar: Math.round(cookedSugar * 10) / 10,
+    protein: roundToOneDecimal(cookedProtein),
+    carbs: roundToOneDecimal(cookedCarbs),
+    fat: roundToOneDecimal(cookedFat),
+    fiber: roundToOneDecimal(cookedFiber),
+    sugar: roundToOneDecimal(cookedSugar),
     sodium: Math.round(cookedSodium),
     cookedWeightG: Math.round(rawWeightG * yieldFactor),
     cookingMethod,

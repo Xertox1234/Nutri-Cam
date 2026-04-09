@@ -1,5 +1,6 @@
 import { storage } from "../storage";
 import type { Glp1Insights } from "@shared/types/medication";
+import { roundToOneDecimal } from "../lib/math";
 
 export type { Glp1Insights } from "@shared/types/medication";
 
@@ -38,8 +39,9 @@ export async function analyzeGlp1Insights(
   const appetiteLogs = logs.filter((l) => l.appetiteLevel != null);
   if (appetiteLogs.length > 0) {
     const sum = appetiteLogs.reduce((acc, l) => acc + l.appetiteLevel!, 0);
-    insights.averageAppetiteLevel =
-      Math.round((sum / appetiteLogs.length) * 10) / 10;
+    insights.averageAppetiteLevel = roundToOneDecimal(
+      sum / appetiteLogs.length,
+    );
 
     // Appetite trend (compare first half vs second half)
     if (appetiteLogs.length >= 4) {
