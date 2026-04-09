@@ -76,33 +76,46 @@ Post-session verification:
 ### Step 2 — Pre-flight
 
 - If the todo lists dependencies on other todos, check if those files still exist in `todos/` (not yet archived). If they do, report `blocked` — the dependency hasn't been completed yet
-- Read the source files mentioned in implementation notes to understand current state
 
-### Step 3 — Implement
+### Step 3 — Research
+
+- **Pattern docs** — Read `docs/patterns/*.md` files relevant to the todo's domain, selected by label mapping:
+  - `security` → `security.md`
+  - `architecture`, `duplication` → `architecture.md`
+  - `ui` → `react-native.md`, `design-system.md`, `animation.md`
+  - `performance` → `performance.md`
+  - `testing` → `testing.md`
+  - `database` → `database.md`
+  - No matching label → read `CLAUDE.md` patterns section and infer from file paths
+- **Learnings** — Scan `docs/LEARNINGS.md` for entries mentioning the affected files or domain (avoid repeating past mistakes)
+- **Prior art** — Check `todos/archive/` for completed todos that touched the same files (learn from how they were solved)
+- **Source context** — Read the full files being modified (not just the lines mentioned in the todo) to understand surrounding code
+
+### Step 4 — Implement
 
 - Use acceptance criteria as the definition of done
 - Use implementation notes as guidance (not prescription — may find a better approach)
-- Follow existing project patterns (`CLAUDE.md` and `docs/patterns/*.md`)
+- Apply patterns and conventions learned in the Research step
 
-### Step 4 — Verify
+### Step 5 — Verify
 
 - Run `npm run test:run` — all tests must pass
 - Run `npm run check:types` — zero type errors
 - Run `npm run lint` — zero lint errors
 - Re-read modified files to confirm changes match acceptance criteria
 
-### Step 5 — Code Review
+### Step 6 — Code Review
 
 - Spawn the `code-reviewer` subagent (`.claude/agents/code-reviewer.md`) against the uncommitted diff
 - Reviewer checks: pattern compliance, security, performance, test quality, domain-specific rules
 
-### Step 6 — Address Feedback
+### Step 7 — Address Feedback
 
-- If reviewer finds issues: fix them, re-run verification (Step 4)
+- If reviewer finds issues: fix them, re-run verification (Step 5)
 - If clean: proceed
 - Cap at 2 review rounds — if still failing review after 2 fix attempts, treat as failure
 
-### Step 7 — Commit & Archive
+### Step 8 — Commit & Archive
 
 - Stage changed files + the archived todo
 - Move the todo file from `todos/` to `todos/archive/`
@@ -110,14 +123,14 @@ Post-session verification:
   - Labels map to: `fix:`, `refactor:`, `feat:`, `test:`, `docs:` — fallback to `chore:`
   - Message format: `<type>: <todo title> (resolves todo)`
 
-### Step 8 — Codify
+### Step 9 — Codify
 
 - If the code review surfaced non-obvious feedback or the implementation established a reusable pattern, run the `pattern-codifier` agent (`.claude/agents/pattern-codifier.md`)
 - Codifier decides: add to `docs/patterns/*.md`, `docs/LEARNINGS.md`, or update specialist agents (same decision matrix as the audit skill)
 - If nothing worth codifying, skip — most routine todos won't produce new patterns
 - Codification changes get a separate commit: `docs: codify pattern from <todo title>`
 
-### Step 9 — Report
+### Step 10 — Report
 
 Return to orchestrator:
 
