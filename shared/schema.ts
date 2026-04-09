@@ -443,6 +443,29 @@ export const favouriteScannedItemsRelations = relations(
   }),
 );
 
+export const favouriteRecipes = pgTable(
+  "favourite_recipes",
+  {
+    id: serial("id").primaryKey(),
+    userId: varchar("user_id")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    recipeId: integer("recipe_id").notNull(),
+    recipeType: text("recipe_type").notNull(), // "mealPlan" | "community"
+    createdAt: timestamp("created_at")
+      .default(sql`CURRENT_TIMESTAMP`)
+      .notNull(),
+  },
+  (table) => ({
+    uniqueUserRecipe: unique().on(
+      table.userId,
+      table.recipeId,
+      table.recipeType,
+    ),
+    userIdIdx: index("favourite_recipes_user_id_idx").on(table.userId),
+  }),
+);
+
 // Community recipes - shared recipes created by premium users
 export const communityRecipes = pgTable(
   "community_recipes",
@@ -1540,6 +1563,19 @@ export interface ResolvedCookbookRecipe {
   servings: number | null;
   difficulty: string | null;
   addedAt: string;
+}
+
+export type FavouriteRecipe = typeof favouriteRecipes.$inferSelect;
+
+export interface ResolvedFavouriteRecipe {
+  recipeId: number;
+  recipeType: "mealPlan" | "community";
+  title: string;
+  description: string | null;
+  imageUrl: string | null;
+  servings: number | null;
+  difficulty: string | null;
+  favouritedAt: string;
 }
 
 // ============================================================================
