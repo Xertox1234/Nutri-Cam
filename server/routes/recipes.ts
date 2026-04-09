@@ -41,6 +41,7 @@ import {
   handleRouteError,
   parsePositiveIntParam,
   parseQueryInt,
+  parseStringParam,
   checkPremiumFeature,
   getPremiumFeatures,
   parseQueryString,
@@ -848,6 +849,48 @@ export function register(app: Express): void {
           "Failed to import recipe",
           ErrorCode.INTERNAL_ERROR,
         );
+      }
+    },
+  );
+
+  // GET /api/recipes/:recipeType/:recipeId/share — share payload
+  app.get(
+    "/api/recipes/:recipeType/:recipeId/share",
+    requireAuth,
+    crudRateLimit,
+    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+      try {
+        const recipeType = parseStringParam(req.params.recipeType);
+        if (recipeType !== "mealPlan" && recipeType !== "community") {
+          sendError(
+            res,
+            400,
+            "Invalid recipe type",
+            ErrorCode.VALIDATION_ERROR,
+          );
+          return;
+        }
+
+        const recipeId = parsePositiveIntParam(req.params.recipeId);
+        if (!recipeId) {
+          sendError(res, 400, "Invalid recipe ID", ErrorCode.VALIDATION_ERROR);
+          return;
+        }
+
+        const payload = await storage.getRecipeSharePayload(
+          recipeId,
+          recipeType,
+          req.userId,
+        );
+        if (!payload) {
+          sendError(res, 404, "Recipe not found", ErrorCode.NOT_FOUND);
+          return;
+        }
+
+        const deepLink = `ocrecipes://recipe/${recipeId}?type=${recipeType}`;
+        res.json({ ...payload, deepLink });
+      } catch (error) {
+        handleRouteError(res, error, "get recipe share payload");
       }
     },
   );

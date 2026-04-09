@@ -34,6 +34,7 @@ vi.mock("../../storage", () => ({
     findMealPlanRecipeByExternalId: vi.fn(),
     createMealPlanRecipe: vi.fn(),
     getFrequentRecipesForMealType: vi.fn(),
+    getRecipeSharePayload: vi.fn(),
   },
 }));
 
@@ -846,6 +847,58 @@ describe("Recipes Routes", () => {
 
       expect(res.status).toBe(422);
       expect(res.body.error).toBe("Import failed");
+    });
+  });
+
+  describe("GET /api/recipes/:recipeType/:recipeId/share", () => {
+    it("returns share payload for community recipe", async () => {
+      vi.mocked(storage.getRecipeSharePayload).mockResolvedValue({
+        title: "Pasta Carbonara",
+        description: "Classic Roman pasta",
+        imageUrl: "https://example.com/pasta.jpg",
+      });
+
+      const res = await request(app).get("/api/recipes/community/10/share");
+
+      expect(res.status).toBe(200);
+      expect(res.body.title).toBe("Pasta Carbonara");
+      expect(res.body.description).toBe("Classic Roman pasta");
+      expect(res.body.imageUrl).toBe("https://example.com/pasta.jpg");
+      expect(res.body.deepLink).toBe("ocrecipes://recipe/10?type=community");
+    });
+
+    it("returns 404 when recipe not found", async () => {
+      vi.mocked(storage.getRecipeSharePayload).mockResolvedValue(null);
+
+      const res = await request(app).get("/api/recipes/community/999/share");
+
+      expect(res.status).toBe(404);
+    });
+
+    it("returns 400 for invalid recipe type", async () => {
+      const res = await request(app).get("/api/recipes/invalid/10/share");
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 400 for non-numeric recipe ID", async () => {
+      const res = await request(app).get("/api/recipes/community/abc/share");
+      expect(res.status).toBe(400);
+    });
+
+    it("passes userId for ownership check", async () => {
+      vi.mocked(storage.getRecipeSharePayload).mockResolvedValue({
+        title: "My Recipe",
+        description: "",
+        imageUrl: null,
+      });
+
+      await request(app).get("/api/recipes/mealPlan/5/share");
+
+      expect(storage.getRecipeSharePayload).toHaveBeenCalledWith(
+        5,
+        "mealPlan",
+        "1",
+      );
     });
   });
 });

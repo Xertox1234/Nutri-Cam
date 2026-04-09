@@ -2,6 +2,7 @@ import {
   type CommunityRecipe,
   type InsertCommunityRecipe,
   communityRecipes,
+  mealPlanRecipes,
   recipeGenerationLog,
   cookbookRecipes,
   favouriteRecipes,
@@ -241,4 +242,62 @@ export async function getUserRecipes(
       .where(eq(communityRecipes.authorId, userId)),
   ]);
   return { items, total: Number(countResult[0]?.count ?? 0) };
+}
+
+/** Fetch recipe data for sharing. Returns null if not found or not accessible. */
+export async function getRecipeSharePayload(
+  recipeId: number,
+  recipeType: "mealPlan" | "community",
+  userId: string,
+): Promise<{
+  title: string;
+  description: string;
+  imageUrl: string | null;
+} | null> {
+  if (recipeType === "community") {
+    // Community recipes must be public OR owned by the requesting user
+    const [recipe] = await db
+      .select({
+        title: communityRecipes.title,
+        description: communityRecipes.description,
+        imageUrl: communityRecipes.imageUrl,
+      })
+      .from(communityRecipes)
+      .where(
+        and(
+          eq(communityRecipes.id, recipeId),
+          or(
+            eq(communityRecipes.isPublic, true),
+            eq(communityRecipes.authorId, userId),
+          ),
+        ),
+      );
+    if (!recipe) return null;
+    return {
+      title: recipe.title,
+      description: recipe.description ?? "",
+      imageUrl: recipe.imageUrl ?? null,
+    };
+  } else {
+    // mealPlan recipes are personal — verify ownership
+    const [recipe] = await db
+      .select({
+        title: mealPlanRecipes.title,
+        description: mealPlanRecipes.description,
+        imageUrl: mealPlanRecipes.imageUrl,
+      })
+      .from(mealPlanRecipes)
+      .where(
+        and(
+          eq(mealPlanRecipes.id, recipeId),
+          eq(mealPlanRecipes.userId, userId),
+        ),
+      );
+    if (!recipe) return null;
+    return {
+      title: recipe.title,
+      description: recipe.description ?? "",
+      imageUrl: recipe.imageUrl ?? null,
+    };
+  }
 }

@@ -4,13 +4,7 @@ import { storage } from "../storage";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/auth";
 import { sendError } from "../lib/api-errors";
 import { ErrorCode } from "@shared/constants/error-codes";
-import {
-  formatZodError,
-  handleRouteError,
-  parsePositiveIntParam,
-  parseQueryInt,
-  parseStringParam,
-} from "./_helpers";
+import { formatZodError, handleRouteError, parseQueryInt } from "./_helpers";
 import { crudRateLimit } from "./_rate-limiters";
 
 const toggleFavouriteSchema = z.object({
@@ -121,48 +115,6 @@ export function register(app: Express): void {
         res.json({ ids });
       } catch (error) {
         handleRouteError(res, error, "get favourite recipe IDs");
-      }
-    },
-  );
-
-  // GET /api/recipes/:recipeType/:recipeId/share — share payload
-  app.get(
-    "/api/recipes/:recipeType/:recipeId/share",
-    requireAuth,
-    crudRateLimit,
-    async (req: AuthenticatedRequest, res: Response): Promise<void> => {
-      try {
-        const recipeType = parseStringParam(req.params.recipeType);
-        if (recipeType !== "mealPlan" && recipeType !== "community") {
-          sendError(
-            res,
-            400,
-            "Invalid recipe type",
-            ErrorCode.VALIDATION_ERROR,
-          );
-          return;
-        }
-
-        const recipeId = parsePositiveIntParam(req.params.recipeId);
-        if (!recipeId) {
-          sendError(res, 400, "Invalid recipe ID", ErrorCode.VALIDATION_ERROR);
-          return;
-        }
-
-        const payload = await storage.getRecipeSharePayload(
-          recipeId,
-          recipeType,
-          req.userId,
-        );
-        if (!payload) {
-          sendError(res, 404, "Recipe not found", ErrorCode.NOT_FOUND);
-          return;
-        }
-
-        const deepLink = `ocrecipes://recipe/${recipeId}?type=${recipeType}`;
-        res.json({ ...payload, deepLink });
-      } catch (error) {
-        handleRouteError(res, error, "get recipe share payload");
       }
     },
   );
