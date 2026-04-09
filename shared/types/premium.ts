@@ -43,6 +43,7 @@ export interface PremiumFeatures {
   monthlyReceiptScans: number;
   recipePhotoImport: boolean;
   cookAndTrack: boolean;
+  maxFavouriteRecipes: number;
 }
 
 /** Represents effectively unlimited scans (JSON-safe alternative to Infinity). */
@@ -80,6 +81,7 @@ export const TIER_FEATURES: Record<SubscriptionTier, PremiumFeatures> = {
     monthlyReceiptScans: 0,
     recipePhotoImport: false,
     cookAndTrack: false,
+    maxFavouriteRecipes: 20,
   },
   premium: {
     maxDailyScans: UNLIMITED_SCANS,
@@ -112,6 +114,7 @@ export const TIER_FEATURES: Record<SubscriptionTier, PremiumFeatures> = {
     monthlyReceiptScans: 15,
     recipePhotoImport: true,
     cookAndTrack: true,
+    maxFavouriteRecipes: UNLIMITED_SCANS,
   },
 };
 
