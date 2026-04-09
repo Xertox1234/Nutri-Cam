@@ -9,7 +9,7 @@ vi.mock("react-native-reanimated", () => {
   return {
     useSharedValue: (initial: number) => {
       // Use useRef so the same object persists across re-renders (like real Reanimated)
-      const ref = useRef<{ value: number } | null>(null);
+      const ref = useRef(null as { value: number } | null);
       if (ref.current === null) {
         ref.current = { value: initial };
       }
