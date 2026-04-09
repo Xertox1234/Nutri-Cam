@@ -40,8 +40,8 @@ const {
   isRecipeFavourited,
   getFavouriteRecipeCount,
   getResolvedFavouriteRecipes,
-  getRecipeSharePayload,
 } = await import("../favourite-recipes");
+const { getRecipeSharePayload } = await import("../community");
 
 let tx: NodePgDatabase<typeof schema>;
 let testUser: schema.User;
