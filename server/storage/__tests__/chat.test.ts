@@ -330,7 +330,10 @@ describe("chat storage", () => {
         testUser.id,
         "Remix Chat",
         "remix",
-        { sourceRecipeId: sourceRecipe.id, sourceRecipeTitle: "Original Pasta" },
+        {
+          sourceRecipeId: sourceRecipe.id,
+          sourceRecipeTitle: "Original Pasta",
+        },
       );
 
       // Insert an assistant message with valid recipe metadata
