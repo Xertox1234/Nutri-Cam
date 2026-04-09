@@ -1,6 +1,6 @@
 ---
 title: "Move share endpoint from favourite-recipes to recipes route module"
-status: backlog
+status: in-progress
 priority: low
 created: 2026-04-09
 updated: 2026-04-09
