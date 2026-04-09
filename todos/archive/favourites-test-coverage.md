@@ -1,6 +1,6 @@
 ---
 title: "Add test coverage for favourites system (storage, hooks, service)"
-status: backlog
+status: in-progress
 priority: medium
 created: 2026-04-09
 updated: 2026-04-09
