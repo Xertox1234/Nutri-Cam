@@ -12,6 +12,7 @@ import {
   preparationToCookingMethod,
 } from "./cooking-adjustment";
 import { createServiceLogger } from "../lib/logger";
+import { roundToOneDecimal } from "../lib/math";
 
 const log = createServiceLogger("cooking-session");
 
@@ -250,11 +251,11 @@ export async function calculateSessionNutrition(
 
   // Round totals
   total.calories = Math.round(total.calories);
-  total.protein = Math.round(total.protein * 10) / 10;
-  total.carbs = Math.round(total.carbs * 10) / 10;
-  total.fat = Math.round(total.fat * 10) / 10;
-  total.fiber = Math.round(total.fiber * 10) / 10;
-  total.sugar = Math.round(total.sugar * 10) / 10;
+  total.protein = roundToOneDecimal(total.protein);
+  total.carbs = roundToOneDecimal(total.carbs);
+  total.fat = roundToOneDecimal(total.fat);
+  total.fiber = roundToOneDecimal(total.fiber);
+  total.sugar = roundToOneDecimal(total.sugar);
   total.sodium = Math.round(total.sodium);
 
   return { total, items };
@@ -285,9 +286,9 @@ export async function calculateSessionMacros(
 
   // Round consistently with calculateSessionNutrition
   totals.calories = Math.round(totals.calories);
-  totals.protein = Math.round(totals.protein * 10) / 10;
-  totals.carbs = Math.round(totals.carbs * 10) / 10;
-  totals.fat = Math.round(totals.fat * 10) / 10;
+  totals.protein = roundToOneDecimal(totals.protein);
+  totals.carbs = roundToOneDecimal(totals.carbs);
+  totals.fat = roundToOneDecimal(totals.fat);
 
   return totals;
 }
