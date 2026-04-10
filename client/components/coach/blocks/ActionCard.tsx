@@ -12,7 +12,7 @@ export default function ActionCard({ block, onAction }: Props) {
   const { theme } = useTheme();
   return (
     <View
-      style={[styles.container, { backgroundColor: theme.cardBackground }]}
+      style={[styles.container, { backgroundColor: theme.backgroundSecondary }]}
       accessibilityRole="button"
       accessibilityLabel={`${block.title}. ${block.subtitle}. ${block.actionLabel}`}
     >

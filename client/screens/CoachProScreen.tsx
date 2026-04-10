@@ -36,7 +36,7 @@ export default function CoachProScreen() {
     <View
       style={[
         styles.container,
-        { backgroundColor: theme.background, paddingTop: insets.top },
+        { backgroundColor: theme.backgroundDefault, paddingTop: insets.top },
       ]}
     >
       {context && (

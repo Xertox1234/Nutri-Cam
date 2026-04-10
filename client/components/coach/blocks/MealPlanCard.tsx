@@ -13,7 +13,7 @@ export default function MealPlanCard({ block, onAction }: Props) {
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.cardBackground }]} accessibilityRole="group" accessibilityLabel={`Meal plan: ${block.title}`}>
+    <View style={[styles.container, { backgroundColor: theme.backgroundSecondary }]} role="group" accessibilityLabel={`Meal plan: ${block.title}`}>
       <Pressable onPress={() => setExpanded(!expanded)} style={styles.header} accessibilityRole="button" accessibilityLabel={expanded ? "Collapse meal plan" : "Expand meal plan"}>
         <Text style={[styles.title, { color: theme.text }]}>{block.title}</Text>
         <Text style={{ color: theme.textSecondary }}>{expanded ? "\u25B2" : "\u25BC"}</Text>

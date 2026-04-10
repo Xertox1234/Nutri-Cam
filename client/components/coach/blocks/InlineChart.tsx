@@ -13,7 +13,7 @@ export default function InlineChart({ block }: Props) {
   if (block.chartType === "bar") {
     const maxValue = Math.max(...block.data.map((d) => d.value), 1);
     return (
-      <View style={[styles.container, { backgroundColor: theme.cardBackground }]} accessibilityLabel={`${block.title}. ${block.summary ?? ""}`}>
+      <View style={[styles.container, { backgroundColor: theme.backgroundSecondary }]} accessibilityLabel={`${block.title}. ${block.summary ?? ""}`}>
         <Text style={[styles.title, { color: theme.text }]}>{block.title}</Text>
         <View style={styles.barRow}>
           {block.data.map((d, i) => (
@@ -32,7 +32,7 @@ export default function InlineChart({ block }: Props) {
 
   if (block.chartType === "stat_row") {
     return (
-      <View style={[styles.container, { backgroundColor: theme.cardBackground }]}>
+      <View style={[styles.container, { backgroundColor: theme.backgroundSecondary }]}>
         <Text style={[styles.title, { color: theme.text }]}>{block.title}</Text>
         <View style={styles.statRow}>
           {block.data.map((d, i) => (
@@ -50,7 +50,7 @@ export default function InlineChart({ block }: Props) {
   const datum = block.data[0];
   const pct = datum?.target ? Math.min((datum.value / datum.target) * 100, 100) : 0;
   return (
-    <View style={[styles.container, { backgroundColor: theme.cardBackground }]}>
+    <View style={[styles.container, { backgroundColor: theme.backgroundSecondary }]}>
       <Text style={[styles.title, { color: theme.text }]}>{block.title}</Text>
       <View style={[styles.progressTrack, { backgroundColor: theme.border }]}>
         <View style={[styles.progressFill, { width: `${pct}%`, backgroundColor: theme.success }]} />

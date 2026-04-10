@@ -15,7 +15,7 @@ export default function CommitmentCard({ block, onAccept }: Props) {
 
   if (dismissed) {
     return (
-      <View style={[styles.container, { backgroundColor: theme.cardBackground, opacity: 0.5 }]}>
+      <View style={[styles.container, { backgroundColor: theme.backgroundSecondary, opacity: 0.5 }]}>
         <Text style={[styles.title, { color: theme.textSecondary }]}>{block.title}</Text>
         <Text style={[styles.dismissed, { color: theme.textSecondary }]}>Dismissed</Text>
       </View>
@@ -23,7 +23,7 @@ export default function CommitmentCard({ block, onAccept }: Props) {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.cardBackground }]} accessibilityRole="group" accessibilityLabel={`Commitment: ${block.title}. ${block.followUpText}`}>
+    <View style={[styles.container, { backgroundColor: theme.backgroundSecondary }]} role="group" accessibilityLabel={`Commitment: ${block.title}. ${block.followUpText}`}>
       <View style={styles.header}>
         <View style={[styles.checkbox, accepted ? { backgroundColor: theme.success } : { borderColor: theme.link, borderWidth: 2 }]}>
           {accepted && <Text style={styles.checkmark}>{"\u2713"}</Text>}

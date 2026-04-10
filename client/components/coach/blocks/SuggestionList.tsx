@@ -11,7 +11,7 @@ interface Props {
 export default function SuggestionList({ block, onAction }: Props) {
   const { theme } = useTheme();
   return (
-    <View style={[styles.container, { backgroundColor: theme.cardBackground }]}>
+    <View style={[styles.container, { backgroundColor: theme.backgroundSecondary }]}>
       {block.items.map((item, i) => (
         <Pressable
           key={i}

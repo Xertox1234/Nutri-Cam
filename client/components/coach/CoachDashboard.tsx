@@ -31,7 +31,7 @@ export default function CoachDashboard({ context, onSuggestionPress }: Props) {
   const { todayIntake, notebook, dueCommitments, suggestions, goals } = context;
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.cardBackground }]}>
+    <View style={[styles.container, { backgroundColor: theme.backgroundSecondary }]}>
       <Pressable onPress={toggleExpanded} style={styles.header}>
         <View>
           <Text style={[styles.greeting, { color: theme.text }]}>{getGreeting()}</Text>
@@ -47,15 +47,15 @@ export default function CoachDashboard({ context, onSuggestionPress }: Props) {
       </Pressable>
 
       <View style={styles.statRow}>
-        <View style={[styles.stat, { backgroundColor: theme.background }]}>
+        <View style={[styles.stat, { backgroundColor: theme.backgroundDefault }]}>
           <Text style={[styles.statValue, { color: theme.link }]}>{todayIntake?.totalCalories ?? 0}</Text>
           <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Calories</Text>
         </View>
-        <View style={[styles.stat, { backgroundColor: theme.background }]}>
+        <View style={[styles.stat, { backgroundColor: theme.backgroundDefault }]}>
           <Text style={[styles.statValue, { color: theme.success }]}>{todayIntake?.totalProtein ?? 0}g</Text>
           <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Protein</Text>
         </View>
-        <View style={[styles.stat, { backgroundColor: theme.background }]}>
+        <View style={[styles.stat, { backgroundColor: theme.backgroundDefault }]}>
           <Text style={[styles.statValue, { color: theme.warning }]}>
             {goals ? goals.calories - (todayIntake?.totalCalories ?? 0) : "\u2014"}
           </Text>
@@ -95,7 +95,7 @@ export default function CoachDashboard({ context, onSuggestionPress }: Props) {
       {suggestions.length > 0 && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chips} contentContainerStyle={styles.chipsContent}>
           {suggestions.map((s, i) => (
-            <Pressable key={i} style={[styles.chip, { backgroundColor: theme.background }]} onPress={() => onSuggestionPress(s)} accessibilityRole="button">
+            <Pressable key={i} style={[styles.chip, { backgroundColor: theme.backgroundDefault }]} onPress={() => onSuggestionPress(s)} accessibilityRole="button">
               <Text style={[styles.chipText, { color: theme.link }]}>{s}</Text>
             </Pressable>
           ))}

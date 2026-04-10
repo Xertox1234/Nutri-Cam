@@ -46,15 +46,16 @@ describe("Coach Tools Service", () => {
     const tools = getToolDefinitions();
     for (const tool of tools) {
       expect(tool).toHaveProperty("type", "function");
-      expect(tool.function).toHaveProperty("name");
-      expect(tool.function).toHaveProperty("description");
-      expect(tool.function).toHaveProperty("parameters");
+      const fn = (tool as unknown as { function: Record<string, unknown> }).function;
+      expect(fn).toHaveProperty("name");
+      expect(fn).toHaveProperty("description");
+      expect(fn).toHaveProperty("parameters");
     }
   });
 
   it("tool names match expected set", () => {
     const tools = getToolDefinitions();
-    const names = tools.map((t) => t.function.name);
+    const names = tools.map((t) => (t as { function: { name: string } }).function.name);
     expect(names).toContain("lookup_nutrition");
     expect(names).toContain("search_recipes");
     expect(names).toContain("get_daily_log_details");

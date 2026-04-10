@@ -12,7 +12,7 @@ export default function RecipeCard({ block, onAction }: Props) {
   const { theme } = useTheme();
   const { recipe } = block;
   return (
-    <View style={[styles.container, { backgroundColor: theme.cardBackground }]} accessibilityLabel={`Recipe: ${recipe.title}. ${recipe.calories} calories, ${recipe.protein}g protein, ${recipe.prepTime}`}>
+    <View style={[styles.container, { backgroundColor: theme.backgroundSecondary }]} accessibilityLabel={`Recipe: ${recipe.title}. ${recipe.calories} calories, ${recipe.protein}g protein, ${recipe.prepTime}`}>
       <View style={styles.info}>
         <Text style={[styles.title, { color: theme.text }]}>{recipe.title}</Text>
         <Text style={[styles.meta, { color: theme.textSecondary }]}>

@@ -66,7 +66,7 @@ export function register(app: Express): void {
             ? {
                 dietType: profile.dietType,
                 allergies: profile.allergies,
-                dislikes: profile.dislikes,
+                dislikes: profile.foodDislikes,
               }
             : null,
           notebook: notebookEntries,

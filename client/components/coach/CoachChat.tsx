@@ -225,17 +225,17 @@ export default function CoachChat({
           <View key={msg.id}>
             <ChatBubble role={msg.role as "user" | "assistant"} content={msg.content} />
             {/* Render blocks from message metadata */}
-            {msg.metadata &&
-              (msg.metadata as Record<string, unknown>).blocks &&
-              ((msg.metadata as Record<string, unknown>).blocks as CoachBlock[]).map(
-                (block, i) => (
-                  <BlockRenderer
-                    key={`${msg.id}-block-${i}`}
-                    block={block}
-                    onQuickReply={handleQuickReply}
-                  />
-                ),
-              )}
+            {(() => {
+              const meta = msg.metadata as Record<string, unknown> | null | undefined;
+              const blocks = meta?.blocks as CoachBlock[] | undefined;
+              return blocks?.map((block, i) => (
+                <BlockRenderer
+                  key={`${msg.id}-block-${i}`}
+                  block={block}
+                  onQuickReply={handleQuickReply}
+                />
+              ));
+            })()}
           </View>
         ))}
 
@@ -270,12 +270,12 @@ export default function CoachChat({
       <View
         style={[
           styles.inputBar,
-          { backgroundColor: theme.cardBackground, borderTopColor: theme.border },
+          { backgroundColor: theme.backgroundSecondary, borderTopColor: theme.border },
         ]}
       >
         <TextInput
           ref={inputRef}
-          style={[styles.input, { backgroundColor: theme.background, color: theme.text }]}
+          style={[styles.input, { backgroundColor: theme.backgroundDefault, color: theme.text }]}
           placeholder="Ask your coach..."
           placeholderTextColor={theme.textSecondary}
           value={inputText}
@@ -320,7 +320,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    borderRadius: BorderRadius.round,
+    borderRadius: BorderRadius.full,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
     fontSize: 14,
