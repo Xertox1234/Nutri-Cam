@@ -14,9 +14,24 @@ const logFoodActionSchema = z.object({
   servings: z.number().optional(),
 });
 
+/** Whitelist of screens the AI coach is allowed to navigate to. */
+const NAVIGABLE_SCREENS = [
+  "NutritionDetail",
+  "FeaturedRecipeDetail",
+  "QuickLog",
+  "DailyNutritionDetail",
+  "Scan",
+  "WeightTracking",
+  "RecipeChat",
+  "RecipeBrowserModal",
+  "GroceryListsModal",
+  "PantryModal",
+  "CookbookListModal",
+] as const;
+
 const navigateActionSchema = z.object({
   type: z.literal("navigate"),
-  screen: z.string(),
+  screen: z.enum(NAVIGABLE_SCREENS),
   params: z.record(z.unknown()).optional(),
 });
 

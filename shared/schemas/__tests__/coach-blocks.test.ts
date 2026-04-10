@@ -40,7 +40,7 @@ describe("Coach Block Schemas", () => {
           subtitle: "480 cal - 42g P",
           action: {
             type: "navigate",
-            screen: "RecipeDetail",
+            screen: "FeaturedRecipeDetail",
             params: { recipeId: 123 },
           },
         },
