@@ -39,6 +39,16 @@ vi.mock("../../storage", () => ({
 
 vi.mock("../../services/nutrition-coach", () => ({
   generateCoachResponse: vi.fn(),
+  generateCoachProResponse: vi.fn(),
+}));
+
+vi.mock("../../services/coach-blocks", () => ({
+  parseBlocksFromContent: vi.fn().mockReturnValue({ text: "", blocks: [] }),
+  BLOCKS_SYSTEM_PROMPT: "test prompt",
+}));
+
+vi.mock("../../services/notebook-extraction", () => ({
+  extractNotebookEntries: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("../../middleware/auth");

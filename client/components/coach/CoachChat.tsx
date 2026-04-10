@@ -171,7 +171,9 @@ export default function CoachChat({
           convId,
           content,
           (accumulated) => {
-            setStreamingContent(accumulated);
+            // Strip coach_blocks fence from displayed content during streaming
+            const display = accumulated.replace(/```coach_blocks\n[\s\S]*?(?:```|$)/, "").trim();
+            setStreamingContent(display);
             scrollRef.current?.scrollToEnd({ animated: false });
           },
           (blocks) => setStreamBlocks(blocks),

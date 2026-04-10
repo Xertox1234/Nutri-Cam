@@ -360,20 +360,18 @@ export async function executeToolCall(
     }
 
     case "log_food_item": {
-      const item = await storage.createScannedItemWithLog(
-        {
-          userId,
-          productName: String(args.name ?? "Unknown food"),
-          servingSize: args.servingSize ? String(args.servingSize) : "1 serving",
-          calories: args.calories != null ? String(args.calories) : null,
-          protein: args.protein != null ? String(args.protein) : null,
-          carbs: args.carbs != null ? String(args.carbs) : null,
-          fat: args.fat != null ? String(args.fat) : null,
-          sourceType: "coach",
-        },
-        { source: "coach" },
-      );
-      return { id: item.id, logged: true, name: args.name };
+      // Return proposal — client renders as action card for user confirmation
+      return {
+        proposal: true,
+        action: "log_food",
+        description: String(args.name ?? args.description ?? ""),
+        calories: Number(args.calories ?? 0),
+        protein: Number(args.protein ?? 0),
+        carbs: Number(args.carbs ?? 0),
+        fat: Number(args.fat ?? 0),
+        mealType: args.mealType ? String(args.mealType) : undefined,
+        message: "I've prepared this to log. Please confirm by tapping 'Log it' below.",
+      };
     }
 
     case "get_pantry_items": {
@@ -408,29 +406,25 @@ export async function executeToolCall(
     }
 
     case "add_to_meal_plan": {
-      const item = await storage.addMealPlanItem({
-        userId,
+      // Return proposal — client renders as meal plan card for user confirmation
+      return {
+        proposal: true,
+        action: "add_meal_plan",
+        recipeId: Number(args.recipeId ?? 0),
         plannedDate: String(args.plannedDate ?? new Date().toISOString().split("T")[0]),
         mealType: String(args.mealType ?? "lunch"),
-      });
-      return { id: item.id, added: true };
+        message: "I've prepared this meal plan addition. Please confirm below.",
+      };
     }
 
     case "add_to_grocery_list": {
+      // Return proposal — client renders for user confirmation
       const rawItems = Array.isArray(args.items) ? args.items : [];
-      const listTitle = args.listName
-        ? String(args.listName)
-        : "Coach Grocery List";
-      const today = new Date().toISOString().split("T")[0];
-
-      const result = await storage.createGroceryListWithLimitCheck(
-        {
-          userId,
-          title: listTitle,
-          dateRangeStart: today,
-          dateRangeEnd: today,
-        },
-        rawItems.map((i: unknown) => {
+      return {
+        proposal: true,
+        action: "add_grocery_list",
+        listName: args.listName ? String(args.listName) : "Coach Grocery List",
+        items: rawItems.map((i: unknown) => {
           const item = i as Record<string, unknown>;
           return {
             name: String(item.name ?? ""),
@@ -438,16 +432,8 @@ export async function executeToolCall(
             unit: item.unit ? String(item.unit) : null,
           };
         }),
-        50,
-      );
-
-      if (!result) {
-        return {
-          error: "Grocery list limit reached. Please delete an existing list.",
-        };
-      }
-
-      return { listId: result.list.id, itemCount: result.items.length, added: true };
+        message: "Here are the items I'd add to your grocery list. Please confirm below.",
+      };
     }
 
     case "get_substitutions": {

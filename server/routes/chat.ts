@@ -30,6 +30,7 @@ import { logger, toError } from "../lib/logger";
 import { createHash } from "crypto";
 import { parseBlocksFromContent, BLOCKS_SYSTEM_PROMPT } from "../services/coach-blocks";
 import { extractNotebookEntries } from "../services/notebook-extraction";
+import { consumeWarmUp } from "./coach-context";
 import type { CoachBlock } from "@shared/schemas/coach-blocks";
 
 const SSE_TIMEOUT_MS = 120_000; // 2 minutes max per SSE connection
@@ -229,6 +230,7 @@ export function register(app: Express): void {
         const schema = z.object({
           content: z.string().min(1).max(2000),
           screenContext: z.string().max(1500).optional(),
+          warmUpId: z.string().max(100).optional(),
         });
         const parsed = schema.safeParse(req.body);
         if (!parsed.success)
@@ -470,11 +472,17 @@ export function register(app: Express): void {
             if (isCoachPro) {
               const notebookEntries = await storage.getActiveNotebookEntries(req.userId);
               if (notebookEntries.length > 0) {
-                const summary = notebookEntries
-                  .slice(0, 15)
-                  .map((e) => `[${e.type}] ${e.content}`)
-                  .join("\n");
-                context.notebookSummary = summary + "\n\n" + BLOCKS_SYSTEM_PROMPT;
+                // Budget ~800 tokens (~3200 chars) for notebook context
+                const MAX_NOTEBOOK_CHARS = 3200;
+                let charCount = 0;
+                const lines: string[] = [];
+                for (const e of notebookEntries) {
+                  const line = `[${e.type}] ${e.content}`;
+                  if (charCount + line.length > MAX_NOTEBOOK_CHARS) break;
+                  lines.push(line);
+                  charCount += line.length;
+                }
+                context.notebookSummary = lines.join("\n") + "\n\n" + BLOCKS_SYSTEM_PROMPT;
               } else {
                 context.notebookSummary = BLOCKS_SYSTEM_PROMPT;
               }
@@ -484,6 +492,21 @@ export function register(app: Express): void {
               role: m.role as "user" | "assistant" | "system",
               content: m.content,
             }));
+
+            // ── Coach Pro: consume warm-up if available ─────────
+            const warmUpId = parsed.data.warmUpId;
+            if (isCoachPro && warmUpId) {
+              const warmedUp = consumeWarmUp(req.userId, warmUpId);
+              if (warmedUp) {
+                // Warm-up already has conversation history — use it
+                // The last message in warmedUp is the interim transcript;
+                // replace it with the final transcript
+                warmedUp[warmedUp.length - 1] = {
+                  role: "user",
+                  content: parsed.data.content,
+                };
+              }
+            }
 
             // Check cache for predefined questions (no screenContext = universal answer)
             const isCacheable =
