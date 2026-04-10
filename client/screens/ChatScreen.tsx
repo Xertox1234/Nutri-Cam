@@ -16,7 +16,6 @@ import {
   ActivityIndicator,
   AccessibilityInfo,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
@@ -44,6 +43,7 @@ import {
   FontFamily,
   BorderRadius,
   withOpacity,
+  TAB_BAR_HEIGHT,
 } from "@/constants/theme";
 import { pressSpringConfig } from "@/constants/animations";
 import { FLATLIST_DEFAULTS } from "@/constants/performance";
@@ -219,7 +219,6 @@ function ChatSkeleton() {
 }
 
 export default function ChatScreen() {
-  const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const haptics = useHaptics();
   const toast = useToast();
@@ -421,7 +420,7 @@ export default function ChatScreen() {
           {
             backgroundColor: theme.backgroundRoot,
             borderTopColor: theme.border,
-            paddingBottom: Math.max(insets.bottom, Spacing.sm),
+            paddingBottom: TAB_BAR_HEIGHT,
           },
         ]}
       >
