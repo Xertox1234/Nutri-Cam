@@ -49,7 +49,7 @@ A summary panel at the top of the screen that collapses to a compact strip while
 - Mini stat row (compact versions of the 3 stat cards)
 - Tap to expand
 
-**Data source:** All dashboard data comes from the preloaded context endpoint (Section 6) and the coach notebook (Section 4).
+**Data source:** All dashboard data comes from the preloaded context endpoint (Section 7) and the coach notebook (Section 5).
 
 ### Contextual Suggestion Chips
 
@@ -309,7 +309,200 @@ The server parses model output, validates block schemas with Zod, and streams va
 
 ---
 
-## 4. Coach Notebook (Memory System)
+## 4. Coach Tools (API Access)
+
+The coach has access to backend APIs via OpenAI function/tool calling. Instead of generating nutrition data or recipes from training knowledge, the coach queries real data from the app's services and database. This makes rich message blocks (recipe cards, meal plan cards, action cards) contain accurate, actionable data.
+
+### How Tool Calling Works
+
+1. The coach's OpenAI request includes a `tools` array defining available functions
+2. Mid-response, the model can decide to call a tool (e.g., `search_recipes`)
+3. The server intercepts the tool call, executes it against the real backend service, and feeds the result back to the model
+4. The model continues its response using the real data
+5. Tool calls happen server-side — the client only sees the final streamed response with accurate data
+
+### Tool Definitions
+
+#### 4.1 `lookup_nutrition`
+
+Look up nutrition data for a specific food item using the multi-source pipeline (CNF → USDA → API Ninjas).
+
+| Parameter | Type   | Required | Description                                                 |
+| --------- | ------ | -------- | ----------------------------------------------------------- |
+| `query`   | string | yes      | Food name to look up (e.g., "chicken breast", "brown rice") |
+
+**Returns:** `{ name, calories, protein, carbs, fat, fiber, sugar, sodium, servingSize, source }`
+
+**Use cases:** User asks "how many calories in X?", coach builds action cards with accurate nutrition, coach validates a food logging request.
+
+**Backend:** `lookupNutrition(query)` from `server/services/nutrition-lookup.ts`
+
+#### 4.2 `search_recipes`
+
+Search the recipe catalog for recipes matching a query, with optional filters.
+
+| Parameter      | Type   | Required | Description                                                     |
+| -------------- | ------ | -------- | --------------------------------------------------------------- |
+| `query`        | string | yes      | Search terms (e.g., "high protein lunch")                       |
+| `cuisine`      | string | no       | Cuisine filter (e.g., "Mediterranean", "Asian")                 |
+| `diet`         | string | no       | Diet filter (e.g., "vegetarian", "keto")                        |
+| `maxReadyTime` | number | no       | Max prep+cook time in minutes                                   |
+| `intolerances` | string | no       | Comma-separated intolerances (auto-populated from user profile) |
+
+**Returns:** Array of `{ id, title, image, readyInMinutes, calories, protein }` (up to 5 results)
+
+**Use cases:** Coach suggests meals → returns real recipe cards with valid `recipeId`s. Coach responds to "what should I eat?" with actual recipes.
+
+**Backend:** `searchCatalogRecipes(params)` from `server/services/recipe-catalog.ts`. User's allergies/intolerances are auto-injected from their profile.
+
+#### 4.3 `get_daily_log_details`
+
+Get the detailed breakdown of what the user has eaten on a specific day.
+
+| Parameter | Type   | Required | Description                         |
+| --------- | ------ | -------- | ----------------------------------- |
+| `date`    | string | no       | ISO date string (defaults to today) |
+
+**Returns:** Array of log entries with `{ name, calories, protein, carbs, fat, mealType, servings, loggedAt }` plus daily totals.
+
+**Use cases:** Coach drills into specific meals ("your lunch was carb-heavy"), identifies gaps ("you haven't logged dinner yet"), provides detailed feedback.
+
+**Backend:** `getDailyLogs(userId, date)` + `getDailySummary(userId, date)` from `server/storage/nutrition.ts`. User ID injected server-side.
+
+#### 4.4 `log_food_item`
+
+Log a food item to the user's daily intake. Used when the user confirms a food logging action card.
+
+| Parameter     | Type   | Required | Description                                                                |
+| ------------- | ------ | -------- | -------------------------------------------------------------------------- |
+| `description` | string | yes      | Food description (e.g., "grilled chicken salad")                           |
+| `calories`    | number | yes      | Calorie count                                                              |
+| `protein`     | number | yes      | Protein in grams                                                           |
+| `carbs`       | number | yes      | Carbs in grams                                                             |
+| `fat`         | number | yes      | Fat in grams                                                               |
+| `mealType`    | string | no       | "breakfast", "lunch", "dinner", or "snack" (inferred from time if omitted) |
+| `servings`    | number | no       | Number of servings (default 1)                                             |
+
+**Returns:** `{ success: true, logId }` or `{ success: false, error }`
+
+**Use cases:** Coach offers "Log this?" action card → user accepts → coach calls this tool to actually create the log entry.
+
+**Backend:** `createScannedItemWithLog()` from `server/storage/nutrition.ts`. Nutrition data first resolved via `parseNaturalLanguageFood()` or `lookupNutrition()` for accuracy.
+
+**Safety:** The coach should always confirm with the user before logging (via action card with Accept/Dismiss). Never auto-log without user consent.
+
+#### 4.5 `get_pantry_items`
+
+Check what's currently in the user's pantry.
+
+| Parameter         | Type    | Required | Description                                      |
+| ----------------- | ------- | -------- | ------------------------------------------------ |
+| `includeExpiring` | boolean | no       | If true, also flags items expiring within 7 days |
+
+**Returns:** Array of `{ name, quantity, unit, category, expiresAt? }` plus optionally `expiringItems[]`
+
+**Use cases:** "What can I make with what I have?", coach checks pantry before suggesting recipes, coach warns about expiring items.
+
+**Backend:** `getPantryItems(userId)` + `getExpiringPantryItems(userId, 7)` from `server/storage/meal-plans.ts`
+
+#### 4.6 `get_meal_plan`
+
+Get the user's scheduled meal plan for a date range.
+
+| Parameter   | Type   | Required | Description                      |
+| ----------- | ------ | -------- | -------------------------------- |
+| `startDate` | string | yes      | ISO date (e.g., today)           |
+| `endDate`   | string | yes      | ISO date (e.g., 7 days from now) |
+
+**Returns:** Array of `{ date, mealType, recipe: { title, calories, protein, prepTime } }`
+
+**Use cases:** Coach reviews the week's plan, identifies nutrition gaps across days, suggests adjustments.
+
+**Backend:** `getMealPlanItems(userId, startDate, endDate)` from `server/storage/meal-plans.ts`, joined with recipe details.
+
+#### 4.7 `add_to_meal_plan`
+
+Add a recipe to the user's meal plan for a specific date and meal.
+
+| Parameter  | Type   | Required | Description                                 |
+| ---------- | ------ | -------- | ------------------------------------------- |
+| `recipeId` | number | yes      | Recipe ID (from search_recipes or existing) |
+| `date`     | string | yes      | ISO date                                    |
+| `mealType` | string | yes      | "breakfast", "lunch", "dinner", or "snack"  |
+| `servings` | number | no       | Number of servings (default 1)              |
+
+**Returns:** `{ success: true, itemId }` or `{ success: false, error }`
+
+**Use cases:** Meal plan card "Add to Plan" action, coach builds a full day plan and adds it on confirmation.
+
+**Safety:** Requires user confirmation via meal plan card Accept action. Never auto-add.
+
+**Backend:** `addMealPlanItem()` from `server/storage/meal-plans.ts`
+
+#### 4.8 `add_to_grocery_list`
+
+Add items to the user's grocery list.
+
+| Parameter  | Type   | Required | Description                                      |
+| ---------- | ------ | -------- | ------------------------------------------------ |
+| `listId`   | number | no       | Existing list ID (creates a new list if omitted) |
+| `listName` | string | no       | Name for new list (required if `listId` omitted) |
+| `items`    | array  | yes      | Array of `{ name, quantity?, unit? }`            |
+
+**Returns:** `{ success: true, listId, itemCount }` or `{ success: false, error }`
+
+**Use cases:** "Add the ingredients for that recipe to my grocery list", coach suggests a shopping list after meal planning.
+
+**Safety:** Requires user confirmation. Coach should present items before adding.
+
+**Backend:** `addGroceryListItems()` or `createGroceryListWithLimitCheck()` from `server/storage/meal-plans.ts`
+
+#### 4.9 `get_substitutions`
+
+Get ingredient substitutions that respect the user's dietary restrictions.
+
+| Parameter     | Type  | Required | Description                                                   |
+| ------------- | ----- | -------- | ------------------------------------------------------------- |
+| `ingredients` | array | yes      | Array of `{ name, quantity?, unit? }` to find substitutes for |
+
+**Returns:** Array of `{ original, substitute, reason, ratio, confidence }`
+
+**Use cases:** "Can I swap the butter in this recipe?", coach proactively suggests swaps for allergens.
+
+**Backend:** `getSubstitutions()` from `server/services/ingredient-substitution.ts`. User profile (allergies, diet type) auto-injected.
+
+### Tool Execution Flow
+
+```
+Coach receives user message
+  → OpenAI processes with tools array in request
+  → Model decides to call tool(s) (0 or more)
+  → Server receives tool_call in streamed response
+  → Server pauses streaming to client
+  → Server executes tool against real backend service
+  → Server injects tool result back into OpenAI conversation
+  → Model continues response with real data
+  → Server resumes streaming to client
+  → Client sees final response with accurate data in blocks
+```
+
+**Multiple tool calls:** The model may call multiple tools in sequence (e.g., `get_pantry_items` → `search_recipes` with pantry-based query → respond with recipe cards). Each call adds latency, so the tool set is kept focused to minimize unnecessary calls.
+
+**Error handling:** If a tool call fails (DB error, external API timeout), the server returns an error result to the model. The model is instructed to gracefully tell the user the lookup failed and provide its best advice from training knowledge as a fallback.
+
+**Token budget:** Tool results are injected into the conversation context. Large results (pantry with 50+ items, detailed meal plans) are truncated or summarized server-side before injection to stay within token limits.
+
+### Security Considerations
+
+- All tool calls are executed server-side — the client never sees tool definitions or raw results
+- User ID is injected by the server (never passed from the model) — no IDOR risk
+- Write operations (`log_food_item`, `add_to_meal_plan`, `add_to_grocery_list`) require explicit user confirmation via UI interaction (action card accept, meal plan card accept) — the model cannot silently write data
+- Tool call rate limiting: max 5 tool calls per coach response to prevent runaway loops
+- Tool results are sanitized before re-injection to prevent prompt injection from stored data
+
+---
+
+## 5. Coach Notebook (Memory System)
 
 The notebook is a persistent structured data store that builds the coach's understanding of the user over time.
 
@@ -381,7 +574,7 @@ When the coach's notebook contains a commitment with a `followUpDate` that has p
 
 ---
 
-## 5. Voice Input Integration
+## 6. Voice Input Integration
 
 Reuses existing speech-to-text infrastructure with a new premium-styled component.
 
@@ -420,7 +613,7 @@ A mic button styled for the coach screen's premium aesthetic. Wraps `useSpeechTo
 
 ---
 
-## 6. Latency Optimization
+## 7. Latency Optimization
 
 Three layers that compound to minimize perceived and actual latency.
 
@@ -489,7 +682,7 @@ Accepts an interim transcript and pre-fetches conversation history + prepares th
 
 ---
 
-## 7. Premium Tier & Feature Gating
+## 8. Premium Tier & Feature Gating
 
 ### Tier Structure
 
@@ -526,6 +719,7 @@ New entitlement: `coachPro`
 - `GET /api/coach/context` — requires `coachPro`
 - `POST /api/coach/warm-up` — requires `coachPro`
 - Rich blocks in SSE stream — server only includes `blocks` in output if user has `coachPro`; otherwise strips them and sends text-only
+- Tool calling — server only includes `tools` array in OpenAI request if user has `coachPro`; basic coach gets no API access
 - Background notebook extraction — only runs for `coachPro` users
 - `coach_notebook` CRUD endpoints — require `coachPro`
 
@@ -539,7 +733,7 @@ When a Premium user opens the Coach tab:
 
 ---
 
-## 8. Data Flow Summary
+## 9. Data Flow Summary
 
 ### Sending a Message (Coach Pro)
 
@@ -552,7 +746,11 @@ User speaks/types
   → Server retrieves preloaded context (from cache or assembles)
   → Server fetches conversation history (from warm-up cache or DB)
   → Server fetches active notebook entries, injects into system prompt
-  → Server calls OpenAI with structured output schema for blocks
+  → Server calls OpenAI with tools array + structured output schema for blocks
+  → [Tool calls] Model may call tools (lookup_nutrition, search_recipes, etc.)
+    → Server executes tool against real backend service
+    → Server injects tool result back into conversation
+    → Model continues with real data
   → SSE stream: { content, blocks, done }
   → Client renders text + block components inline
   → On done: quick reply chips animate in
@@ -575,7 +773,7 @@ User leaves coach screen OR 2 min inactivity
 
 ---
 
-## 9. New & Modified Files
+## 10. New & Modified Files
 
 ### New Files
 
@@ -585,6 +783,7 @@ User leaves coach screen OR 2 min inactivity
 - `server/storage/coach-notebook.ts` — CRUD for `coach_notebook` table
 - `server/services/notebook-extraction.ts` — Post-conversation extraction logic
 - `server/services/coach-blocks.ts` — Block schema definitions, validation, OpenAI structured output config
+- `server/services/coach-tools.ts` — Tool definitions, execution dispatcher, result formatting for OpenAI function calling
 
 **Client:**
 
@@ -628,7 +827,7 @@ User leaves coach screen OR 2 min inactivity
 
 ---
 
-## 10. Testing Strategy
+## 11. Testing Strategy
 
 ### Unit Tests
 
@@ -639,13 +838,21 @@ User leaves coach screen OR 2 min inactivity
 - Warm-up cache behavior (hit, miss, eviction, expiry)
 - Dashboard data computation (streaks, averages, trend)
 - Block action handlers (log_food, navigate, set_goal)
+- Tool definitions match expected OpenAI function calling schema
+- Tool execution dispatcher routes to correct backend service
+- Tool result formatting and truncation for token budget
+- Tool call rate limiting (max 5 per response)
+- Tool error handling (graceful fallback on service failure)
 
 ### Integration Tests
 
 - Full message flow with blocks: send message → receive SSE with blocks → validate block content
+- Tool call flow: user asks about nutrition → model calls `lookup_nutrition` → response contains accurate data
+- Multi-tool flow: user asks for pantry-based recipes → `get_pantry_items` → `search_recipes` → recipe cards with real IDs
+- Write tool safety: `log_food_item` and `add_to_meal_plan` require user confirmation before execution
 - Notebook lifecycle: create conversation → extract entries → verify in subsequent conversation context
 - Commitment flow: accept card → verify notebook entry → verify follow-up suggestion
-- Tier gating: verify Premium users get text-only, Coach Pro gets full blocks
+- Tier gating: verify Premium users get text-only, Coach Pro gets full blocks + tools
 - Warm-up flow: send warm-up → send final message with warmUpId → verify faster path taken
 - Context endpoint: verify batched response matches individual queries
 
@@ -654,5 +861,6 @@ User leaves coach screen OR 2 min inactivity
 - Voice input flow on physical device (STT requires real microphone)
 - Dashboard collapse/expand animation smoothness
 - Block rendering across all 7 types with real OpenAI responses
+- Tool-powered responses: verify recipe cards link to real recipes, nutrition data matches database
 - Upgrade banner appearance and navigation for Premium users
 - Streaming latency comparison: with vs. without warm-up
