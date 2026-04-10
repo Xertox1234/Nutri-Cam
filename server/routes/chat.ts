@@ -16,6 +16,7 @@ import { sendError } from "../lib/api-errors";
 import { ErrorCode } from "@shared/constants/error-codes";
 import {
   generateCoachResponse,
+  generateCoachProResponse,
   type CoachContext,
 } from "../services/nutrition-coach";
 import {
@@ -519,6 +520,16 @@ export function register(app: Express): void {
                 if (ci < chunks.length - 1) {
                   await new Promise((r) => setTimeout(r, 15));
                 }
+              }
+            } else if (isCoachPro) {
+              for await (const chunk of generateCoachProResponse(
+                messageHistory,
+                context,
+                req.userId,
+              )) {
+                if (aborted) break;
+                fullResponse += chunk;
+                res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
               }
             } else {
               for await (const chunk of generateCoachResponse(
