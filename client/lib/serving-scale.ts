@@ -85,3 +85,27 @@ export function formatAsFraction(value: number): string {
   }
   return String(rounded);
 }
+
+/**
+ * Scale an ingredient quantity by the given ratio.
+ * Returns the formatted scaled quantity and whether the input was numeric.
+ */
+export function scaleIngredientQuantity(
+  quantity: string | number | null | undefined,
+  ratio: number,
+): { scaled: string | null; isNumeric: boolean } {
+  if (quantity == null) return { scaled: null, isNumeric: false };
+
+  // Number type: scale directly
+  if (typeof quantity === "number") {
+    return { scaled: formatAsFraction(quantity * ratio), isNumeric: true };
+  }
+
+  // String type: try parsing
+  const parsed = parseFraction(quantity);
+  if (parsed === null) {
+    return { scaled: null, isNumeric: false };
+  }
+
+  return { scaled: formatAsFraction(parsed * ratio), isNumeric: true };
+}

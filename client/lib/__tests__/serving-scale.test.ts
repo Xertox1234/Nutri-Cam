@@ -1,4 +1,8 @@
-import { parseFraction, formatAsFraction } from "../serving-scale";
+import {
+  parseFraction,
+  formatAsFraction,
+  scaleIngredientQuantity,
+} from "../serving-scale";
 
 describe("parseFraction", () => {
   it("parses whole numbers", () => {
@@ -74,5 +78,85 @@ describe("formatAsFraction", () => {
 
   it("handles zero", () => {
     expect(formatAsFraction(0)).toBe("0");
+  });
+});
+
+describe("scaleIngredientQuantity", () => {
+  it("scales a whole number string", () => {
+    expect(scaleIngredientQuantity("500", 2)).toEqual({
+      scaled: "1000",
+      isNumeric: true,
+    });
+  });
+
+  it("scales a fraction string", () => {
+    expect(scaleIngredientQuantity("1/2", 2)).toEqual({
+      scaled: "1",
+      isNumeric: true,
+    });
+  });
+
+  it("scales a mixed fraction", () => {
+    expect(scaleIngredientQuantity("1 1/2", 2)).toEqual({
+      scaled: "3",
+      isNumeric: true,
+    });
+  });
+
+  it("handles ratio 1 (no change)", () => {
+    expect(scaleIngredientQuantity("2", 1)).toEqual({
+      scaled: "2",
+      isNumeric: true,
+    });
+  });
+
+  it("handles halving (ratio 0.5)", () => {
+    expect(scaleIngredientQuantity("4", 0.5)).toEqual({
+      scaled: "2",
+      isNumeric: true,
+    });
+  });
+
+  it("produces fractions when scaling creates them", () => {
+    expect(scaleIngredientQuantity("1", 1.5)).toEqual({
+      scaled: "1 1/2",
+      isNumeric: true,
+    });
+  });
+
+  it("handles number type input", () => {
+    expect(scaleIngredientQuantity(4, 2)).toEqual({
+      scaled: "8",
+      isNumeric: true,
+    });
+  });
+
+  it("returns isNumeric false for non-numeric strings", () => {
+    expect(scaleIngredientQuantity("to taste", 2)).toEqual({
+      scaled: null,
+      isNumeric: false,
+    });
+    expect(scaleIngredientQuantity("a pinch", 3)).toEqual({
+      scaled: null,
+      isNumeric: false,
+    });
+  });
+
+  it("returns isNumeric false for null/undefined", () => {
+    expect(scaleIngredientQuantity(null, 2)).toEqual({
+      scaled: null,
+      isNumeric: false,
+    });
+    expect(scaleIngredientQuantity(undefined, 2)).toEqual({
+      scaled: null,
+      isNumeric: false,
+    });
+  });
+
+  it("returns isNumeric false for empty string", () => {
+    expect(scaleIngredientQuantity("", 2)).toEqual({
+      scaled: null,
+      isNumeric: false,
+    });
   });
 });
