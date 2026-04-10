@@ -9,7 +9,6 @@ import {
   recipeCardSchema,
   mealPlanCardSchema,
   coachBlockSchema,
-  type CoachBlock,
 } from "../coach-blocks";
 
 describe("Coach Block Schemas", () => {

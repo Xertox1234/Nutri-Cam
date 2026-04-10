@@ -35,9 +35,11 @@ const navigateActionSchema = z.object({
   params: z.record(z.unknown()).optional(),
 });
 
+const GOAL_TYPES = ["calories", "protein", "carbs", "fat", "weight"] as const;
+
 const setGoalActionSchema = z.object({
   type: z.literal("set_goal"),
-  goalType: z.string(),
+  goalType: z.enum(GOAL_TYPES),
   value: z.number().optional(),
 });
 

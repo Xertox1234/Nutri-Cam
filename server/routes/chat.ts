@@ -33,6 +33,7 @@ import {
   BLOCKS_SYSTEM_PROMPT,
 } from "../services/coach-blocks";
 import { extractNotebookEntries } from "../services/notebook-extraction";
+import { sanitizeContextField } from "../lib/ai-safety";
 import { consumeWarmUp } from "./coach-context";
 import type { CoachBlock } from "@shared/schemas/coach-blocks";
 
@@ -484,7 +485,7 @@ export function register(app: Express): void {
                 let charCount = 0;
                 const lines: string[] = [];
                 for (const e of notebookEntries) {
-                  const line = `[${e.type}] ${e.content}`;
+                  const line = `[${e.type}] ${sanitizeContextField(e.content, 500)}`;
                   if (charCount + line.length > MAX_NOTEBOOK_CHARS) break;
                   lines.push(line);
                   charCount += line.length;

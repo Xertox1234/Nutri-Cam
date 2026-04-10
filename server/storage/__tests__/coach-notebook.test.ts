@@ -10,20 +10,25 @@ import {
   getNotebookEntryCount,
 } from "../coach-notebook";
 
-const mockReturning = vi.fn().mockResolvedValue([]);
-const mockDb = {
-  select: vi.fn().mockReturnThis(),
-  from: vi.fn().mockReturnThis(),
-  where: vi.fn().mockReturnThis(),
-  orderBy: vi.fn().mockReturnThis(),
-  limit: vi.fn().mockReturnThis(),
-  insert: vi.fn().mockReturnThis(),
-  values: vi.fn().mockReturnThis(),
-  returning: mockReturning,
-  update: vi.fn().mockReturnThis(),
-  set: vi.fn().mockReturnThis(),
-  delete: vi.fn().mockReturnThis(),
-};
+const { mockDb, mockReturning } = vi.hoisted(() => {
+  const mockReturning = vi.fn().mockResolvedValue([]);
+  return {
+    mockReturning,
+    mockDb: {
+      select: vi.fn().mockReturnThis(),
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      orderBy: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockReturnThis(),
+      insert: vi.fn().mockReturnThis(),
+      values: vi.fn().mockReturnThis(),
+      returning: mockReturning,
+      update: vi.fn().mockReturnThis(),
+      set: vi.fn().mockReturnThis(),
+      delete: vi.fn().mockReturnThis(),
+    },
+  };
+});
 
 vi.mock("../../db", () => ({ db: mockDb }));
 
