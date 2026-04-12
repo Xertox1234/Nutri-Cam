@@ -58,6 +58,24 @@ describe("Button", () => {
     expect(btn.getAttribute("aria-busy")).toBe("true");
   });
 
+  it("shows loadingText alongside spinner when both loading and loadingText are set", () => {
+    renderComponent(
+      <Button loading loadingText="Saving...">
+        Save
+      </Button>,
+    );
+    expect(screen.getByRole("progressbar")).toBeDefined();
+    expect(screen.getByText("Saving...")).toBeDefined();
+    expect(screen.queryByText("Save")).toBeNull();
+  });
+
+  it("shows only spinner when loading without loadingText", () => {
+    renderComponent(<Button loading>Save</Button>);
+    expect(screen.getByRole("progressbar")).toBeDefined();
+    expect(screen.queryByText("Saving...")).toBeNull();
+    expect(screen.queryByText("Save")).toBeNull();
+  });
+
   it("renders all 4 variants without crashing", () => {
     const variants = ["primary", "secondary", "outline", "ghost"] as const;
     for (const variant of variants) {

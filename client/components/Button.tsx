@@ -2,6 +2,7 @@ import React, { ReactNode } from "react";
 import {
   StyleSheet,
   Pressable,
+  View,
   ViewStyle,
   StyleProp,
   ActivityIndicator,
@@ -27,6 +28,8 @@ interface ButtonProps {
   disabled?: boolean;
   /** Show a loading spinner and disable interaction */
   loading?: boolean;
+  /** Text to display next to spinner when loading (e.g. "Saving...") */
+  loadingText?: string;
   variant?: ButtonVariant;
   accessibilityLabel?: string;
   accessibilityHint?: string;
@@ -40,6 +43,7 @@ export function Button({
   style,
   disabled = false,
   loading = false,
+  loadingText,
   variant = "primary",
   accessibilityLabel,
   accessibilityHint,
@@ -132,7 +136,21 @@ export function Button({
       ]}
     >
       {loading ? (
-        <ActivityIndicator color={variantStyles.textColor} size="small" />
+        <View style={styles.loadingRow}>
+          <ActivityIndicator color={variantStyles.textColor} size="small" />
+          {loadingText ? (
+            <ThemedText
+              type="body"
+              style={[
+                styles.buttonText,
+                styles.loadingText,
+                { color: variantStyles.textColor },
+              ]}
+            >
+              {loadingText}
+            </ThemedText>
+          ) : null}
+        </View>
       ) : (
         <ThemedText
           type="body"
@@ -156,5 +174,13 @@ const styles = StyleSheet.create({
   buttonText: {
     fontFamily: FontFamily.semiBold,
     fontWeight: "600",
+  },
+  loadingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.sm,
+  },
+  loadingText: {
+    fontWeight: "500",
   },
 });

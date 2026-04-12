@@ -48,6 +48,14 @@ export const toastExitTimingConfig: WithTimingConfig = {
   easing: Easing.in(Easing.cubic),
 };
 
+/** Spring configuration for tab icon focus pop — allows overshoot for playful bounce */
+export const tabIconPopConfig: WithSpringConfig = {
+  damping: 12,
+  mass: 0.4,
+  stiffness: 200,
+  overshootClamping: false,
+};
+
 /** Pixels threshold to trigger swipe action */
 export const swipeActionThreshold = 80;
 

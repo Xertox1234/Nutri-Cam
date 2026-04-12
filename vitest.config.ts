@@ -51,6 +51,7 @@ export default defineConfig({
         "./test/mocks/gorhom-bottom-sheet.ts",
       ),
       "expo-haptics": path.resolve(__dirname, "./test/mocks/expo-haptics.ts"),
+      "expo-blur": path.resolve(__dirname, "./test/mocks/expo-blur.ts"),
     },
   },
 });

@@ -1,7 +1,8 @@
 import React from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Platform, Pressable, StyleSheet, View } from "react-native";
+import { BlurView } from "expo-blur";
 import { Feather } from "@expo/vector-icons";
-import Animated, { FadeInUp } from "react-native-reanimated";
+import Animated, { FadeIn, FadeInUp } from "react-native-reanimated";
 
 import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
@@ -29,16 +30,38 @@ interface SpeedDialProps {
 }
 
 export function SpeedDial({ actions, onClose }: SpeedDialProps) {
-  const { theme } = useTheme();
+  const { theme, isDark } = useTheme();
   const { reducedMotion } = useAccessibility();
+
+  const backdropEntering = reducedMotion ? undefined : FadeIn.duration(200);
 
   return (
     <View style={styles.wrapper} accessibilityViewIsModal>
+      <Animated.View
+        entering={backdropEntering}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      >
+        {Platform.OS === "ios" ? (
+          <BlurView
+            intensity={isDark ? 30 : 40}
+            tint={isDark ? "dark" : "light"}
+            style={[
+              StyleSheet.absoluteFill,
+              { backgroundColor: withOpacity("#000000", 0.2) }, // hardcoded — backdrop overlay is always black
+            ]}
+          />
+        ) : (
+          <View
+            style={[
+              StyleSheet.absoluteFill,
+              { backgroundColor: withOpacity("#000000", 0.4) }, // hardcoded — backdrop overlay is always black
+            ]}
+          />
+        )}
+      </Animated.View>
       <Pressable
-        style={[
-          styles.backdrop,
-          { backgroundColor: withOpacity("#000000", 0.3) }, // hardcoded — backdrop overlay is always black
-        ]}
+        style={styles.backdrop}
         onPress={onClose}
         accessibilityRole="button"
         accessibilityLabel="Close speed dial"
