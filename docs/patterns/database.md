@@ -123,6 +123,16 @@ async getSuggestionCache(
 - Return cacheId to enable child cache lookups
 - Fire-and-forget hit count tracking
 
+**Cache key must include all dimensions that vary the response.** If the response depends on user-specific context (goals, allergies, dietary profile), the cache key MUST include `userId`. A cache key that omits a varying dimension causes cross-user data leakage — User A's personalized response gets served to User B. Ask: "What makes this response unique?" and ensure every dimension is in the key.
+
+```typescript
+// BAD: question-only hash — personalized response cached globally
+const hash = createHash("sha256").update(question).digest("hex");
+
+// GOOD: userId scopes the cache per user
+const hash = createHash("sha256").update(`${userId}:${question}`).digest("hex");
+```
+
 ### Fire-and-Forget for Non-Critical Background Operations
 
 When an operation shouldn't block the response but failure should be logged, use the `fireAndForget` helper from `server/lib/fire-and-forget.ts`:

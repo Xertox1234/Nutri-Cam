@@ -4,6 +4,8 @@ This document captures key learnings, gotchas, and architectural decisions disco
 
 ## Table of Contents
 
+- [Fix One Protocol Handler, Grep All Consumers (2026-04-12)](#fix-one-protocol-handler-grep-all-consumers-2026-04-12)
+- [OpenAI Tool Schema/Handler Drift — Phantom Parameters (2026-04-12)](#openai-tool-schemahandler-drift--phantom-parameters-2026-04-12)
 - [cacheAffectingFields Must Stay in Sync with calculateProfileHash (2026-04-09)](#cacheaffectingfields-must-stay-in-sync-with-calculateprofilehash-2026-04-09)
 - [React Effect Cleanup Must Read Timer Refs at Cleanup Time (2026-04-07)](#react-effect-cleanup-must-read-timer-refs-at-cleanup-time-2026-04-07)
 - [OCR Regex Must Account for Prefix Lines Sharing Keywords (2026-04-07)](#ocr-regex-must-account-for-prefix-lines-sharing-keywords-2026-04-07)
@@ -46,6 +48,45 @@ This document captures key learnings, gotchas, and architectural decisions disco
 - [Testing & Tooling Learnings](#testing--tooling-learnings)
 - [Database Migration Gotchas](#database-migration-gotchas)
 - [TypeScript Safety Learnings](#typescript-safety-learnings)
+
+---
+
+## [2026-04-12] Fix One Protocol Handler, Grep All Consumers
+
+**Category:** Gotcha (Code Review)
+
+**Problem:** The audit found that `CoachChat.tsx`'s SSE parsing loop silently ignored server-sent error events (`{error: "Response timeout"}`), leaving `isStreaming` stuck true. The fix was applied to `CoachChat.tsx`, but the code reviewer caught that `CoachOverlayContent.tsx` had an identical copy-pasted SSE parsing loop with the same vulnerability. The audit agents missed it because they searched by file scope and module, not by protocol pattern.
+
+**Root cause:** Two client components independently implemented the same SSE-over-XHR protocol by copy-pasting the parsing logic rather than sharing a utility. When a bug exists in the protocol handler, all copies need fixing.
+
+**Rule:** When fixing a bug in a parsing or protocol handler, always grep for other instances of the same pattern:
+
+```bash
+# After fixing SSE error handling in one file, check all SSE consumers:
+grep -rn "data.content" --include="*.tsx" --include="*.ts" | grep -i "chunk\|stream\|sse"
+```
+
+If 2+ files implement the same protocol, consider extracting a shared utility. If extraction isn't practical (different component architectures), add a code comment cross-referencing the other consumer so future fixes are applied to both.
+
+**Discovered by:** Code reviewer (not the audit agents), confirming the value of independent review after automated discovery.
+
+---
+
+## [2026-04-12] OpenAI Tool Schema/Handler Drift — Phantom Parameters
+
+**Category:** Gotcha (AI Integration)
+
+**Problem:** The `add_to_meal_plan` tool handler referenced `args.recipeId`, but the OpenAI function schema only defined `plannedDate`, `mealType`, and `notes`. Since OpenAI only populates parameters that exist in the schema, `args.recipeId` was always `undefined`, defaulting to `0`. Meanwhile, the `notes` parameter defined in the schema was never used in the handler.
+
+**Root cause:** The handler was written with assumptions about what the AI "might" send rather than matching the schema exactly. As the schema evolved (or was written by a different author), the handler drifted.
+
+**Rule:** Tool handlers must use **exactly** the parameters defined in the schema — no phantom references, no unused schema params. When adding or modifying OpenAI tool definitions:
+
+1. Define the schema first (what the AI can provide)
+2. Write the handler to use only those params
+3. If the handler needs data not in the schema (e.g., `recipeId`), either add it to the schema or fetch it from the database
+
+**Quick check:** For each `args.X` in a tool handler, verify `X` appears in the schema's `properties` object. For each schema `property`, verify it's consumed in the handler.
 
 ---
 

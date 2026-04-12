@@ -316,6 +316,7 @@ When reviewing or writing AI service code, verify:
 6. **Direct db import in service** - Services must go through storage layer
 7. **Missing `checkAiConfigured`** - Route will crash if OpenAI key not set
 8. **Excessive token budget** - `max_completion_tokens: 16000` for a yes/no question
+9. **Tool schema/handler drift** - Handler references `args.X` but `X` isn't in the OpenAI tool schema (phantom param, always undefined). Or schema defines a param that the handler ignores. Every `args.X` must exist in the schema's `properties`, and every schema property must be consumed in the handler.
 
 ---
 
