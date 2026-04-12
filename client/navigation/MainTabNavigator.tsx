@@ -1,8 +1,15 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { Feather } from "@expo/vector-icons";
 import { BlurView } from "expo-blur";
 import { Platform, StyleSheet, View } from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withDelay,
+  withSequence,
+  withSpring,
+} from "react-native-reanimated";
 import type { NavigatorScreenParams } from "@react-navigation/native";
 
 import HomeStackNavigator from "@/navigation/HomeStackNavigator";
@@ -12,11 +19,13 @@ import ProfileStackNavigator from "@/navigation/ProfileStackNavigator";
 import { ScanFAB } from "@/components/ScanFAB";
 import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
+import { useAccessibility } from "@/hooks/useAccessibility";
 import {
   FontFamily,
   TAB_BAR_HEIGHT,
   MAX_FONT_SCALE_CONSTRAINED,
 } from "@/constants/theme";
+import { tabIconPopConfig } from "@/constants/animations";
 import type { MealPlanStackParamList } from "@/navigation/MealPlanStackNavigator";
 import type { ChatStackParamList } from "@/navigation/ChatStackNavigator";
 import type { ProfileStackParamList } from "@/navigation/ProfileStackNavigator";
@@ -29,6 +38,43 @@ export type MainTabParamList = {
 };
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
+
+/** Animated wrapper for tab bar icons — pulses on focus change */
+function AnimatedTabIcon({
+  name,
+  color,
+  size,
+  focused,
+}: {
+  name: keyof typeof Feather.glyphMap;
+  color: string;
+  size: number;
+  focused: boolean;
+}) {
+  const { reducedMotion } = useAccessibility();
+  const scale = useSharedValue(1);
+
+  useEffect(() => {
+    if (focused && !reducedMotion) {
+      scale.value = withSequence(
+        withSpring(1.18, tabIconPopConfig),
+        withDelay(100, withSpring(1, tabIconPopConfig)),
+      );
+    } else {
+      scale.value = 1;
+    }
+  }, [focused, reducedMotion, scale]);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  return (
+    <Animated.View style={animatedStyle}>
+      <Feather name={name} size={size} color={color} />
+    </Animated.View>
+  );
+}
 
 export default function MainTabNavigator() {
   const { theme, isDark } = useTheme();
@@ -84,8 +130,13 @@ export default function MainTabNavigator() {
           component={HomeStackNavigator}
           options={{
             title: "Home",
-            tabBarIcon: ({ color, size }) => (
-              <Feather name="home" size={size} color={color} />
+            tabBarIcon: ({ color, size, focused }) => (
+              <AnimatedTabIcon
+                name="home"
+                size={size}
+                color={color}
+                focused={focused}
+              />
             ),
           }}
         />
@@ -94,8 +145,13 @@ export default function MainTabNavigator() {
           component={MealPlanStackNavigator}
           options={{
             title: "Plan",
-            tabBarIcon: ({ color, size }) => (
-              <Feather name="calendar" size={size} color={color} />
+            tabBarIcon: ({ color, size, focused }) => (
+              <AnimatedTabIcon
+                name="calendar"
+                size={size}
+                color={color}
+                focused={focused}
+              />
             ),
           }}
         />
@@ -104,8 +160,13 @@ export default function MainTabNavigator() {
           component={ChatStackNavigator}
           options={{
             title: "Coach",
-            tabBarIcon: ({ color, size }) => (
-              <Feather name="message-circle" size={size} color={color} />
+            tabBarIcon: ({ color, size, focused }) => (
+              <AnimatedTabIcon
+                name="message-circle"
+                size={size}
+                color={color}
+                focused={focused}
+              />
             ),
           }}
         />
@@ -114,8 +175,13 @@ export default function MainTabNavigator() {
           component={ProfileStackNavigator}
           options={{
             title: "Profile",
-            tabBarIcon: ({ color, size }) => (
-              <Feather name="user" size={size} color={color} />
+            tabBarIcon: ({ color, size, focused }) => (
+              <AnimatedTabIcon
+                name="user"
+                size={size}
+                color={color}
+                focused={focused}
+              />
             ),
           }}
         />

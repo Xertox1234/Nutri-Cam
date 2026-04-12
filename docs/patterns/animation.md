@@ -51,6 +51,77 @@ const handleExpand = () => {
 
 **Why:** Consistent animation feel across the app. Changing parameters in one place updates all related animations.
 
+**Intent-specific configs:** Different animation intents need different spring parameters. `pressSpringConfig` uses `overshootClamping: true` because a pressed button should never bounce larger than its resting size. But a "pop" effect (scale up then settle) relies on natural spring overshoot for a lively feel — use a separate config with `overshootClamping: false`.
+
+```typescript
+// Press feedback — clamp overshoot (button should not grow when pressed)
+export const pressSpringConfig: WithSpringConfig = {
+  damping: 15,
+  mass: 0.3,
+  stiffness: 150,
+  overshootClamping: true,
+};
+
+// Pop effect — allow overshoot (bounce makes it feel alive)
+export const tabIconPopConfig: WithSpringConfig = {
+  damping: 12,
+  mass: 0.4,
+  stiffness: 200,
+  overshootClamping: false,
+};
+```
+
+### Pop-Then-Settle with `withSequence`
+
+For a "pop" effect where an element scales up briefly then returns to rest (e.g. tab icon focus, badge count change, favorite heart), use `withSequence` + `withDelay` to keep the entire animation on the UI thread. Never use `setTimeout` to chain Reanimated animations — it crosses the JS bridge and is subject to thread contention.
+
+```typescript
+import { withSequence, withDelay, withSpring } from "react-native-reanimated";
+import { tabIconPopConfig } from "@/constants/animations";
+
+// Good: entire chain runs on the UI thread
+useEffect(() => {
+  if (focused && !reducedMotion) {
+    scale.value = withSequence(
+      withSpring(1.18, tabIconPopConfig), // pop up
+      withDelay(100, withSpring(1, tabIconPopConfig)), // settle back
+    );
+  } else {
+    scale.value = 1;
+  }
+}, [focused, reducedMotion, scale]);
+```
+
+```typescript
+// Bad: setTimeout crosses the JS bridge
+useEffect(() => {
+  if (focused && !reducedMotion) {
+    scale.value = withSpring(1.18, tabIconPopConfig);
+    const timer = setTimeout(() => {
+      scale.value = withSpring(1, tabIconPopConfig); // ❌ JS thread dependency
+    }, 150);
+    return () => clearTimeout(timer);
+  }
+  scale.value = 1;
+}, [focused, reducedMotion, scale]);
+```
+
+**When to use:** One-shot "pop" feedback when a state becomes active — tab focus, item favorited, badge count increment, selection confirmation.
+
+**When NOT to use:** Continuous press feedback (use single `withSpring` to 0.98/1 on pressIn/pressOut) or repeating pulses (use `withRepeat`).
+
+**Key elements:**
+
+1. **`withSequence`** — composes multiple animations into a single UI-thread chain
+2. **`withDelay`** — adds a pause between the pop and the settle, letting the user perceive the peak
+3. **`overshootClamping: false`** — allows the spring to slightly exceed the target for a natural bounce
+4. **`reducedMotion` guard** — snap directly to rest state (no animation)
+
+**References:**
+
+- `client/navigation/MainTabNavigator.tsx` — `AnimatedTabIcon` pop on tab focus
+- `client/constants/animations.ts` — `tabIconPopConfig`
+
 ### Expandable Card with Lazy-Loaded Content
 
 For cards that expand to show additional content fetched on-demand:
