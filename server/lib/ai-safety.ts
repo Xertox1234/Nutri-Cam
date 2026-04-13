@@ -93,10 +93,13 @@ const DANGEROUS_DIETARY_PATTERNS: RegExp[] = [
   /eat\s+(less\s+than|under|only)\s+[1-7]\d{2}\s*cal/i, // under 800 cal
   /\b[1-7]\d{2}\s*calories?\s*(per\s+)?day\b/i, // 100-799 cal per day
   /(?:total|daily)\s+intake\s+(?:of\s+)?[1-7]\d{2}\s*cal/i,
+  /(?:aim|target|stay|stick)\s+(?:for|under|around)\s+[1-9]\d{2}\s*cal/i, // "aim for 900 cal"
+  /(?:only|just)\s+(?:eat|consume|have)\s+[1-9]\d{2,3}\s*cal/i, // "only eat 1000 cal" (catches 100-9999, filtered by context)
 
-  // Extreme fasting (beyond normal IF)
-  /fast\s+for\s+(\d{2,})\s+days/i, // multi-day fasting
-  /water[- ]only\s+fast\s+for\s+\d+\s+days/i,
+  // Extreme fasting (beyond normal IF — catches any fast 24+ hours)
+  /fast\s+for\s+\d+\s+days/i, // any multi-day fasting (1+ days)
+  /\d+[- ](?:hour|hr)\s+(?:water\s+)?fast/i, // "72-hour fast", "48-hr water fast"
+  /water[- ]only\s+fast/i, // water-only fast of any duration
   /dry\s+fast/i, // no water fasting is dangerous
 
   // Eating disorder promotion
