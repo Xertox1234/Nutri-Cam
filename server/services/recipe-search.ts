@@ -125,25 +125,25 @@ function getIndex(): MiniSearch<SearchableRecipe> {
 // ────────────────────────────────────────────────────────────────────────────
 
 export function addToIndex(doc: SearchableRecipe): void {
-  const idx = getIndex();
+  if (!index) return;
   // Remove existing before re-adding (update)
   if (documentStore.has(doc.id)) {
     try {
-      idx.remove({ id: doc.id } as SearchableRecipe);
+      index.remove({ id: doc.id } as SearchableRecipe);
     } catch {
       // ignore if not in index
     }
   }
-  idx.add(doc);
+  index.add(doc);
   documentStore.set(doc.id, doc);
 }
 
 export function removeFromIndex(id: string): void {
-  const idx = getIndex();
+  if (!index) return;
   if (documentStore.has(id)) {
     const doc = documentStore.get(id)!;
     try {
-      idx.remove(doc);
+      index.remove(doc);
     } catch {
       // ignore
     }
@@ -326,7 +326,7 @@ export async function searchRecipes(
   if (maxPrepTime !== undefined) {
     filters.maxPrepTime = maxPrepTime;
     candidates = candidates.filter(
-      (r) => r.prepTimeMinutes === null || r.prepTimeMinutes <= maxPrepTime,
+      (r) => r.totalTimeMinutes === null || r.totalTimeMinutes <= maxPrepTime,
     );
   }
 
