@@ -196,7 +196,14 @@ export async function initSearchIndex(): Promise<void> {
   idx.addAll(docs);
   initialized = true;
 
-  log.info({ count: docs.length }, "recipe search index ready");
+  log.info(
+    {
+      total: docs.length,
+      personal: mealPlanRecipes.length,
+      community: communityRecipes.length,
+    },
+    "recipe search index ready",
+  );
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -247,10 +254,17 @@ export async function searchRecipes(
       : [];
 
   // ── Text search ──────────────────────────────────────────────────────────
+  // Store relevance scores so we can sort explicitly (not rely on Set iteration order)
+  const relevanceScores = new Map<string, number>();
   let textMatchIds: Set<string> | null = null;
   if (q && q.trim()) {
     const textResults = idx.search(q.trim());
-    textMatchIds = new Set(textResults.map((r) => String(r.id)));
+    textMatchIds = new Set<string>();
+    for (const r of textResults) {
+      const id = String(r.id);
+      textMatchIds.add(id);
+      relevanceScores.set(id, r.score);
+    }
   }
 
   // ── Ingredient search ────────────────────────────────────────────────────
@@ -266,12 +280,10 @@ export async function searchRecipes(
 
   if (textMatchIds !== null && ingredientMatchIds !== null) {
     // Combined: must appear in both
-    const combined = new Set(
-      [...textMatchIds].filter((id) => ingredientMatchIds!.has(id)),
+    const combined = [...textMatchIds].filter((id) =>
+      ingredientMatchIds!.has(id),
     );
-    candidates = [...combined]
-      .map((id) => documentStore.get(id)!)
-      .filter(Boolean);
+    candidates = combined.map((id) => documentStore.get(id)!).filter(Boolean);
   } else if (textMatchIds !== null) {
     candidates = [...textMatchIds]
       .map((id) => documentStore.get(id)!)
@@ -353,11 +365,12 @@ export async function searchRecipes(
   }
 
   // ── Sorting ──────────────────────────────────────────────────────────────
-  if (sort === "newest" || (sort === "relevance" && !q)) {
+  if (sort === "relevance" && q) {
+    // Explicit relevance sort using MiniSearch scores (not relying on Set iteration order)
     candidates.sort((a, b) => {
-      const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-      return tb - ta;
+      const sa = relevanceScores.get(a.id) ?? 0;
+      const sb = relevanceScores.get(b.id) ?? 0;
+      return sb - sa;
     });
   } else if (sort === "quickest") {
     candidates.sort((a, b) => {
@@ -371,10 +384,8 @@ export async function searchRecipes(
       const cb = b.caloriesPerServing ?? Infinity;
       return ca - cb;
     });
-  }
-  // "relevance" with a q: MiniSearch already returns by relevance (we preserve that order from the id sets)
-  if (sort === "popular") {
-    // Popular is treated as newest until we have popularity metrics
+  } else {
+    // newest, popular (until we have popularity metrics), or relevance without q
     candidates.sort((a, b) => {
       const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
       const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;

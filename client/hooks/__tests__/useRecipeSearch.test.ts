@@ -17,6 +17,7 @@ const mockResponse = {
     {
       id: "personal:1",
       source: "personal",
+      userId: "1",
       title: "Test Recipe",
       description: null,
       ingredients: [],

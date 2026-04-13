@@ -330,7 +330,12 @@ export default function RecipeBrowserScreen() {
     ],
   );
 
-  const { data: searchData, isLoading } = useRecipeSearch(searchParams);
+  const {
+    data: searchData,
+    isLoading,
+    loadMore,
+    isFetchingNextPage,
+  } = useRecipeSearch(searchParams);
 
   const addItemMutation = useAddMealPlanItem();
   const { data: favouriteData } = useFavouriteRecipeIds();
@@ -761,6 +766,16 @@ export default function RecipeBrowserScreen() {
           ItemSeparatorComponent={ItemSeparator}
           scrollEventThrottle={16}
           onScroll={scrollHandler}
+          onEndReached={loadMore ? () => loadMore() : undefined}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={
+            isFetchingNextPage ? (
+              <ActivityIndicator
+                style={{ paddingVertical: Spacing.lg }}
+                color={theme.link}
+              />
+            ) : null
+          }
         />
       )}
 
