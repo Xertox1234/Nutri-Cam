@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { View, Text, Pressable, ScrollView, StyleSheet } from "react-native";
 import Animated, {
   useAnimatedStyle,
@@ -13,7 +13,10 @@ interface Props {
   onSuggestionPress: (text: string) => void;
 }
 
-export default function CoachDashboard({ context, onSuggestionPress }: Props) {
+const CoachDashboard = React.memo(function CoachDashboard({
+  context,
+  onSuggestionPress,
+}: Props) {
   const { theme } = useTheme();
   const [expanded, setExpanded] = useState(true);
   const expandedHeight = useSharedValue(1);
@@ -29,6 +32,12 @@ export default function CoachDashboard({ context, onSuggestionPress }: Props) {
   }));
 
   const { todayIntake, notebook, dueCommitments, suggestions, goals } = context;
+
+  // Memoize notebook insight filter/slice to avoid recomputation on parent re-renders
+  const topInsights = useMemo(
+    () => notebook.filter((e) => e.type === "insight").slice(0, 2),
+    [notebook],
+  );
 
   return (
     <View
@@ -110,25 +119,20 @@ export default function CoachDashboard({ context, onSuggestionPress }: Props) {
             ))}
           </View>
         )}
-        {notebook
-          .filter((e) => e.type === "insight")
-          .slice(0, 2)
-          .map((insight) => (
-            <Pressable
-              key={insight.id}
-              style={styles.insightRow}
-              onPress={() => onSuggestionPress(insight.content)}
-              accessibilityRole="button"
-              accessibilityLabel={`Discuss: ${insight.content}`}
-            >
-              <Text style={[styles.insightText, { color: theme.text }]}>
-                {insight.content}
-              </Text>
-              <Text style={{ color: theme.link, fontSize: 11 }}>
-                {"\u2192"}
-              </Text>
-            </Pressable>
-          ))}
+        {topInsights.map((insight) => (
+          <Pressable
+            key={insight.id}
+            style={styles.insightRow}
+            onPress={() => onSuggestionPress(insight.content)}
+            accessibilityRole="button"
+            accessibilityLabel={`Discuss: ${insight.content}`}
+          >
+            <Text style={[styles.insightText, { color: theme.text }]}>
+              {insight.content}
+            </Text>
+            <Text style={{ color: theme.link, fontSize: 11 }}>{"\u2192"}</Text>
+          </Pressable>
+        ))}
       </Animated.View>
 
       {suggestions.length > 0 && (
@@ -156,7 +160,9 @@ export default function CoachDashboard({ context, onSuggestionPress }: Props) {
       )}
     </View>
   );
-}
+});
+
+export default CoachDashboard;
 
 function getGreeting(): string {
   const hour = new Date().getHours();

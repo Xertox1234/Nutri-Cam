@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   StyleSheet,
   View,
@@ -171,6 +177,22 @@ export default function CoachChat({
   }, [isStreaming]);
 
   const { data: messages } = useChatMessages(conversationId);
+
+  // Validate blocks once per messages change, not on every render tick
+  const messageBlocks = useMemo(() => {
+    if (!messages) return new Map<number, CoachBlock[]>();
+    const map = new Map<number, CoachBlock[]>();
+    for (const msg of messages) {
+      const meta = msg.metadata as Record<string, unknown> | null | undefined;
+      const rawBlocks = meta?.blocks;
+      if (Array.isArray(rawBlocks)) {
+        const valid = filterValidBlocks(rawBlocks);
+        if (valid.length > 0) map.set(msg.id, valid);
+      }
+    }
+    return map;
+  }, [messages]);
+
   const {
     isListening,
     transcript,
@@ -230,9 +252,23 @@ export default function CoachChat({
           content,
           (accumulated) => {
             // Strip coach_blocks fence from displayed content during streaming
-            const display = accumulated
-              .replace(/```coach_blocks\n[\s\S]*?(?:```|$)/, "")
-              .trim();
+            // Uses indexOf instead of backtracking regex for O(n) performance
+            const openIdx = accumulated.indexOf("```coach_blocks\n");
+            let display: string;
+            if (openIdx === -1) {
+              display = accumulated.trim();
+            } else {
+              const closeIdx = accumulated.indexOf("```", openIdx + 16);
+              if (closeIdx === -1) {
+                // Fence not yet closed — strip from open to end
+                display = accumulated.slice(0, openIdx).trim();
+              } else {
+                display = (
+                  accumulated.slice(0, openIdx) +
+                  accumulated.slice(closeIdx + 3)
+                ).trim();
+              }
+            }
             setStreamingContent(display);
             scrollRef.current?.scrollToEnd({ animated: false });
           },
@@ -358,10 +394,10 @@ export default function CoachChat({
     }
   }, [isListening, startListening, stopListening]);
 
-  // Auto-scroll on new content
+  // Auto-scroll when new messages arrive (streaming scroll handled in onChunk callback)
   useEffect(() => {
     scrollRef.current?.scrollToEnd({ animated: false });
-  }, [messages, streamingContent]);
+  }, [messages]);
 
   const showSendButton = inputText.trim().length > 0;
 
@@ -383,26 +419,16 @@ export default function CoachChat({
               role={msg.role as "user" | "assistant"}
               content={msg.content}
             />
-            {/* Render blocks from message metadata */}
-            {(() => {
-              const meta = msg.metadata as
-                | Record<string, unknown>
-                | null
-                | undefined;
-              const rawBlocks = meta?.blocks;
-              const blocks = Array.isArray(rawBlocks)
-                ? filterValidBlocks(rawBlocks)
-                : undefined;
-              return blocks?.map((block, i) => (
-                <BlockRenderer
-                  key={`${msg.id}-block-${i}`}
-                  block={block}
-                  onAction={handleBlockAction}
-                  onQuickReply={handleQuickReply}
-                  onCommitmentAccept={handleCommitmentAccept}
-                />
-              ));
-            })()}
+            {/* Render blocks from memoized validation (validated once per messages change) */}
+            {messageBlocks.get(msg.id)?.map((block, i) => (
+              <BlockRenderer
+                key={`${msg.id}-block-${i}`}
+                block={block}
+                onAction={handleBlockAction}
+                onQuickReply={handleQuickReply}
+                onCommitmentAccept={handleCommitmentAccept}
+              />
+            ))}
           </View>
         ))}
 
