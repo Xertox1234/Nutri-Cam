@@ -1,6 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { RubricDimension, RubricScore } from "./types";
 
+const client = new Anthropic();
+
 const RUBRIC_TEXT = `You are an expert evaluator of AI nutrition coaching responses.
 
 Score the response on each requested dimension using a 1-10 scale with these anchors:
@@ -146,8 +148,6 @@ export async function judgeResponse(params: {
   scores: RubricScore[];
   calorieAssertionPassed?: boolean;
 }> {
-  const client = new Anthropic();
-
   const prompt = buildJudgePrompt(params);
 
   const message = await client.messages.create({
@@ -165,10 +165,22 @@ export async function judgeResponse(params: {
     .replace(/^```json?\s*\n?/i, "")
     .replace(/\n?```\s*$/i, "");
 
-  const parsed = JSON.parse(cleaned) as {
+  let parsed: {
     scores: { dimension: string; score: number; reasoning: string }[];
     calorie_assertion_passed?: boolean;
   };
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch {
+    console.warn(`    ⚠ Judge returned malformed JSON, using default scores`);
+    return {
+      scores: params.dimensions.map((d) => ({
+        dimension: d,
+        score: 0,
+        reasoning: "Judge returned malformed JSON — score unavailable",
+      })),
+    };
+  }
 
   const scores: RubricScore[] = parsed.scores.map((s) => ({
     dimension: s.dimension.toLowerCase() as RubricDimension,
