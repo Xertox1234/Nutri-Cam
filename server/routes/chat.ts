@@ -563,6 +563,11 @@ export function register(app: Express): void {
                 req.userId,
               )) {
                 if (aborted) break;
+                responseBytes += chunk.length;
+                if (responseBytes > SSE_MAX_RESPONSE_BYTES) {
+                  aborted = true;
+                  break;
+                }
                 fullResponse += chunk;
                 res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
               }
@@ -572,6 +577,11 @@ export function register(app: Express): void {
                 context,
               )) {
                 if (aborted) break;
+                responseBytes += chunk.length;
+                if (responseBytes > SSE_MAX_RESPONSE_BYTES) {
+                  aborted = true;
+                  break;
+                }
                 fullResponse += chunk;
                 res.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
               }
@@ -626,9 +636,10 @@ export function register(app: Express): void {
               fireAndForget(
                 "coach-notebook-extraction",
                 (async () => {
+                  // messageHistory already includes the user message (saved
+                  // before history fetch), so only append the assistant reply.
                   const allMessages = [
                     ...messageHistory,
-                    { role: "user" as const, content: parsed.data.content },
                     { role: "assistant" as const, content: textContent },
                   ];
                   const entries = await extractNotebookEntries(
