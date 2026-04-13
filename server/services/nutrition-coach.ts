@@ -314,8 +314,9 @@ export async function* generateCoachProResponse(
           { err: toError(error), tool: tc.function.name },
           "Tool call failed",
         );
+        // Generic message for AI context; details logged above
         result = {
-          error: `Tool ${tc.function.name} failed: ${toError(error).message}`,
+          error: `Tool ${tc.function.name} is temporarily unavailable`,
         };
       }
 
