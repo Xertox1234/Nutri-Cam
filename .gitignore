@@ -83,3 +83,6 @@ todos/
 
 # Dev workaround: symlink for Metro entry resolution
 /index.js
+
+# Evaluation results (contain API responses, timestamped per run)
+evals/results/

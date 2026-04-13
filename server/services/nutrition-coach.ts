@@ -40,10 +40,32 @@ export interface CoachContext {
 function buildSystemPrompt(context: CoachContext): string {
   const parts = [
     "You are NutriCoach, a friendly and knowledgeable nutrition coach AI built into the OCRecipes app.",
-    "Be conversational, supportive, and evidence-based. Keep responses concise (2-4 paragraphs max).",
-    "Use markdown formatting for emphasis and structure when appropriate.",
+    "Be conversational, supportive, and evidence-based. Keep responses concise — aim for 2-4 sentences for simple questions, up to a short paragraph for complex topics. Use bullet points when listing foods or suggestions. Never write more than 150 words unless the user asks for detail.",
+    "Use **bold** and *italic* for emphasis and bullet points for lists. Do not use headers, tables, or code blocks — they render poorly in chat.",
     "Never diagnose medical conditions or replace professional medical advice.",
     "Never recommend extreme calorie restriction (below 1200 cal/day), extreme fasting protocols, or any advice that could promote disordered eating.",
+    "If the user mentions symptoms, emotional distress about food, or asks for medical advice, acknowledge their concern and recommend they see a healthcare professional or registered dietitian.",
+    "",
+    "WHEN DECLINING UNSAFE REQUESTS:",
+    "Even when you must refuse a dangerous request, STILL use the user's context to offer a safe, personalized alternative. Do not give generic refusals.",
+    "- Bad: 'I can't help with a 500 calorie plan. Try a moderate deficit instead.'",
+    "- Good: 'A 500 cal/day plan would be unsafe. Your goal is 2000 cal — a moderate deficit of ~1600-1700 cal would support steady weight loss at your current 90kg. Want me to build a meal plan around that?'",
+    "- For medical questions: acknowledge what you see in their data (e.g., weight trend) without diagnosing, then refer to a professional.",
+    "",
+    "HOW TO USE THE CONTEXT BELOW:",
+    "- Calculate remaining macros (goals minus intake) and reference specific numbers: 'You have about 200 calories and 10g protein left today.'",
+    "- When suggesting foods, prioritize nutrients the user is SHORT on today.",
+    "- If intake already exceeds goals, acknowledge it without shame and suggest lighter options.",
+    "- If allergies or dislikes are listed, NEVER suggest those foods under any circumstances.",
+    "- If the user's message is vague or unclear, ask ONE specific clarifying question rather than guessing. For example: 'What kind of help are you looking for — meal ideas, feedback on your day, or something else?'",
+    "- Consider the time of day when making meal suggestions (breakfast vs dinner). If it's late and the user has eaten very little, address this gently.",
+    "",
+    "EXAMPLE EXCHANGE:",
+    "User: 'I don't know what to eat for dinner.'",
+    "NutriCoach: 'You've got about 600 calories and 40g protein left for today — nice work staying on track! Here are a few ideas that would fit well:",
+    "• Grilled chicken breast with roasted vegetables (~450 cal, 35g protein)",
+    "• A big salad with chickpeas, feta, and olive oil dressing (~400 cal, 20g protein)",
+    "Want me to look up a recipe for either of these?'",
     "",
     "USER CONTEXT:",
   ];
@@ -56,6 +78,25 @@ function buildSystemPrompt(context: CoachContext): string {
   parts.push(
     `Today's intake: ${context.todayIntake.calories} cal, ${context.todayIntake.protein}g protein, ${context.todayIntake.carbs}g carbs, ${context.todayIntake.fat}g fat`,
   );
+
+  // Pre-compute remaining macros so the model doesn't have to do arithmetic
+  if (context.goals) {
+    const rem = {
+      cal: context.goals.calories - context.todayIntake.calories,
+      protein: context.goals.protein - context.todayIntake.protein,
+      carbs: context.goals.carbs - context.todayIntake.carbs,
+      fat: context.goals.fat - context.todayIntake.fat,
+    };
+    if (rem.cal >= 0) {
+      parts.push(
+        `Remaining today: ${rem.cal} cal, ${rem.protein}g protein, ${rem.carbs}g carbs, ${rem.fat}g fat`,
+      );
+    } else {
+      parts.push(
+        `Remaining today: OVER by ${Math.abs(rem.cal)} cal, ${rem.protein >= 0 ? `${rem.protein}g protein needed` : `over by ${Math.abs(rem.protein)}g protein`}, ${rem.carbs >= 0 ? `${rem.carbs}g carbs left` : `over by ${Math.abs(rem.carbs)}g carbs`}, ${rem.fat >= 0 ? `${rem.fat}g fat left` : `over by ${Math.abs(rem.fat)}g fat`}`,
+      );
+    }
+  }
 
   if (context.weightTrend.currentWeight) {
     parts.push(
@@ -77,6 +118,14 @@ function buildSystemPrompt(context: CoachContext): string {
       `Food dislikes: ${context.dietaryProfile.dislikes.map(sanitizeUserInput).join(", ")}`,
     );
   }
+
+  // Inject current time so the model can suggest contextually appropriate meals
+  const now = new Date();
+  const hours = now.getHours();
+  const minutes = now.getMinutes().toString().padStart(2, "0");
+  const period = hours >= 12 ? "PM" : "AM";
+  const displayHour = hours % 12 || 12;
+  parts.push(`Current time: ${displayHour}:${minutes} ${period}`);
 
   if (context.screenContext) {
     parts.push(
@@ -122,8 +171,8 @@ export async function* generateCoachResponse(
           { role: "system", content: systemPrompt },
           ...sanitizedMessages,
         ],
-        max_completion_tokens: 1000,
-        temperature: 0.7,
+        max_completion_tokens: 1500,
+        temperature: 0.5,
       },
       { timeout: OPENAI_TIMEOUT_STREAM_MS },
     );
@@ -208,8 +257,8 @@ export async function* generateCoachProResponse(
             typeof openai.chat.completions.create
           >[0]["messages"],
           tools,
-          max_completion_tokens: 1000,
-          temperature: 0.7,
+          max_completion_tokens: 1500,
+          temperature: 0.5,
         },
         { timeout: OPENAI_TIMEOUT_STREAM_MS },
       );
