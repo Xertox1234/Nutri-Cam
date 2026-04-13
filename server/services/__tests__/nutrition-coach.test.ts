@@ -1,8 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { generateCoachProResponse } from "../nutrition-coach";
+import {
+  generateCoachProResponse,
+  generateCoachResponse,
+} from "../nutrition-coach";
 import type { CoachContext } from "../nutrition-coach";
 import { openai } from "../../lib/openai";
 import { executeToolCall } from "../coach-tools";
+import {
+  sanitizeUserInput,
+  containsDangerousDietaryAdvice,
+} from "../../lib/ai-safety";
 
 vi.mock("../../lib/openai", () => ({
   openai: {
@@ -524,5 +531,144 @@ describe("generateCoachProResponse", () => {
     expect(systemMsg.content).toContain("vegetarian");
     expect(systemMsg.content).toContain("salads");
     expect(systemMsg.content).toContain("home screen");
+  });
+});
+
+describe("generateCoachResponse", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(containsDangerousDietaryAdvice).mockReturnValue(false);
+  });
+
+  it("sanitizes user messages before sending to OpenAI", async () => {
+    const stream = createMockStream([
+      { content: "Hello!" },
+      { finish_reason: "stop" },
+    ]);
+    vi.mocked(openai.chat.completions.create).mockResolvedValue(stream as any);
+
+    const messages = [
+      { role: "user" as const, content: "Tell me about pizza" },
+    ];
+    await collectStream(generateCoachResponse(messages, DEFAULT_CONTEXT));
+
+    expect(sanitizeUserInput).toHaveBeenCalledWith("Tell me about pizza");
+  });
+
+  it("triggers disclaimer when containsDangerousDietaryAdvice returns true", async () => {
+    // Build a response long enough to trigger the periodic check (every ~200 chars)
+    const longContent = "A".repeat(250);
+    const stream = createMockStream([
+      { content: longContent },
+      { finish_reason: "stop" },
+    ]);
+    vi.mocked(openai.chat.completions.create).mockResolvedValue(stream as any);
+    vi.mocked(containsDangerousDietaryAdvice).mockReturnValue(true);
+
+    const messages = [{ role: "user" as const, content: "Extreme diet plan" }];
+    const result = await collectStream(
+      generateCoachResponse(messages, DEFAULT_CONTEXT),
+    );
+
+    expect(result).toContain(
+      "please consult a registered dietitian or healthcare provider",
+    );
+  });
+
+  it("injects screenContext into the system prompt", async () => {
+    const stream = createMockStream([
+      { content: "Ok" },
+      { finish_reason: "stop" },
+    ]);
+    vi.mocked(openai.chat.completions.create).mockResolvedValue(stream as any);
+
+    const context: CoachContext = {
+      ...DEFAULT_CONTEXT,
+      screenContext: "Viewing daily log screen",
+    };
+
+    const messages = [{ role: "user" as const, content: "Hi" }];
+    await collectStream(generateCoachResponse(messages, context));
+
+    const callArgs = vi.mocked(openai.chat.completions.create).mock.calls[0][0];
+    const systemMsg = (
+      callArgs as { messages: { role: string; content: string }[] }
+    ).messages[0];
+    expect(systemMsg.role).toBe("system");
+    expect(systemMsg.content).toContain("Viewing daily log screen");
+  });
+
+  it("streams text content from the async generator", async () => {
+    const stream = createMockStream([
+      { content: "Great " },
+      { content: "question!" },
+      { finish_reason: "stop" },
+    ]);
+    vi.mocked(openai.chat.completions.create).mockResolvedValue(stream as any);
+
+    const messages = [{ role: "user" as const, content: "What should I eat?" }];
+    const result = await collectStream(
+      generateCoachResponse(messages, DEFAULT_CONTEXT),
+    );
+
+    expect(result).toBe("Great question!");
+  });
+
+  it("yields error message when OpenAI API call fails", async () => {
+    vi.mocked(openai.chat.completions.create).mockRejectedValue(
+      new Error("API down"),
+    );
+
+    const messages = [{ role: "user" as const, content: "Hello" }];
+    const result = await collectStream(
+      generateCoachResponse(messages, DEFAULT_CONTEXT),
+    );
+
+    expect(result).toBe(
+      "Sorry, I'm having trouble responding right now. Please try again.",
+    );
+  });
+
+  it("appends final disclaimer when complete response is flagged as dangerous", async () => {
+    const stream = createMockStream([
+      { content: "Here is advice." },
+      { finish_reason: "stop" },
+    ]);
+    vi.mocked(openai.chat.completions.create).mockResolvedValue(stream as any);
+
+    // Not triggered during streaming but triggered on final check
+    let callCount = 0;
+    vi.mocked(containsDangerousDietaryAdvice).mockImplementation(() => {
+      callCount++;
+      // Only return true on calls after streaming is complete (the final check)
+      // During streaming, short content won't trigger the periodic check
+      return callCount > 0;
+    });
+
+    const messages = [{ role: "user" as const, content: "Fasting plan" }];
+    const result = await collectStream(
+      generateCoachResponse(messages, DEFAULT_CONTEXT),
+    );
+
+    expect(result).toContain(
+      "consult a registered dietitian or healthcare provider",
+    );
+  });
+
+  it("includes SYSTEM_PROMPT_BOUNDARY at end of system prompt", async () => {
+    const stream = createMockStream([
+      { content: "Ok" },
+      { finish_reason: "stop" },
+    ]);
+    vi.mocked(openai.chat.completions.create).mockResolvedValue(stream as any);
+
+    const messages = [{ role: "user" as const, content: "Hi" }];
+    await collectStream(generateCoachResponse(messages, DEFAULT_CONTEXT));
+
+    const callArgs = vi.mocked(openai.chat.completions.create).mock.calls[0][0];
+    const systemMsg = (
+      callArgs as { messages: { role: string; content: string }[] }
+    ).messages[0];
+    expect(systemMsg.content).toContain("---BOUNDARY---");
   });
 });
