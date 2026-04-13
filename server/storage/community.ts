@@ -106,7 +106,7 @@ export async function createRecipeWithLimitCheck(
   dailyLimit: number,
   data: Omit<InsertCommunityRecipe, "id" | "createdAt" | "updatedAt">,
 ): Promise<CommunityRecipe | null> {
-  return db.transaction(async (tx) => {
+  const recipe = await db.transaction(async (tx) => {
     // Check daily limit inside transaction
     const { startOfDay, endOfDay } = getDayBounds(new Date());
     const result = await tx
@@ -126,16 +126,26 @@ export async function createRecipeWithLimitCheck(
     }
 
     // Create recipe
-    const [recipe] = await tx.insert(communityRecipes).values(data).returning();
+    const [created] = await tx
+      .insert(communityRecipes)
+      .values(data)
+      .returning();
 
     // Log the generation
     await tx.insert(recipeGenerationLog).values({
       userId,
-      recipeId: recipe.id,
+      recipeId: created.id,
     });
 
-    return recipe;
+    return created;
   });
+
+  // Update search index after transaction commits
+  if (recipe?.isPublic) {
+    addToIndex(communityToSearchable(recipe));
+  }
+
+  return recipe;
 }
 
 export async function updateRecipePublicStatus(

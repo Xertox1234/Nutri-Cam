@@ -270,7 +270,7 @@ export default function RecipeBrowserScreen() {
   const [searchText, setSearchText] = useState(searchQuery || "");
   const [activeCuisine, setActiveCuisine] = useState<string | undefined>();
   const [activeDiet, setActiveDiet] = useState<string | undefined>();
-  const [safeForMe, setSafeForMe] = useState(false);
+  // TODO: Re-add "Safe for me" allergen filter once search service supports it
   const [addingId, setAddingId] = useState<string | null>(null);
   const [advancedFilters, setAdvancedFilters] = useState<SearchFilters>({
     sort: "relevance",
@@ -310,6 +310,7 @@ export default function RecipeBrowserScreen() {
       q: debouncedQuery || undefined,
       cuisine: activeCuisine,
       diet: activeDiet,
+      mealType: mealType || undefined,
       difficulty: activeDifficulty,
       pantry: pantryMode || undefined,
       sort: advancedFilters.sort,
@@ -322,6 +323,7 @@ export default function RecipeBrowserScreen() {
       debouncedQuery,
       activeCuisine,
       activeDiet,
+      mealType,
       activeDifficulty,
       pantryMode,
       advancedFilters,
@@ -429,11 +431,6 @@ export default function RecipeBrowserScreen() {
     [haptics],
   );
 
-  const handleToggleSafeForMe = useCallback(() => {
-    haptics.selection();
-    setSafeForMe((prev) => !prev);
-  }, [haptics]);
-
   const handleClearFilters = useCallback(() => {
     haptics.selection();
     setSearchText("");
@@ -442,7 +439,6 @@ export default function RecipeBrowserScreen() {
     setActiveDiet(undefined);
     setActiveDifficulty(undefined);
     setPantryMode(false);
-    setSafeForMe(false);
     setAdvancedFilters({
       sort: "relevance",
       maxPrepTime: undefined,
@@ -576,19 +572,6 @@ export default function RecipeBrowserScreen() {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.filterRow}
         >
-          <Chip
-            label="Safe for me"
-            variant="filter"
-            selected={safeForMe}
-            onPress={handleToggleSafeForMe}
-            accessibilityLabel="Filter recipes safe for my allergies"
-          />
-          <View
-            style={[
-              styles.filterDivider,
-              { backgroundColor: withOpacity(theme.text, 0.15) },
-            ]}
-          />
           {CUISINE_PRESETS.map((c) => (
             <Chip
               key={c}
@@ -747,7 +730,6 @@ export default function RecipeBrowserScreen() {
           activeDiet ||
           activeDifficulty ||
           pantryMode ||
-          safeForMe ||
           activeFilterCount > 0 ? (
             <EmptyState
               variant="noResults"

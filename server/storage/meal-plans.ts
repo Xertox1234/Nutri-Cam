@@ -125,22 +125,25 @@ export async function createMealPlanRecipe(
   // Storage is a pure data-access layer and should not call service functions.
 
   if (ingredients && ingredients.length > 0) {
-    return db.transaction(async (tx) => {
-      const [created] = await tx
-        .insert(mealPlanRecipes)
-        .values(recipe)
-        .returning();
+    const created = await db.transaction(async (tx) => {
+      const [row] = await tx.insert(mealPlanRecipes).values(recipe).returning();
       await tx.insert(recipeIngredients).values(
         ingredients.map((ing, idx) => ({
           ...ing,
-          recipeId: created.id,
+          recipeId: row.id,
           displayOrder: ing.displayOrder ?? idx,
         })),
       );
-      const ingNames = ingredients.map((i) => i.name);
-      addToIndex(mealPlanToSearchable(created, ingNames));
-      return created;
+      return row;
     });
+    // Update search index after transaction commits
+    addToIndex(
+      mealPlanToSearchable(
+        created,
+        ingredients.map((i) => i.name),
+      ),
+    );
+    return created;
   }
 
   const [created] = await db.insert(mealPlanRecipes).values(recipe).returning();
@@ -163,7 +166,7 @@ export async function createMealPlanFromSuggestions(
 ): Promise<{ recipeId: number; mealPlanItemId: number }[]> {
   if (meals.length === 0) return [];
 
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     // Batch-insert all recipes at once
     const recipes = await tx
       .insert(mealPlanRecipes)
@@ -193,11 +196,21 @@ export async function createMealPlanFromSuggestions(
       )
       .returning();
 
-    return recipes.map((recipe, i) => ({
-      recipeId: recipe.id,
-      mealPlanItemId: planItems[i].id,
-    }));
+    return { recipes, allIngredients, planItems };
   });
+
+  // Update search index after transaction commits
+  for (const recipe of result.recipes) {
+    const ingNames = result.allIngredients
+      .filter((i) => i.recipeId === recipe.id)
+      .map((i) => i.name);
+    addToIndex(mealPlanToSearchable(recipe, ingNames));
+  }
+
+  return result.recipes.map((recipe, i) => ({
+    recipeId: recipe.id,
+    mealPlanItemId: result.planItems[i].id,
+  }));
 }
 
 type UpdatableMealPlanRecipeFields = Pick<

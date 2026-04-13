@@ -1,6 +1,7 @@
 export interface SearchableRecipe {
   id: string; // "personal:42", "community:17", "spoonacular:654321"
   source: "personal" | "community" | "spoonacular";
+  userId: string | null; // owner ID for personal recipes (IDOR protection)
   title: string;
   description: string | null;
   ingredients: string[]; // flattened ingredient names for search

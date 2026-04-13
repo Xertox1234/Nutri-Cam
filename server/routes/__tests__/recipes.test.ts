@@ -117,6 +117,7 @@ describe("Recipes Routes", () => {
           {
             id: "personal:1",
             source: "personal",
+            userId: "1",
             title: "Chicken Parmesan",
             description: null,
             ingredients: [],

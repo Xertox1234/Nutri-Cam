@@ -38,6 +38,7 @@ export function mealPlanToSearchable(
   return {
     id: `personal:${recipe.id}`,
     source: "personal",
+    userId: recipe.userId,
     title: recipe.title,
     description: recipe.description ?? null,
     ingredients: ingredientNames,
@@ -66,6 +67,7 @@ export function communityToSearchable(
   return {
     id: `community:${recipe.id}`,
     source: "community",
+    userId: null,
     title: recipe.title,
     description: recipe.description ?? null,
     ingredients: ingredientList.map((i) => i.name),
@@ -282,6 +284,11 @@ export async function searchRecipes(
     candidates = [...documentStore.values()];
   }
 
+  // ── IDOR protection: personal recipes only visible to their owner ────────
+  candidates = candidates.filter(
+    (r) => r.source !== "personal" || r.userId === userId,
+  );
+
   // ── Post-search filters ──────────────────────────────────────────────────
   const filters: Record<string, string | number | boolean> = {};
 
@@ -366,7 +373,14 @@ export async function searchRecipes(
     });
   }
   // "relevance" with a q: MiniSearch already returns by relevance (we preserve that order from the id sets)
-  // "popular": treat as newest for now
+  if (sort === "popular") {
+    // Popular is treated as newest until we have popularity metrics
+    candidates.sort((a, b) => {
+      const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return tb - ta;
+    });
+  }
 
   // ── Pagination ───────────────────────────────────────────────────────────
   const total = candidates.length;
