@@ -1,6 +1,7 @@
 import React from "react";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import { ActivityIndicator, View, StyleSheet } from "react-native";
+import { ActivityIndicator, Pressable, View, StyleSheet } from "react-native";
+import { Feather } from "@expo/vector-icons";
 
 import MainTabNavigator from "@/navigation/MainTabNavigator";
 import LoginScreen from "@/screens/LoginScreen";
@@ -383,52 +384,102 @@ export default function RootStackNavigator() {
           <Stack.Screen
             name="CookbookListModal"
             component={CookbookListScreen}
-            options={{
+            options={({ navigation }) => ({
               headerTitle: () => (
                 <HeaderTitle title="Cookbooks" showIcon={false} />
               ),
               presentation: "modal",
-            }}
+              headerLeft: () => (
+                <Pressable
+                  onPress={() => navigation.goBack()}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close"
+                >
+                  <Feather name="x" size={24} color={theme.text} />
+                </Pressable>
+              ),
+            })}
           />
           <Stack.Screen
             name="GroceryListsModal"
             component={GroceryListsScreen}
-            options={{
+            options={({ navigation }) => ({
               headerTitle: () => (
                 <HeaderTitle title="Grocery Lists" showIcon={false} />
               ),
               presentation: "modal",
-            }}
+              headerLeft: () => (
+                <Pressable
+                  onPress={() => navigation.goBack()}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close"
+                >
+                  <Feather name="x" size={24} color={theme.text} />
+                </Pressable>
+              ),
+            })}
           />
           <Stack.Screen
             name="PantryModal"
             component={PantryScreen}
-            options={{
+            options={({ navigation }) => ({
               headerTitle: () => (
                 <HeaderTitle title="Pantry" showIcon={false} />
               ),
               presentation: "modal",
-            }}
+              headerLeft: () => (
+                <Pressable
+                  onPress={() => navigation.goBack()}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close"
+                >
+                  <Feather name="x" size={24} color={theme.text} />
+                </Pressable>
+              ),
+            })}
           />
           <Stack.Screen
             name="RecipeBrowserModal"
             component={RecipeBrowserScreen}
-            options={{
+            options={({ navigation }) => ({
               headerTitle: () => (
                 <HeaderTitle title="Recipes" showIcon={false} />
               ),
               presentation: "modal",
-            }}
+              headerLeft: () => (
+                <Pressable
+                  onPress={() => navigation.goBack()}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close"
+                >
+                  <Feather name="x" size={24} color={theme.text} />
+                </Pressable>
+              ),
+            })}
           />
           <Stack.Screen
             name="FastingModal"
             component={FastingScreen}
-            options={{
+            options={({ navigation }) => ({
               headerTitle: () => (
                 <HeaderTitle title="Fasting Timer" showIcon={false} />
               ),
               presentation: "modal",
-            }}
+              headerLeft: () => (
+                <Pressable
+                  onPress={() => navigation.goBack()}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Close"
+                >
+                  <Feather name="x" size={24} color={theme.text} />
+                </Pressable>
+              ),
+            })}
           />
         </>
       )}
