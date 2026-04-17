@@ -15,6 +15,15 @@ Append-only history of all code audits performed on this project. Each entry lin
 
 ---
 
+## 2026-04-17 — Full Codebase Audit
+
+- **Trigger:** Periodic full audit — 8 commits / ~20K LOC since audit #10 (recipe creation wizard, recipe search overhaul with MiniSearch, nutrition coach evaluation framework, seed-recipes script overhaul, profile hub modal close buttons, collapsing headers, custom screen transitions, success feedback animations)
+- **Manifest:** [docs/audits/2026-04-17-full.md](2026-04-17-full.md)
+- **Findings:** 0 critical, 15 high, 28 medium, 26 low (69 total, 123 raw from 6 agents)
+- **Resolved:** 15 high verified (14 fixed, 1 deferred), 1 medium false-positive, 2 low drive-by cleanups; 52 medium/low open for follow-up triage
+- **Commits:** `6beabeb` (minisearch cluster), `d0975d9` (eval framework), `653ca2b` (wizard UX), `7cbc8ed` (perf), `9fd556f` (security/data-loss)
+- **Note:** Key fixes: cleanup-seed-recipes scoped to orphan/demo-user authorId (prod data-loss risk), recipe-generate premium gate + quota, storage→service import direction restored via new `server/lib/search-index.ts`, MiniSearch concurrent-init guard with atomic retry reset, column-projected JSONB-free index loaders, index mutations moved outside db.transaction, parallel coach tool execution (b41245f regression), null-valued search filter correctness, KAV at wizard shell root, eliminated double discard-alert, AnimatedCheckmark timer cleanup, scroll-handler `runOnJS` gated to boolean transitions, zod-validated + version-anchored eval judge. +3 tests net. H9 (wizard test coverage) deferred to `todos/recipe-wizard-test-coverage.md`.
+
 ## 2026-04-12 — Full Codebase Audit
 
 - **Trigger:** Periodic full audit — ~45 commits, ~16K LOC since audit #9 (Coach Pro, serving adjuster, UI interactions, favourites deferred items, accessibility)
