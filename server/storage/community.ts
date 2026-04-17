@@ -14,7 +14,8 @@ import {
   addToIndex,
   removeFromIndex,
   communityToSearchable,
-} from "../services/recipe-search";
+  type SearchIndexableCommunityRecipe,
+} from "../lib/search-index";
 
 // ============================================================================
 // COMMUNITY RECIPES
@@ -204,12 +205,23 @@ export async function getFeaturedRecipes(
 
 /**
  * Load all public community recipes for search index initialization.
+ * Skips heavy JSONB `instructions` column that the index never consumes.
  */
 export async function getAllPublicCommunityRecipes(): Promise<
-  CommunityRecipe[]
+  SearchIndexableCommunityRecipe[]
 > {
   return db
-    .select()
+    .select({
+      id: communityRecipes.id,
+      title: communityRecipes.title,
+      description: communityRecipes.description,
+      ingredients: communityRecipes.ingredients,
+      dietTags: communityRecipes.dietTags,
+      difficulty: communityRecipes.difficulty,
+      servings: communityRecipes.servings,
+      imageUrl: communityRecipes.imageUrl,
+      createdAt: communityRecipes.createdAt,
+    })
     .from(communityRecipes)
     .where(
       and(
@@ -236,14 +248,12 @@ export async function deleteCommunityRecipe(
       )
     : eq(communityRecipes.authorId, authorId);
 
-  return db.transaction(async (tx) => {
+  const deleted = await db.transaction(async (tx) => {
     const result = await tx
       .delete(communityRecipes)
       .where(and(eq(communityRecipes.id, recipeId), ownershipCondition))
       .returning({ id: communityRecipes.id });
     if (result.length === 0) return false;
-
-    removeFromIndex(`community:${recipeId}`);
 
     // Clean up junction rows that referenced this recipe
     await Promise.all([
@@ -266,6 +276,11 @@ export async function deleteCommunityRecipe(
     ]);
     return true;
   });
+
+  // Update search index AFTER transaction commits — if the tx rolls back,
+  // we don't want the index to forget a recipe that still exists in the DB.
+  if (deleted) removeFromIndex(`community:${recipeId}`);
+  return deleted;
 }
 
 export async function getUserRecipes(

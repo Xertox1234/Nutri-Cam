@@ -47,7 +47,8 @@ import {
   addToIndex,
   removeFromIndex,
   mealPlanToSearchable,
-} from "../services/recipe-search";
+  type SearchIndexableMealPlanRecipe,
+} from "../lib/search-index";
 
 // ============================================================================
 // MEAL PLAN RECIPES
@@ -255,7 +256,7 @@ export async function deleteMealPlanRecipe(
   id: number,
   userId: string,
 ): Promise<boolean> {
-  return db.transaction(async (tx) => {
+  const deleted = await db.transaction(async (tx) => {
     const result = await tx
       .delete(mealPlanRecipes)
       .where(
@@ -263,8 +264,6 @@ export async function deleteMealPlanRecipe(
       )
       .returning({ id: mealPlanRecipes.id });
     if (result.length === 0) return false;
-
-    removeFromIndex(`personal:${id}`);
 
     // Clean up junction rows that referenced this recipe
     await Promise.all([
@@ -287,15 +286,43 @@ export async function deleteMealPlanRecipe(
     ]);
     return true;
   });
+
+  // Update search index AFTER transaction commits — if the tx rolls back,
+  // we don't want the index to forget a recipe that still exists in the DB.
+  if (deleted) removeFromIndex(`personal:${id}`);
+  return deleted;
 }
 
 /**
  * Load all meal-plan recipes for search index initialization.
  * No user filter — returns every recipe in the table.
+ * Skips heavy JSONB columns (instructions, normalizedProductName) that the
+ * index never consumes.
  */
-export async function getAllMealPlanRecipes(): Promise<MealPlanRecipe[]> {
+export async function getAllMealPlanRecipes(): Promise<
+  SearchIndexableMealPlanRecipe[]
+> {
   return db
-    .select()
+    .select({
+      id: mealPlanRecipes.id,
+      userId: mealPlanRecipes.userId,
+      title: mealPlanRecipes.title,
+      description: mealPlanRecipes.description,
+      cuisine: mealPlanRecipes.cuisine,
+      dietTags: mealPlanRecipes.dietTags,
+      mealTypes: mealPlanRecipes.mealTypes,
+      difficulty: mealPlanRecipes.difficulty,
+      prepTimeMinutes: mealPlanRecipes.prepTimeMinutes,
+      cookTimeMinutes: mealPlanRecipes.cookTimeMinutes,
+      caloriesPerServing: mealPlanRecipes.caloriesPerServing,
+      proteinPerServing: mealPlanRecipes.proteinPerServing,
+      carbsPerServing: mealPlanRecipes.carbsPerServing,
+      fatPerServing: mealPlanRecipes.fatPerServing,
+      servings: mealPlanRecipes.servings,
+      imageUrl: mealPlanRecipes.imageUrl,
+      sourceUrl: mealPlanRecipes.sourceUrl,
+      createdAt: mealPlanRecipes.createdAt,
+    })
     .from(mealPlanRecipes)
     .orderBy(desc(mealPlanRecipes.createdAt));
 }
