@@ -249,7 +249,13 @@ async function main() {
 
   const demoUserId = await ensureDemoUser();
 
-  let successCount = 0;
+  // Counters are split so re-runs don't mask partial failures: a previously-
+  // seeded recipe is `alreadyExisted`, a newly-written one is `inserted`, and
+  // quality-gate / error rows are `skippedCount`. Conflating "already present"
+  // with "successfully inserted" would hide the case where every new attempt
+  // silently fails.
+  let insertedCount = 0;
+  let alreadyExistedCount = 0;
   let skippedCount = 0;
 
   for (let i = 0; i < RECIPE_TARGETS.length; i++) {
@@ -260,7 +266,7 @@ async function main() {
       console.log(
         `\n[${i + 1}/${RECIPE_TARGETS.length}] Skipping: ${target.ingredient} (already seeded)`,
       );
-      successCount++;
+      alreadyExistedCount++;
       continue;
     }
 
@@ -333,7 +339,7 @@ async function main() {
         likeCount: 0,
       });
 
-      successCount++;
+      insertedCount++;
       console.log("  ✓ Inserted");
 
       // Rate-limit delay between image generation calls
@@ -350,7 +356,7 @@ async function main() {
   }
 
   console.log(
-    `\n=== Done! ${successCount} seeded, ${skippedCount} skipped (quality gate). ===`,
+    `\n=== Done! ${insertedCount} inserted, ${alreadyExistedCount} already existed, ${skippedCount} skipped (quality gate). ===`,
   );
   await pool.end();
 }
