@@ -1,11 +1,11 @@
 import React, { useRef, useCallback } from "react";
 import {
-  View,
   Text,
   TextInput,
   Pressable,
   FlatList,
   StyleSheet,
+  AccessibilityInfo,
 } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { Feather } from "@expo/vector-icons";
@@ -44,6 +44,7 @@ export default function IngredientsStep({
     (key: string) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       removeIngredient(key);
+      AccessibilityInfo.announceForAccessibility("Ingredient removed");
     },
     [removeIngredient],
   );

@@ -6,6 +6,7 @@ import {
   Pressable,
   FlatList,
   StyleSheet,
+  AccessibilityInfo,
 } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { Feather } from "@expo/vector-icons";
@@ -45,6 +46,7 @@ export default function InstructionsStep({
     (key: string) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       removeStep(key);
+      AccessibilityInfo.announceForAccessibility("Step removed");
     },
     [removeStep],
   );

@@ -1,5 +1,5 @@
 // client/components/recipe-wizard/WizardShell.tsx
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo, useEffect } from "react";
 import {
   View,
   Text,
@@ -43,6 +43,8 @@ interface WizardShellProps {
   returnToMealPlan?: { mealType: string; plannedDate: string };
   onGoBack: () => void;
   onSaveComplete: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
+  onSavingChange?: (saving: boolean) => void;
 }
 
 export default function WizardShell({
@@ -50,6 +52,8 @@ export default function WizardShell({
   returnToMealPlan,
   onGoBack,
   onSaveComplete,
+  onDirtyChange,
+  onSavingChange,
 }: WizardShellProps) {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
@@ -62,6 +66,15 @@ export default function WizardShell({
   const [returnToPreview, setReturnToPreview] = useState(false);
   const [validationError, setValidationError] = useState("");
   const [hasSuggestedTags, setHasSuggestedTags] = useState(false);
+
+  // Sync dirty/saving state to parent for beforeRemove guard
+  useEffect(() => {
+    onDirtyChange?.(form.isDirty);
+  }, [form.isDirty, onDirtyChange]);
+
+  useEffect(() => {
+    onSavingChange?.(createMutation.isPending);
+  }, [createMutation.isPending, onSavingChange]);
 
   const stepConfig = STEP_CONFIGS[currentStep - 1];
 
@@ -173,7 +186,7 @@ export default function WizardShell({
     AccessibilityInfo.announceForAccessibility(
       `Step ${prevStep} of ${TOTAL_STEPS}, ${STEP_CONFIGS[prevStep - 1].title}`,
     );
-  }, [currentStep, onGoBack, returnToPreview]);
+  }, [currentStep, onGoBack, returnToPreview, form.isDirty]);
 
   const editFromPreview = useCallback((targetStep: WizardStep) => {
     setReturnToPreview(true);
