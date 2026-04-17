@@ -1,162 +1,38 @@
-import MiniSearch from "minisearch";
 import type {
   SearchableRecipe,
   RecipeSearchParams,
   RecipeSearchResponse,
 } from "@shared/types/recipe-search";
-import type { MealPlanRecipe, CommunityRecipe } from "@shared/schema";
 import { storage } from "../storage";
 import { createServiceLogger } from "../lib/logger";
+import {
+  communityToSearchable,
+  getDocumentStore,
+  getIndex,
+  isIndexInitialized,
+  markIndexInitialized,
+  mealPlanToSearchable,
+  resetSearchIndex as resetSearchIndexPrimitive,
+} from "../lib/search-index";
+
+// Re-export normalizers/mutations for tests and callers that imported these
+// from this service historically.
+export {
+  addToIndex,
+  communityToSearchable,
+  mealPlanToSearchable,
+  removeFromIndex,
+} from "../lib/search-index";
 
 const log = createServiceLogger("recipe-search");
 
-// ────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ────────────────────────────────────────────────────────────────────────────
-
-function parseNum(val: string | null | undefined): number | null {
-  if (val === null || val === undefined) return null;
-  const n = parseFloat(val);
-  return isNaN(n) ? null : n;
-}
-
-function calcTotal(prep: number | null, cook: number | null): number | null {
-  if (prep === null && cook === null) return null;
-  return (prep ?? 0) + (cook ?? 0);
-}
-
-// ────────────────────────────────────────────────────────────────────────────
-// Normalizers (exported for testing)
-// ────────────────────────────────────────────────────────────────────────────
-
-export function mealPlanToSearchable(
-  recipe: MealPlanRecipe,
-  ingredientNames: string[],
-): SearchableRecipe {
-  const prep = recipe.prepTimeMinutes ?? null;
-  const cook = recipe.cookTimeMinutes ?? null;
-  return {
-    id: `personal:${recipe.id}`,
-    source: "personal",
-    userId: recipe.userId,
-    title: recipe.title,
-    description: recipe.description ?? null,
-    ingredients: ingredientNames,
-    cuisine: recipe.cuisine ?? null,
-    dietTags: recipe.dietTags ?? [],
-    mealTypes: recipe.mealTypes ?? [],
-    difficulty: recipe.difficulty ?? null,
-    prepTimeMinutes: prep,
-    cookTimeMinutes: cook,
-    totalTimeMinutes: calcTotal(prep, cook),
-    caloriesPerServing: parseNum(recipe.caloriesPerServing),
-    proteinPerServing: parseNum(recipe.proteinPerServing),
-    carbsPerServing: parseNum(recipe.carbsPerServing),
-    fatPerServing: parseNum(recipe.fatPerServing),
-    servings: recipe.servings ?? null,
-    imageUrl: recipe.imageUrl ?? null,
-    sourceUrl: recipe.sourceUrl ?? null,
-    createdAt: recipe.createdAt ? recipe.createdAt.toISOString() : null,
-  };
-}
-
-export function communityToSearchable(
-  recipe: CommunityRecipe,
-): SearchableRecipe {
-  const ingredientList = recipe.ingredients ?? [];
-  return {
-    id: `community:${recipe.id}`,
-    source: "community",
-    userId: null,
-    title: recipe.title,
-    description: recipe.description ?? null,
-    ingredients: ingredientList.map((i) => i.name),
-    cuisine: null,
-    dietTags: recipe.dietTags ?? [],
-    mealTypes: [],
-    difficulty: recipe.difficulty ?? null,
-    prepTimeMinutes: null,
-    cookTimeMinutes: null,
-    totalTimeMinutes: null,
-    caloriesPerServing: null,
-    proteinPerServing: null,
-    carbsPerServing: null,
-    fatPerServing: null,
-    servings: recipe.servings ?? null,
-    imageUrl: recipe.imageUrl ?? null,
-    sourceUrl: null,
-    createdAt: recipe.createdAt ? recipe.createdAt.toISOString() : null,
-  };
-}
-
-// ────────────────────────────────────────────────────────────────────────────
-// MiniSearch index singleton
-// ────────────────────────────────────────────────────────────────────────────
-
-let index: MiniSearch<SearchableRecipe> | null = null;
-let documentStore: Map<string, SearchableRecipe> = new Map();
-let initialized = false;
-
-function createIndex(): MiniSearch<SearchableRecipe> {
-  return new MiniSearch<SearchableRecipe>({
-    idField: "id",
-    fields: ["title", "ingredients", "description", "cuisine", "dietTags"],
-    searchOptions: {
-      boost: { title: 3, ingredients: 2 },
-      fuzzy: 0.2,
-      prefix: true,
-    },
-    extractField(document, fieldName) {
-      const val = (document as unknown as Record<string, unknown>)[fieldName];
-      if (Array.isArray(val)) return val.join(" ");
-      if (val === null || val === undefined) return "";
-      return String(val);
-    },
-  });
-}
-
-function getIndex(): MiniSearch<SearchableRecipe> {
-  if (!index) {
-    index = createIndex();
-  }
-  return index;
-}
-
-// ────────────────────────────────────────────────────────────────────────────
-// Index mutation hooks (exported)
-// ────────────────────────────────────────────────────────────────────────────
-
-export function addToIndex(doc: SearchableRecipe): void {
-  if (!index) return;
-  // Remove existing before re-adding (update)
-  if (documentStore.has(doc.id)) {
-    try {
-      index.remove({ id: doc.id } as SearchableRecipe);
-    } catch {
-      // ignore if not in index
-    }
-  }
-  index.add(doc);
-  documentStore.set(doc.id, doc);
-}
-
-export function removeFromIndex(id: string): void {
-  if (!index) return;
-  if (documentStore.has(id)) {
-    const doc = documentStore.get(id)!;
-    try {
-      index.remove(doc);
-    } catch {
-      // ignore
-    }
-    documentStore.delete(id);
-  }
-}
+// Shared promise guards concurrent init callers so they all await the same
+// in-flight load instead of each re-running DB queries + duplicate addAll.
+let initPromise: Promise<void> | null = null;
 
 export function resetSearchIndex(): void {
-  index = null;
-  documentStore = new Map();
-  initialized = false;
+  resetSearchIndexPrimitive();
+  initPromise = null;
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -164,46 +40,66 @@ export function resetSearchIndex(): void {
 // ────────────────────────────────────────────────────────────────────────────
 
 export async function initSearchIndex(): Promise<void> {
-  if (initialized) return;
+  if (isIndexInitialized()) return;
+  if (initPromise) return initPromise;
 
-  log.info("initializing recipe search index");
+  initPromise = (async () => {
+    log.info("initializing recipe search index");
 
-  const [mealPlanRecipes, communityRecipes, ingredientMap] = await Promise.all([
-    storage.getAllMealPlanRecipes(),
-    storage.getAllPublicCommunityRecipes(),
-    storage.getAllRecipeIngredients(),
-  ]);
+    try {
+      const [mealPlanRecipes, communityRecipes, ingredientMap] =
+        await Promise.all([
+          storage.getAllMealPlanRecipes(),
+          storage.getAllPublicCommunityRecipes(),
+          storage.getAllRecipeIngredients(),
+        ]);
 
-  const idx = getIndex();
-  const docs: SearchableRecipe[] = [];
+      const idx = getIndex();
+      const documentStore = getDocumentStore();
+      const docs: SearchableRecipe[] = [];
 
-  for (const recipe of mealPlanRecipes) {
-    const ingredients = ingredientMap.get(recipe.id) ?? [];
-    const doc = mealPlanToSearchable(
-      recipe,
-      ingredients.map((i) => i.name),
-    );
-    docs.push(doc);
-    documentStore.set(doc.id, doc);
+      for (const recipe of mealPlanRecipes) {
+        const ingredients = ingredientMap.get(recipe.id) ?? [];
+        const doc = mealPlanToSearchable(
+          recipe,
+          ingredients.map((i) => i.name),
+        );
+        docs.push(doc);
+        documentStore.set(doc.id, doc);
+      }
+
+      for (const recipe of communityRecipes) {
+        const doc = communityToSearchable(recipe);
+        docs.push(doc);
+        documentStore.set(doc.id, doc);
+      }
+
+      idx.addAll(docs);
+      markIndexInitialized();
+
+      log.info(
+        {
+          total: docs.length,
+          personal: mealPlanRecipes.length,
+          community: communityRecipes.length,
+        },
+        "recipe search index ready",
+      );
+    } catch (err) {
+      // Atomic init: if addAll (or any step) throws mid-way, clear the index
+      // so the retry doesn't call addAll on documents it already partially
+      // indexed (MiniSearch throws on duplicate IDs).
+      resetSearchIndexPrimitive();
+      throw err;
+    }
+  })();
+
+  try {
+    await initPromise;
+  } finally {
+    // Clear on both success and failure; failed init should be retryable.
+    initPromise = null;
   }
-
-  for (const recipe of communityRecipes) {
-    const doc = communityToSearchable(recipe);
-    docs.push(doc);
-    documentStore.set(doc.id, doc);
-  }
-
-  idx.addAll(docs);
-  initialized = true;
-
-  log.info(
-    {
-      total: docs.length,
-      personal: mealPlanRecipes.length,
-      community: communityRecipes.length,
-    },
-    "recipe search index ready",
-  );
 }
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -214,11 +110,12 @@ export async function searchRecipes(
   params: RecipeSearchParams,
   userId: string,
 ): Promise<RecipeSearchResponse> {
-  if (!initialized) {
+  if (!isIndexInitialized()) {
     await initSearchIndex();
   }
 
   const idx = getIndex();
+  const documentStore = getDocumentStore();
   const {
     q,
     ingredients: ingredientParam,
@@ -327,6 +224,13 @@ export async function searchRecipes(
     );
   }
 
+  // NOTE: Filter asymmetry is intentional. Numeric caps/mins (maxCalories,
+  // minProtein, maxPrepTime) EXCLUDE recipes with null values — a user asking
+  // for "≤400 cal" doesn't want unknown-calorie recipes mixed in. The
+  // mealType filter INCLUDES recipes with an empty `mealTypes` array —
+  // community recipes hard-code `mealTypes: []` (no classification), so
+  // excluding them here would hide the entire community pool from every
+  // meal-type search. See audit 2026-04-17 H10 + M9.
   if (mealType) {
     filters.mealType = mealType;
     const lc = mealType.toLowerCase();
@@ -345,7 +249,7 @@ export async function searchRecipes(
   if (maxPrepTime !== undefined) {
     filters.maxPrepTime = maxPrepTime;
     candidates = candidates.filter(
-      (r) => r.totalTimeMinutes === null || r.totalTimeMinutes <= maxPrepTime,
+      (r) => r.totalTimeMinutes !== null && r.totalTimeMinutes <= maxPrepTime,
     );
   }
 
@@ -353,14 +257,14 @@ export async function searchRecipes(
     filters.maxCalories = maxCalories;
     candidates = candidates.filter(
       (r) =>
-        r.caloriesPerServing === null || r.caloriesPerServing <= maxCalories,
+        r.caloriesPerServing !== null && r.caloriesPerServing <= maxCalories,
     );
   }
 
   if (minProtein !== undefined) {
     filters.minProtein = minProtein;
     candidates = candidates.filter(
-      (r) => r.proteinPerServing === null || r.proteinPerServing >= minProtein,
+      (r) => r.proteinPerServing !== null && r.proteinPerServing >= minProtein,
     );
   }
 

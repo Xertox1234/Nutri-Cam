@@ -287,6 +287,19 @@ describe("searchRecipes — text search", () => {
     expect(result.results).toHaveLength(0);
     expect(result.total).toBe(0);
   });
+
+  it("concurrent initSearchIndex calls share a single in-flight load", async () => {
+    resetSearchIndex();
+    // Both callers start before initialized = true; without the init-promise
+    // guard, both would call storage.* twice and addAll duplicate docs.
+    const [a, b] = await Promise.all([initSearchIndex(), initSearchIndex()]);
+    expect(a).toBeUndefined();
+    expect(b).toBeUndefined();
+    // Storage loaders should have been called exactly once across both racers.
+    expect(mockedStorage.getAllMealPlanRecipes).toHaveBeenCalledTimes(1);
+    expect(mockedStorage.getAllPublicCommunityRecipes).toHaveBeenCalledTimes(1);
+    expect(mockedStorage.getAllRecipeIngredients).toHaveBeenCalledTimes(1);
+  });
 });
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -394,7 +407,7 @@ describe("searchRecipes — filtering", () => {
     });
   });
 
-  it("includes recipes with null prepTimeMinutes when filtering by maxPrepTime", async () => {
+  it("excludes recipes with null prepTimeMinutes when filtering by maxPrepTime", async () => {
     resetSearchIndex();
     const nullPrepRecipe: MealPlanRecipe = {
       ...baseMealPlanRecipe,
@@ -408,7 +421,7 @@ describe("searchRecipes — filtering", () => {
     await initSearchIndex();
     const result = await searchRecipes({ maxPrepTime: 10 }, "user1");
     const ids = result.results.map((r) => r.id);
-    expect(ids).toContain("personal:99");
+    expect(ids).not.toContain("personal:99");
   });
 
   it("filters by maxCalories", async () => {
@@ -421,7 +434,7 @@ describe("searchRecipes — filtering", () => {
     });
   });
 
-  it("includes recipes with null calories when filtering by maxCalories", async () => {
+  it("excludes recipes with null calories when filtering by maxCalories", async () => {
     resetSearchIndex();
     mockedStorage.getAllMealPlanRecipes.mockResolvedValue([]);
     mockedStorage.getAllPublicCommunityRecipes.mockResolvedValue([
@@ -430,7 +443,7 @@ describe("searchRecipes — filtering", () => {
     await initSearchIndex();
     const result = await searchRecipes({ maxCalories: 100 }, "user1");
     const ids = result.results.map((r) => r.id);
-    expect(ids).toContain("community:10");
+    expect(ids).not.toContain("community:10");
   });
 
   it("filters by minProtein", async () => {
@@ -443,7 +456,7 @@ describe("searchRecipes — filtering", () => {
     });
   });
 
-  it("includes recipes with null protein when filtering by minProtein", async () => {
+  it("excludes recipes with null protein when filtering by minProtein", async () => {
     resetSearchIndex();
     mockedStorage.getAllMealPlanRecipes.mockResolvedValue([]);
     mockedStorage.getAllPublicCommunityRecipes.mockResolvedValue([
@@ -452,7 +465,7 @@ describe("searchRecipes — filtering", () => {
     await initSearchIndex();
     const result = await searchRecipes({ minProtein: 100 }, "user1");
     const ids = result.results.map((r) => r.id);
-    expect(ids).toContain("community:10");
+    expect(ids).not.toContain("community:10");
   });
 
   it("filters by mealType (includes when mealTypes empty)", async () => {
