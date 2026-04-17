@@ -1,5 +1,15 @@
-import React from "react";
-import { StyleSheet, View, ScrollView, Pressable, Text } from "react-native";
+import React, { useCallback } from "react";
+import {
+  StyleSheet,
+  View,
+  ScrollView,
+  Pressable,
+  Text,
+  ActionSheetIOS,
+  Platform,
+  Alert,
+} from "react-native";
+import * as ImagePicker from "expo-image-picker";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -131,6 +141,65 @@ export default function RecipeEntryHubScreen() {
 
   const returnToMealPlan = route.params?.returnToMealPlan;
 
+  const navigateWithPhoto = useCallback(
+    (uri: string) => {
+      navigation.navigate("RecipePhotoImport", {
+        photoUri: uri,
+        returnToMealPlan,
+      });
+    },
+    [navigation, returnToMealPlan],
+  );
+
+  const launchCamera = useCallback(async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert(
+        "Camera Access",
+        "Please enable camera access in Settings to scan recipes.",
+      );
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ["images"],
+      quality: 0.9,
+    });
+    if (!result.canceled && result.assets[0]) {
+      navigateWithPhoto(result.assets[0].uri);
+    }
+  }, [navigateWithPhoto]);
+
+  const launchLibrary = useCallback(async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      quality: 0.9,
+    });
+    if (!result.canceled && result.assets[0]) {
+      navigateWithPhoto(result.assets[0].uri);
+    }
+  }, [navigateWithPhoto]);
+
+  const handlePhotoPress = useCallback(() => {
+    if (Platform.OS === "ios") {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ["Cancel", "Take Photo", "Choose from Library"],
+          cancelButtonIndex: 0,
+        },
+        (buttonIndex) => {
+          if (buttonIndex === 1) void launchCamera();
+          if (buttonIndex === 2) void launchLibrary();
+        },
+      );
+    } else {
+      Alert.alert("Scan a recipe", "Choose a source", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Take Photo", onPress: () => void launchCamera() },
+        { text: "Choose from Library", onPress: () => void launchLibrary() },
+      ]);
+    }
+  }, [launchCamera, launchLibrary]);
+
   const handleCardPress = (id: string) => {
     switch (id) {
       case "write":
@@ -143,10 +212,7 @@ export default function RecipeEntryHubScreen() {
         navigation.navigate("RecipeImport", { returnToMealPlan });
         break;
       case "photo":
-        navigation.navigate("RecipePhotoImport", {
-          photoUri: "",
-          returnToMealPlan,
-        } as never);
+        handlePhotoPress();
         break;
       case "browse":
         navigation.navigate("RecipeBrowser", {});
