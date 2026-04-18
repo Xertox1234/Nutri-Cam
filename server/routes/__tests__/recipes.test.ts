@@ -543,6 +543,13 @@ describe("Recipes Routes", () => {
   });
 
   describe("POST /api/meal-plan/catalog/:id/save", () => {
+    beforeEach(() => {
+      vi.mocked(storage.getSubscriptionStatus).mockResolvedValue({
+        tier: "premium",
+        expiresAt: null,
+      });
+    });
+
     it("saves a catalog recipe", async () => {
       vi.mocked(storage.findMealPlanRecipeByExternalId).mockResolvedValue(
         undefined,
@@ -560,6 +567,20 @@ describe("Recipes Routes", () => {
         .set("Authorization", "Bearer token");
 
       expect(res.status).toBe(201);
+    });
+
+    it("returns 403 for free tier (does not call Spoonacular)", async () => {
+      vi.mocked(storage.getSubscriptionStatus).mockResolvedValue({
+        tier: "free",
+        expiresAt: null,
+      });
+
+      const res = await request(app)
+        .post("/api/meal-plan/catalog/123/save")
+        .set("Authorization", "Bearer token");
+
+      expect(res.status).toBe(403);
+      expect(getCatalogRecipeDetail).not.toHaveBeenCalled();
     });
 
     it("returns 422 for recipe with no instructions and no ingredients", async () => {
@@ -823,6 +844,11 @@ describe("Recipes Routes", () => {
     });
 
     it("POST /api/meal-plan/catalog/:id/save returns 400 for invalid ID", async () => {
+      vi.mocked(storage.getSubscriptionStatus).mockResolvedValue({
+        tier: "premium",
+        expiresAt: null,
+      });
+
       const res = await request(app)
         .post("/api/meal-plan/catalog/abc/save")
         .set("Authorization", "Bearer token");
@@ -831,6 +857,10 @@ describe("Recipes Routes", () => {
     });
 
     it("POST /api/meal-plan/catalog/:id/save returns 404 when not found in catalog", async () => {
+      vi.mocked(storage.getSubscriptionStatus).mockResolvedValue({
+        tier: "premium",
+        expiresAt: null,
+      });
       vi.mocked(storage.findMealPlanRecipeByExternalId).mockResolvedValue(
         undefined,
       );
@@ -844,6 +874,10 @@ describe("Recipes Routes", () => {
     });
 
     it("POST /api/meal-plan/catalog/:id/save returns 500 on service error", async () => {
+      vi.mocked(storage.getSubscriptionStatus).mockResolvedValue({
+        tier: "premium",
+        expiresAt: null,
+      });
       vi.mocked(storage.findMealPlanRecipeByExternalId).mockResolvedValue(
         undefined,
       );
@@ -860,6 +894,28 @@ describe("Recipes Routes", () => {
   });
 
   describe("POST /api/meal-plan/recipes/import-url", () => {
+    beforeEach(() => {
+      vi.mocked(storage.getSubscriptionStatus).mockResolvedValue({
+        tier: "premium",
+        expiresAt: null,
+      });
+    });
+
+    it("returns 403 for free tier (does not call importer)", async () => {
+      vi.mocked(storage.getSubscriptionStatus).mockResolvedValue({
+        tier: "free",
+        expiresAt: null,
+      });
+
+      const res = await request(app)
+        .post("/api/meal-plan/recipes/import-url")
+        .set("Authorization", "Bearer token")
+        .send({ url: "https://example.com/recipe" });
+
+      expect(res.status).toBe(403);
+      expect(importRecipeFromUrl).not.toHaveBeenCalled();
+    });
+
     it("imports recipe from URL", async () => {
       vi.mocked(importRecipeFromUrl).mockResolvedValue({
         success: true,
