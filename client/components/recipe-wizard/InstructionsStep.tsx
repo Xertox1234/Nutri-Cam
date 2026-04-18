@@ -19,6 +19,11 @@ import {
   FontFamily,
   withOpacity,
 } from "@/constants/theme";
+import {
+  canMoveStepDown,
+  canMoveStepUp,
+  shouldShowStepDelete,
+} from "./instructions-step-utils";
 
 interface InstructionsStepProps {
   steps: StepRow[];
@@ -61,9 +66,11 @@ export default function InstructionsStep({
 
   const renderItem = useCallback(
     ({ item, index }: { item: StepRow; index: number }) => {
-      const showDelete = steps.length > 1;
-      const isFirst = index === 0;
-      const isLast = index === steps.length - 1;
+      const showDelete = shouldShowStepDelete(steps.length);
+      const canUp = canMoveStepUp(index);
+      const canDown = canMoveStepDown(index, steps.length);
+      const isFirst = !canUp;
+      const isLast = !canDown;
       const disabledColor = withOpacity(theme.textSecondary, 0.3);
 
       return (

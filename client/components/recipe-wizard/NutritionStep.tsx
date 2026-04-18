@@ -8,6 +8,7 @@ import {
   FontFamily,
   withOpacity,
 } from "@/constants/theme";
+import { sanitizeNumericInput } from "./nutrition-step-utils";
 
 interface NutritionStepProps {
   nutrition: NutritionData;
@@ -53,10 +54,6 @@ const FIELDS: NutrientField[] = [
     colorKey: "fatAccent",
   },
 ];
-
-function sanitizeNumericInput(value: string): string {
-  return value.replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1");
-}
 
 export default function NutritionStep({
   nutrition,

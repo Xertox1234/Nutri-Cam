@@ -18,6 +18,7 @@ import {
   FontFamily,
   withOpacity,
 } from "@/constants/theme";
+import { shouldShowIngredientDelete } from "./ingredients-step-utils";
 
 interface IngredientsStepProps {
   ingredients: IngredientRow[];
@@ -51,7 +52,7 @@ export default function IngredientsStep({
 
   const renderItem = useCallback(
     ({ item }: { item: IngredientRow }) => {
-      const showDelete = ingredients.length > 1;
+      const showDelete = shouldShowIngredientDelete(ingredients.length);
       return (
         <Animated.View
           entering={FadeIn.duration(200)}

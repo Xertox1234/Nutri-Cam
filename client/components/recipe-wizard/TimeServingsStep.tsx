@@ -17,6 +17,13 @@ import {
   FontFamily,
   withOpacity,
 } from "@/constants/theme";
+import {
+  clampServings,
+  computeTotalMinutes,
+  isServingsAtMax,
+  isServingsAtMin,
+  sanitizeMinutesInput,
+} from "./time-servings-step-utils";
 
 interface TimeServingsStepProps {
   timeServings: TimeServingsData;
@@ -32,7 +39,7 @@ export default function TimeServingsStep({
 
   const handleServingsChange = useCallback(
     (delta: number) => {
-      const next = Math.min(99, Math.max(1, servings + delta));
+      const next = clampServings(servings, delta);
       if (next === servings) return;
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       setTimeServings({ ...timeServings, servings: next });
@@ -42,23 +49,27 @@ export default function TimeServingsStep({
 
   const handlePrepChange = useCallback(
     (text: string) => {
-      const digits = text.replace(/\D/g, "");
-      setTimeServings({ ...timeServings, prepTime: digits });
+      setTimeServings({
+        ...timeServings,
+        prepTime: sanitizeMinutesInput(text),
+      });
     },
     [timeServings, setTimeServings],
   );
 
   const handleCookChange = useCallback(
     (text: string) => {
-      const digits = text.replace(/\D/g, "");
-      setTimeServings({ ...timeServings, cookTime: digits });
+      setTimeServings({
+        ...timeServings,
+        cookTime: sanitizeMinutesInput(text),
+      });
     },
     [timeServings, setTimeServings],
   );
 
-  const prepMinutes = parseInt(prepTime, 10) || 0;
-  const cookMinutes = parseInt(cookTime, 10) || 0;
-  const totalMinutes = prepMinutes + cookMinutes;
+  const totalMinutes = computeTotalMinutes(prepTime, cookTime);
+  const servingsAtMin = isServingsAtMin(servings);
+  const servingsAtMax = isServingsAtMax(servings);
 
   const stepperButtonStyle = [
     styles.stepperButton,
@@ -83,7 +94,7 @@ export default function TimeServingsStep({
         <View style={styles.stepper}>
           <Pressable
             onPress={() => handleServingsChange(-1)}
-            disabled={servings <= 1}
+            disabled={servingsAtMin}
             style={stepperButtonStyle}
             accessibilityRole="button"
             accessibilityLabel="Decrease servings"
@@ -92,7 +103,7 @@ export default function TimeServingsStep({
             <Feather
               name="minus"
               size={20}
-              color={servings <= 1 ? withOpacity(theme.link, 0.3) : theme.link}
+              color={servingsAtMin ? withOpacity(theme.link, 0.3) : theme.link}
             />
           </Pressable>
 
@@ -105,7 +116,7 @@ export default function TimeServingsStep({
 
           <Pressable
             onPress={() => handleServingsChange(1)}
-            disabled={servings >= 99}
+            disabled={servingsAtMax}
             style={stepperButtonStyle}
             accessibilityRole="button"
             accessibilityLabel="Increase servings"
@@ -114,7 +125,7 @@ export default function TimeServingsStep({
             <Feather
               name="plus"
               size={20}
-              color={servings >= 99 ? withOpacity(theme.link, 0.3) : theme.link}
+              color={servingsAtMax ? withOpacity(theme.link, 0.3) : theme.link}
             />
           </Pressable>
         </View>

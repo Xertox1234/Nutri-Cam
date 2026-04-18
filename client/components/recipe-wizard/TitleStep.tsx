@@ -7,6 +7,7 @@ import {
   FontFamily,
   withOpacity,
 } from "@/constants/theme";
+import { TITLE_MAX_LENGTH, DESCRIPTION_MAX_LENGTH } from "./title-step-utils";
 
 interface TitleStepProps {
   title: string;
@@ -47,7 +48,7 @@ export default function TitleStep({
         placeholderTextColor={theme.textSecondary}
         autoFocus
         returnKeyType="next"
-        maxLength={200}
+        maxLength={TITLE_MAX_LENGTH}
         accessibilityLabel="Recipe name"
         accessibilityHint="Enter a name for your recipe"
       />
@@ -73,7 +74,7 @@ export default function TitleStep({
         placeholderTextColor={theme.textSecondary}
         multiline
         textAlignVertical="top"
-        maxLength={2000}
+        maxLength={DESCRIPTION_MAX_LENGTH}
         accessibilityLabel="Recipe description"
         accessibilityHint="Optional description of your recipe"
       />

@@ -143,11 +143,26 @@ export const Image = React.forwardRef<unknown, Record<string, unknown>>(
 (Image as unknown as { displayName: string }).displayName = "Image";
 
 export const TextInput = React.forwardRef<unknown, Record<string, unknown>>(
-  ({ testID, accessibilityHint, placeholderTextColor: _ptc, ...rest }, ref) =>
+  (
+    {
+      testID,
+      accessibilityHint,
+      accessibilityLabel,
+      placeholderTextColor: _ptc,
+      onChangeText,
+      ...rest
+    },
+    ref,
+  ) =>
     React.createElement("input", {
       ref,
       "data-testid": testID,
       "aria-hint": accessibilityHint,
+      "aria-label": accessibilityLabel,
+      onChange: onChangeText
+        ? (e: { target: { value: string } }) =>
+            (onChangeText as (v: string) => void)(e.target.value)
+        : undefined,
       ...rest,
     }),
 );
