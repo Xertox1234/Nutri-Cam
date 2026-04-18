@@ -5,7 +5,7 @@ import { useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 
 import { ThemedText } from "@/components/ThemedText";
-import { SkeletonBox } from "@/components/SkeletonLoader";
+import { SkeletonBox, SkeletonProvider } from "@/components/SkeletonLoader";
 import { FallbackImage } from "@/components/FallbackImage";
 import { useTheme } from "@/hooks/useTheme";
 import { useHaptics } from "@/hooks/useHaptics";
@@ -156,17 +156,19 @@ export default function FavouriteRecipesScreen() {
           },
         ]}
       >
-        <View style={styles.skeletons}>
-          {[1, 2, 3].map((i) => (
-            <SkeletonBox
-              key={i}
-              width="100%"
-              height={80}
-              borderRadius={12}
-              style={{ marginBottom: Spacing.md }}
-            />
-          ))}
-        </View>
+        <SkeletonProvider>
+          <View style={styles.skeletons}>
+            {[1, 2, 3].map((i) => (
+              <SkeletonBox
+                key={i}
+                width="100%"
+                height={80}
+                borderRadius={12}
+                style={{ marginBottom: Spacing.md }}
+              />
+            ))}
+          </View>
+        </SkeletonProvider>
       </View>
     );
   }

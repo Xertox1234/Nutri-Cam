@@ -14,7 +14,7 @@ import * as Haptics from "expo-haptics";
 
 import { ThemedText } from "@/components/ThemedText";
 import { SwipeableRow } from "@/components/SwipeableRow";
-import { SkeletonBox } from "@/components/SkeletonLoader";
+import { SkeletonBox, SkeletonProvider } from "@/components/SkeletonLoader";
 import { IngredientIcon } from "@/components/IngredientIcon";
 import { EmptyState } from "@/components/EmptyState";
 import { UpgradeModal } from "@/components/UpgradeModal";
@@ -236,17 +236,19 @@ export default function PantryScreen() {
           },
         ]}
       >
-        <View style={styles.skeletons}>
-          {[1, 2, 3, 4, 5].map((i) => (
-            <SkeletonBox
-              key={i}
-              width="100%"
-              height={40}
-              borderRadius={4}
-              style={{ marginBottom: Spacing.sm }}
-            />
-          ))}
-        </View>
+        <SkeletonProvider>
+          <View style={styles.skeletons}>
+            {[1, 2, 3, 4, 5].map((i) => (
+              <SkeletonBox
+                key={i}
+                width="100%"
+                height={40}
+                borderRadius={4}
+                style={{ marginBottom: Spacing.sm }}
+              />
+            ))}
+          </View>
+        </SkeletonProvider>
       </View>
     );
   }

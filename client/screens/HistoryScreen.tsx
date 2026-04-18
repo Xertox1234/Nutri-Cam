@@ -24,7 +24,11 @@ import { ThemedText } from "@/components/ThemedText";
 import { Card } from "@/components/Card";
 import { SwipeableRow } from "@/components/SwipeableRow";
 import { EmptyState } from "@/components/EmptyState";
-import { SkeletonList, SkeletonBox } from "@/components/SkeletonLoader";
+import {
+  SkeletonList,
+  SkeletonBox,
+  SkeletonProvider,
+} from "@/components/SkeletonLoader";
 import { HistoryItemActions } from "@/components/HistoryItemActions";
 import { UpgradeModal } from "@/components/UpgradeModal";
 import { GroceryListPickerModal } from "@/components/GroceryListPickerModal";
@@ -328,36 +332,38 @@ function LoadingFooter() {
 
 function DashboardSkeleton() {
   return (
-    <View accessibilityElementsHidden>
-      {/* Stats row skeleton */}
-      <View style={styles.statsRow}>
+    <SkeletonProvider>
+      <View accessibilityElementsHidden>
+        {/* Stats row skeleton */}
+        <View style={styles.statsRow}>
+          <SkeletonBox
+            width="48%"
+            height={100}
+            borderRadius={BorderRadius["2xl"]}
+          />
+          <SkeletonBox
+            width="48%"
+            height={100}
+            borderRadius={BorderRadius["2xl"]}
+          />
+        </View>
+        {/* CTA skeleton */}
         <SkeletonBox
-          width="48%"
-          height={100}
+          width="100%"
+          height={120}
           borderRadius={BorderRadius["2xl"]}
+          style={{ marginTop: Spacing.xl }}
         />
+        {/* Section header skeleton */}
         <SkeletonBox
-          width="48%"
-          height={100}
-          borderRadius={BorderRadius["2xl"]}
+          width={150}
+          height={24}
+          style={{ marginTop: Spacing["2xl"], marginBottom: Spacing.lg }}
         />
+        {/* Recent items skeleton */}
+        <SkeletonList count={3} />
       </View>
-      {/* CTA skeleton */}
-      <SkeletonBox
-        width="100%"
-        height={120}
-        borderRadius={BorderRadius["2xl"]}
-        style={{ marginTop: Spacing.xl }}
-      />
-      {/* Section header skeleton */}
-      <SkeletonBox
-        width={150}
-        height={24}
-        style={{ marginTop: Spacing["2xl"], marginBottom: Spacing.lg }}
-      />
-      {/* Recent items skeleton */}
-      <SkeletonList count={3} />
-    </View>
+    </SkeletonProvider>
   );
 }
 
