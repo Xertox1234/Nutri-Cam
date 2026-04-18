@@ -25,9 +25,12 @@ export type NotebookEntryStatus = (typeof notebookEntryStatusValues)[number];
 export const notebookEntrySchema = z.object({
   type: z.enum(notebookEntryTypes),
   content: z.string().min(1).max(500),
+  // Anchored ISO date (`YYYY-MM-DD`). Loose AI values like "next week" or
+  // "2026-04-17T10:00" are rejected at the Zod layer so they never reach
+  // `new Date(...)` in the write path.
   followUpDate: z
     .string()
-    .regex(/^\d{4}-\d{2}-\d{2}/, "Must be ISO date format (YYYY-MM-DD)")
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Must be ISO date format (YYYY-MM-DD)")
     .nullable()
     .optional(),
 });

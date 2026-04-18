@@ -20,6 +20,7 @@ vi.mock("../../storage", () => ({
 
 vi.mock("../../services/coach-warm-up", () => ({
   setWarmUp: vi.fn(),
+  generateWarmUpId: vi.fn(() => "test-uuid-warmup"),
 }));
 
 vi.mock("../../middleware/auth");
@@ -120,6 +121,7 @@ describe("Coach Context Routes", () => {
           status: "active",
           followUpDate: null,
           sourceConversationId: 1,
+          dedupeKey: null,
           createdAt: new Date(),
           updatedAt: new Date(),
         },
@@ -133,6 +135,7 @@ describe("Coach Context Routes", () => {
           status: "active",
           followUpDate: new Date(),
           sourceConversationId: 2,
+          dedupeKey: null,
           createdAt: new Date(),
           updatedAt: new Date(),
         },
@@ -241,6 +244,7 @@ describe("Coach Context Routes", () => {
           status: "active",
           followUpDate: new Date(),
           sourceConversationId: 1,
+          dedupeKey: null,
           createdAt: new Date(),
           updatedAt: new Date(),
         },

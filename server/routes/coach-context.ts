@@ -6,7 +6,11 @@ import { checkPremiumFeature, handleRouteError } from "./_helpers";
 import { crudRateLimit } from "./_rate-limiters";
 import { sendError } from "../lib/api-errors";
 import { ErrorCode } from "@shared/constants/error-codes";
-import { setWarmUp } from "../services/coach-warm-up";
+import {
+  setWarmUp,
+  generateWarmUpId,
+  type WarmUpMessageRole,
+} from "../services/coach-warm-up";
 
 export function register(app: Express): void {
   // GET /api/coach/context
@@ -128,14 +132,16 @@ export function register(app: Express): void {
         // Pre-fetch conversation history
         const messages = await storage.getChatMessages(conversationId, 20);
         const prepared = messages.map((m) => ({
-          role: m.role,
+          role: m.role as WarmUpMessageRole,
           content: m.content,
         }));
         prepared.push({ role: "user", content: interimTranscript });
 
-        const warmUpId = `${req.userId}-${Date.now()}`;
+        // Cryptographically-random warm-up id (defense-in-depth — previously
+        // `${userId}-${Date.now()}` was trivially guessable).
+        const warmUpId = generateWarmUpId();
 
-        setWarmUp(req.userId, warmUpId, prepared);
+        setWarmUp(req.userId, conversationId, warmUpId, prepared);
 
         res.json({ warmUpId });
       } catch (error) {

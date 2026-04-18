@@ -1421,6 +1421,17 @@ export const coachNotebook = pgTable(
       () => chatConversations.id,
       { onDelete: "set null" },
     ),
+    /**
+     * Deduplication fingerprint for a conversation-turn write. SHA-256 hex of
+     * `${userId}:${sourceConversationId}:${entry.type}:${entry.content}:${lastUser}:${lastAssistant}`
+     * (or a weekly bucket for `coaching_strategy`).
+     * Nullable for historical rows. A unique index on this column (when not
+     * null) makes `createNotebookEntries` idempotent when the SSE stream is
+     * retried.
+     *
+     * Mapped to the pre-existing `turn_fingerprint` column in Postgres.
+     */
+    dedupeKey: text("turn_fingerprint"),
     createdAt: timestamp("created_at")
       .default(sql`CURRENT_TIMESTAMP`)
       .notNull(),
@@ -1441,6 +1452,9 @@ export const coachNotebook = pgTable(
     ),
     sourceConversationIdx: index("coach_notebook_source_conv_idx").on(
       table.sourceConversationId,
+    ),
+    dedupeKeyUniqueIdx: uniqueIndex("coach_notebook_turn_fingerprint_idx").on(
+      table.dedupeKey,
     ),
     typeCheck: check(
       "coach_notebook_type_check",

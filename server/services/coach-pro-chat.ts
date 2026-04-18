@@ -26,7 +26,13 @@ import { extractNotebookEntries } from "./notebook-extraction";
 import { sanitizeContextField } from "../lib/ai-safety";
 import { fireAndForget } from "../lib/fire-and-forget";
 import { consumeWarmUp } from "./coach-warm-up";
+import { calculateWeeklyRate } from "./weight-trend";
+import {
+  truncateNotebookToBudget,
+  DEFAULT_NOTEBOOK_MAX_CHARS,
+} from "./notebook-budget";
 import type { CoachBlock } from "@shared/schemas/coach-blocks";
+import type { Allergy } from "@shared/schema";
 
 /** SSE event yielded by the coach chat service. */
 export type CoachChatEvent =
@@ -49,6 +55,99 @@ export interface CoachChatParams {
   /** Called each iteration to check if the client disconnected. */
   isAborted: () => boolean;
 }
+
+/**
+ * Build the SHA-256 cache key used for coach-response caching. Hash includes
+ * the userId so different users do not share answers.
+ */
+export function hashCoachCacheKey(userId: string, content: string): string {
+  return createHash("sha256")
+    .update(`${userId}:${content.trim().toLowerCase()}`)
+    .digest("hex")
+    .slice(0, 32);
+}
+
+/**
+ * Build a dedup fingerprint for a notebook write. The same conversation
+ * turn (same last user + last assistant pair) must always produce the same
+ * key so the unique index makes repeat writes idempotent.
+ *
+ * For `coaching_strategy` entries the key is bucketed by ISO week instead
+ * of conversation turn so the TOCTOU between `shouldUpdateStrategy`'s count
+ * read and the insert cannot produce duplicate strategy rows for the same
+ * user in the same week.
+ */
+export function hashNotebookDedupeKey(params: {
+  userId: string;
+  conversationId: number;
+  entryType: string;
+  entryContent: string;
+  lastUserMessage: string;
+  lastAssistantMessage: string;
+}): string {
+  if (params.entryType === "coaching_strategy") {
+    const weekBucket = getIsoWeekBucket(new Date());
+    return createHash("sha256")
+      .update(["coaching_strategy", params.userId, weekBucket].join("\u001f"))
+      .digest("hex");
+  }
+  return createHash("sha256")
+    .update(
+      [
+        params.userId,
+        String(params.conversationId),
+        params.entryType,
+        params.entryContent,
+        params.lastUserMessage,
+        params.lastAssistantMessage,
+      ].join("\u001f"),
+    )
+    .digest("hex");
+}
+
+/** Returns an ISO year+week bucket string like `"2026-W16"`. */
+function getIsoWeekBucket(d: Date): string {
+  // Copy to UTC and shift to the nearest Thursday (ISO week anchor).
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = date.getUTCDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil(
+    ((date.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7,
+  );
+  return `${date.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
+}
+
+/**
+ * In-memory record of the last time we attempted `archiveOldEntries` for a
+ * given user. Bounded by an LRU eviction so long-running processes do not
+ * grow this map indefinitely.
+ */
+const ARCHIVE_THROTTLE_MS = 24 * 60 * 60 * 1000; // once per day per user
+const lastArchivedAt = new Map<string, number>();
+const LAST_ARCHIVED_MAX_ENTRIES = 10_000;
+
+function shouldRunArchive(userId: string, now: number): boolean {
+  const prev = lastArchivedAt.get(userId);
+  if (prev && now - prev < ARCHIVE_THROTTLE_MS) return false;
+  // Simple bound: if we hit capacity, drop the oldest insertion.
+  if (
+    lastArchivedAt.size >= LAST_ARCHIVED_MAX_ENTRIES &&
+    !lastArchivedAt.has(userId)
+  ) {
+    const firstKey = lastArchivedAt.keys().next().value;
+    if (firstKey !== undefined) lastArchivedAt.delete(firstKey);
+  }
+  lastArchivedAt.set(userId, now);
+  return true;
+}
+
+/** Test-only internals — never import from production code. */
+export const _testInternals = {
+  lastArchivedAt,
+  ARCHIVE_THROTTLE_MS,
+  shouldRunArchive,
+};
 
 /**
  * Orchestrates the coach chat response — yields SSE events for the route
@@ -76,21 +175,10 @@ export async function* handleCoachChat(
     storage.getChatMessages(conversationId, 20),
   ]);
 
-  // Calculate weekly weight change rate from recent logs
+  // Weekly rate of change — shared pure helper so this logic is unit-tested
+  // in isolation rather than through the full orchestrator.
   const latestWeight = recentWeights[0] ?? undefined;
-  let weeklyRate: number | null = null;
-  if (recentWeights.length >= 2) {
-    const newest = recentWeights[0];
-    const oldest = recentWeights[recentWeights.length - 1];
-    const daysDiff =
-      (new Date(newest.loggedAt).getTime() -
-        new Date(oldest.loggedAt).getTime()) /
-      (1000 * 60 * 60 * 24);
-    if (daysDiff >= 3) {
-      const weightDiff = parseFloat(newest.weight) - parseFloat(oldest.weight);
-      weeklyRate = Math.round((weightDiff / daysDiff) * 7 * 10) / 10;
-    }
-  }
+  const weeklyRate = calculateWeeklyRate(recentWeights);
 
   const context: CoachContext = {
     goals: user.dailyCalorieGoal
@@ -113,7 +201,8 @@ export async function* handleCoachChat(
     },
     dietaryProfile: {
       dietType: profile?.dietType || null,
-      allergies: ((profile?.allergies as { name: string }[] | null) || [])
+      // Use the shared `Allergy` schema type instead of an inline `{ name }` cast.
+      allergies: ((profile?.allergies as Allergy[] | null) || [])
         .map((a) => a?.name)
         .filter(Boolean),
       dislikes: (profile?.foodDislikes as string[]) || [],
@@ -125,31 +214,36 @@ export async function* handleCoachChat(
   if (isCoachPro) {
     const notebookEntries = await storage.getActiveNotebookEntries(userId);
     if (notebookEntries.length > 0) {
-      // Budget ~800 tokens (~3200 chars) for notebook context
-      const MAX_NOTEBOOK_CHARS = 3200;
-      let charCount = 0;
-      const lines: string[] = [];
-      for (const e of notebookEntries) {
-        const line = `[${e.type}] ${sanitizeContextField(e.content, 500)}`;
-        if (charCount + line.length > MAX_NOTEBOOK_CHARS) break;
-        lines.push(line);
-        charCount += line.length;
-      }
+      const sanitized = notebookEntries.map((e) => ({
+        type: e.type,
+        content: sanitizeContextField(e.content, 500),
+      }));
+      const joined = truncateNotebookToBudget(
+        sanitized,
+        DEFAULT_NOTEBOOK_MAX_CHARS,
+      );
+      // Delimiter block frames the (untrusted) notebook content inside the
+      // system prompt so the model treats it as data, not instructions.
       context.notebookSummary =
-        lines.join("\n") + "\n\n" + BLOCKS_SYSTEM_PROMPT;
+        joined.length > 0
+          ? `${joined}\n\n${BLOCKS_SYSTEM_PROMPT}`
+          : BLOCKS_SYSTEM_PROMPT;
     } else {
       context.notebookSummary = BLOCKS_SYSTEM_PROMPT;
     }
   }
 
-  let messageHistory = history.map((m) => ({
+  let messageHistory: {
+    role: "user" | "assistant" | "system";
+    content: string;
+  }[] = history.map((m) => ({
     role: m.role as "user" | "assistant" | "system",
     content: m.content,
   }));
 
   // ── Coach Pro: consume warm-up if available ─────────
   if (isCoachPro && warmUpId) {
-    const warmedUp = consumeWarmUp(userId, warmUpId);
+    const warmedUp = consumeWarmUp(userId, conversationId, warmUpId);
     if (warmedUp) {
       // Warm-up already has conversation history — use it
       // The last message in warmedUp is the interim transcript;
@@ -158,18 +252,13 @@ export async function* handleCoachChat(
         role: "user",
         content,
       };
-      messageHistory = warmedUp as typeof messageHistory;
+      messageHistory = warmedUp;
     }
   }
 
   // Check cache for predefined questions (no screenContext = universal answer)
   const isCacheable = !screenContext && history.length <= 1;
-  const questionHash = isCacheable
-    ? createHash("sha256")
-        .update(`${userId}:${content.trim().toLowerCase()}`)
-        .digest("hex")
-        .slice(0, 32)
-    : null;
+  const questionHash = isCacheable ? hashCoachCacheKey(userId, content) : null;
 
   let cachedResponse: string | null = null;
   if (questionHash) {
@@ -267,6 +356,10 @@ export async function* handleCoachChat(
           conversationId,
         );
         if (entries.length > 0) {
+          // Build a per-entry dedup fingerprint so SSE retries that replay
+          // the same conversation turn do not create duplicate rows. The
+          // unique index on `dedupeKey` combined with `onConflictDoNothing`
+          // at the storage layer is what actually enforces this.
           await storage.createNotebookEntries(
             entries.map((e) => ({
               userId,
@@ -275,11 +368,23 @@ export async function* handleCoachChat(
               status: "active",
               followUpDate: e.followUpDate ? new Date(e.followUpDate) : null,
               sourceConversationId: conversationId,
+              dedupeKey: hashNotebookDedupeKey({
+                userId,
+                conversationId,
+                entryType: e.type,
+                entryContent: e.content,
+                lastUserMessage: content,
+                lastAssistantMessage: textContent,
+              }),
             })),
           );
         }
-        // Archive notebook entries older than 30 days to bound growth
-        await storage.archiveOldEntries(userId, 30);
+        // Archive notebook entries older than 30 days to bound growth.
+        // Time-gated to once per day per user so we do not hammer the DB
+        // on every assistant turn.
+        if (shouldRunArchive(userId, Date.now())) {
+          await storage.archiveOldEntries(userId, 30);
+        }
       })(),
     );
   }

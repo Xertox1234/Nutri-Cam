@@ -6,7 +6,7 @@ import {
 } from "@shared/schemas/coach-notebook";
 import { storage } from "../storage";
 import { logger } from "../lib/logger";
-import { sanitizeContextField } from "../lib/ai-safety";
+import { sanitizeContextField, sanitizeUserInput } from "../lib/ai-safety";
 
 interface ConversationMessage {
   role: "user" | "assistant" | "system";
@@ -63,7 +63,11 @@ export async function extractNotebookEntries(
           .filter((m) => m.role !== "system")
           .map((m) => ({
             role: m.role as "user" | "assistant",
-            content: m.content,
+            // Sanitize before the extractor sees them so prompt-injection
+            // attempts in the chat transcript don't poison what we pull into
+            // the notebook (which is later re-injected into the coach
+            // system prompt).
+            content: sanitizeUserInput(m.content),
           })),
       ],
       response_format: { type: "json_object" },
