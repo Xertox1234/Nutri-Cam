@@ -27,7 +27,7 @@ import { ThemedText } from "@/components/ThemedText";
 import { SwipeableRow } from "@/components/SwipeableRow";
 import { DraggableList } from "@/components/DraggableList";
 import { CalorieRing } from "@/components/CalorieRing";
-import { SkeletonBox } from "@/components/SkeletonLoader";
+import { SkeletonBox, SkeletonProvider } from "@/components/SkeletonLoader";
 import { UpgradeModal } from "@/components/UpgradeModal";
 import { MealSuggestionsModal } from "@/components/MealSuggestionsModal";
 import { useTheme } from "@/hooks/useTheme";
@@ -910,23 +910,25 @@ export default function MealPlanHomeScreen() {
           },
         ]}
       >
-        <View
-          style={styles.skeletonContainer}
-          accessibilityLabel="Loading..."
-          accessibilityElementsHidden
-        >
-          <SkeletonBox width="60%" height={24} borderRadius={8} />
-          <View style={{ height: Spacing.lg }} />
-          <SkeletonBox width="100%" height={56} borderRadius={12} />
-          <View style={{ height: Spacing.xl }} />
-          {[1, 2, 3, 4].map((i) => (
-            <View key={i} style={{ marginBottom: Spacing.lg }}>
-              <SkeletonBox width="30%" height={16} borderRadius={4} />
-              <View style={{ height: Spacing.sm }} />
-              <SkeletonBox width="100%" height={48} borderRadius={8} />
-            </View>
-          ))}
-        </View>
+        <SkeletonProvider>
+          <View
+            style={styles.skeletonContainer}
+            accessibilityLabel="Loading..."
+            accessibilityElementsHidden
+          >
+            <SkeletonBox width="60%" height={24} borderRadius={8} />
+            <View style={{ height: Spacing.lg }} />
+            <SkeletonBox width="100%" height={56} borderRadius={12} />
+            <View style={{ height: Spacing.xl }} />
+            {[1, 2, 3, 4].map((i) => (
+              <View key={i} style={{ marginBottom: Spacing.lg }}>
+                <SkeletonBox width="30%" height={16} borderRadius={4} />
+                <View style={{ height: Spacing.sm }} />
+                <SkeletonBox width="100%" height={48} borderRadius={8} />
+              </View>
+            ))}
+          </View>
+        </SkeletonProvider>
       </View>
     );
   }

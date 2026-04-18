@@ -14,7 +14,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Haptics from "expo-haptics";
 
 import { ThemedText } from "@/components/ThemedText";
-import { SkeletonBox } from "@/components/SkeletonLoader";
+import { SkeletonBox, SkeletonProvider } from "@/components/SkeletonLoader";
 import { useTheme } from "@/hooks/useTheme";
 import { useHaptics } from "@/hooks/useHaptics";
 import {
@@ -339,11 +339,11 @@ export function MealSuggestionsModal({
           >
             {/* Loading */}
             {mutation.isPending && (
-              <>
+              <SkeletonProvider>
                 <SuggestionSkeleton />
                 <SuggestionSkeleton />
                 <SuggestionSkeleton />
-              </>
+              </SkeletonProvider>
             )}
 
             {/* Error */}

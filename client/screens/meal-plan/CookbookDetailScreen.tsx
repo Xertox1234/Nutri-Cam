@@ -9,7 +9,7 @@ import * as Haptics from "expo-haptics";
 
 import { ThemedText } from "@/components/ThemedText";
 import { SwipeableRow } from "@/components/SwipeableRow";
-import { SkeletonBox } from "@/components/SkeletonLoader";
+import { SkeletonBox, SkeletonProvider } from "@/components/SkeletonLoader";
 import { FallbackImage } from "@/components/FallbackImage";
 import { EmptyState } from "@/components/EmptyState";
 import { useTheme } from "@/hooks/useTheme";
@@ -233,17 +233,19 @@ export default function CookbookDetailScreen() {
           },
         ]}
       >
-        <View style={styles.skeletons}>
-          {[1, 2, 3].map((i) => (
-            <SkeletonBox
-              key={i}
-              width="100%"
-              height={80}
-              borderRadius={12}
-              style={{ marginBottom: Spacing.md }}
-            />
-          ))}
-        </View>
+        <SkeletonProvider>
+          <View style={styles.skeletons}>
+            {[1, 2, 3].map((i) => (
+              <SkeletonBox
+                key={i}
+                width="100%"
+                height={80}
+                borderRadius={12}
+                style={{ marginBottom: Spacing.md }}
+              />
+            ))}
+          </View>
+        </SkeletonProvider>
       </View>
     );
   }

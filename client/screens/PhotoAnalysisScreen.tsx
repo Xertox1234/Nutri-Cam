@@ -22,7 +22,7 @@ import { ScanFlowStepIndicator } from "@/components/ScanFlowStepIndicator";
 import { Card } from "@/components/Card";
 import { Button } from "@/components/Button";
 import { PreparationPicker } from "@/components/PreparationPicker";
-import { SkeletonBox } from "@/components/SkeletonLoader";
+import { SkeletonBox, SkeletonProvider } from "@/components/SkeletonLoader";
 import { useTheme } from "@/hooks/useTheme";
 import { useAccessibility } from "@/hooks/useAccessibility";
 import { Spacing, BorderRadius, withOpacity } from "@/constants/theme";
@@ -421,33 +421,35 @@ export default function PhotoAnalysisScreen() {
           >
             This may take a few seconds
           </ThemedText>
-          <View
-            accessibilityLabel="Loading..."
-            accessibilityElementsHidden
-            style={styles.analysisSkeleton}
-          >
-            {/* Food item rows */}
-            {[1, 2, 3].map((i) => (
-              <View key={i} style={styles.analysisSkeletonRow}>
-                <SkeletonBox
-                  width={48}
-                  height={48}
-                  borderRadius={BorderRadius.sm}
-                />
-                <View style={styles.analysisSkeletonText}>
-                  <SkeletonBox width="70%" height={16} />
-                  <SkeletonBox width="40%" height={14} />
+          <SkeletonProvider>
+            <View
+              accessibilityLabel="Loading..."
+              accessibilityElementsHidden
+              style={styles.analysisSkeleton}
+            >
+              {/* Food item rows */}
+              {[1, 2, 3].map((i) => (
+                <View key={i} style={styles.analysisSkeletonRow}>
+                  <SkeletonBox
+                    width={48}
+                    height={48}
+                    borderRadius={BorderRadius.sm}
+                  />
+                  <View style={styles.analysisSkeletonText}>
+                    <SkeletonBox width="70%" height={16} />
+                    <SkeletonBox width="40%" height={14} />
+                  </View>
                 </View>
-              </View>
-            ))}
-            {/* Nutrition summary */}
-            <SkeletonBox
-              width="100%"
-              height={80}
-              borderRadius={BorderRadius.md}
-              style={{ marginTop: Spacing.lg }}
-            />
-          </View>
+              ))}
+              {/* Nutrition summary */}
+              <SkeletonBox
+                width="100%"
+                height={80}
+                borderRadius={BorderRadius.md}
+                style={{ marginTop: Spacing.lg }}
+              />
+            </View>
+          </SkeletonProvider>
         </View>
       </ThemedView>
     );
