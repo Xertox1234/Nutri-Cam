@@ -58,25 +58,24 @@ export function generateWarmUpId(): string {
 
 /**
  * Store a warm-up entry for a user+conversation. Evicts any existing entry
- * for the same key so the most recent interim transcript always wins.
+ * for the same `(userId, conversationId)` key so the most recent interim
+ * transcript always wins.
+ *
+ * Uses `createWithKey()` on the underlying session store so the per-user
+ * (`WARM_UP_MAX_PER_USER = 1`) and global (`WARM_UP_MAX_GLOBAL = 1000`)
+ * caps are honored. Returns `{ ok: true }` when stored, or
+ * `{ ok: false; reason; code }` when the caller's cap would be exceeded.
+ * Callers must forward the failure to the client (via
+ * `sendError(res, 429, reason, code)`) rather than silently dropping
+ * the warm-up.
  */
 export function setWarmUp(
   userId: string,
   conversationId: number,
   warmUpId: string,
   messages: WarmUpMessage[],
-): void {
+): { ok: true } | { ok: false; reason: string; code: string } {
   const key = cacheKey(userId, conversationId);
-  // Remove any existing entry so we don't trip the per-user cap when the
-  // same user sends multiple warm-ups for the same conversation.
-  const existing = warmUpStore._internals.store.get(key);
-  if (existing) {
-    warmUpStore.clear(key);
-  }
-  // Insert with our composite key by bypassing `create`'s UUID generation.
-  // The generic store supports `create()` for auto-id usage, but here we
-  // want deterministic keying so `consumeWarmUp` can find the entry via
-  // `(userId, conversationId)`.
   const data: WarmUp = {
     userId,
     conversationId,
@@ -84,16 +83,7 @@ export function setWarmUp(
     messages,
     createdAt: Date.now(),
   };
-  const { store, timeouts, userCount } = warmUpStore._internals;
-  store.set(key, data);
-  userCount.set(userId, (userCount.get(userId) ?? 0) + 1);
-  const timeoutId = setTimeout(() => {
-    // Only clear if the entry hasn't already been consumed/replaced.
-    if (store.get(key) === data) warmUpStore.clear(key);
-  }, WARM_UP_TTL_MS);
-  // Don't keep the event loop alive in tests/CLI just for this timer.
-  (timeoutId as unknown as { unref?: () => void }).unref?.();
-  timeouts.set(key, timeoutId);
+  return warmUpStore.createWithKey(key, data);
 }
 
 /**

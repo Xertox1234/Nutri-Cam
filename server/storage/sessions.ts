@@ -41,6 +41,22 @@ export interface SessionStore<T extends { userId: string; createdAt: number }> {
   canCreate(userId: string): SessionCheckResult;
   /** Store a new session, returning a random UUID key */
   create(data: T): string;
+  /**
+   * Store a new session under a caller-supplied deterministic key. Replaces
+   * any existing entry at the same key (freeing its user-count slot first
+   * so the caller does not trip the per-user cap when re-setting).
+   *
+   * Returns `{ ok: true }` on success, or `{ ok: false; reason; code }`
+   * when the per-user or global cap would be exceeded.
+   *
+   * Use this instead of writing to `_internals.store` directly when a
+   * domain needs deterministic keying (e.g. `(userId, conversationId)`
+   * composite keys) while still honoring `canCreate()` caps.
+   */
+  createWithKey(
+    key: string,
+    data: T,
+  ): { ok: true } | { ok: false; reason: string; code: string };
   /** Get an existing session by ID */
   get(id: string): T | undefined;
   /** Update an existing session in-place */
@@ -123,8 +139,46 @@ export function createSessionStore<
       store.set(id, data);
       userCount.set(data.userId, (userCount.get(data.userId) ?? 0) + 1);
       const timeoutId = setTimeout(() => clearSession(id), opts.timeoutMs);
+      // Don't keep the event loop alive in tests/CLI just for this timer.
+      (timeoutId as unknown as { unref?: () => void }).unref?.();
       timeouts.set(id, timeoutId);
       return id;
+    },
+
+    createWithKey(
+      key: string,
+      data: T,
+    ): { ok: true } | { ok: false; reason: string; code: string } {
+      // Clear any existing entry at this key first so replacing the same
+      // session doesn't trip the per-user cap. After this, the user's
+      // effective slot usage drops by one, making room for the new insert.
+      if (store.has(key)) {
+        clearSession(key);
+      }
+
+      if (store.size >= opts.maxGlobal) {
+        return {
+          ok: false,
+          reason: "Server is busy, please try again later",
+          code: "SESSION_LIMIT_REACHED",
+        };
+      }
+      const count = userCount.get(data.userId) ?? 0;
+      if (count >= opts.maxPerUser) {
+        return {
+          ok: false,
+          reason: `Too many ${label} sessions. Please confirm or wait for existing sessions to expire.`,
+          code: "USER_SESSION_LIMIT",
+        };
+      }
+
+      store.set(key, data);
+      userCount.set(data.userId, (userCount.get(data.userId) ?? 0) + 1);
+      const timeoutId = setTimeout(() => clearSession(key), opts.timeoutMs);
+      // Don't keep the event loop alive in tests/CLI just for this timer.
+      (timeoutId as unknown as { unref?: () => void }).unref?.();
+      timeouts.set(key, timeoutId);
+      return { ok: true };
     },
 
     get(id: string): T | undefined {

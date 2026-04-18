@@ -8,7 +8,6 @@ import { generateRecipeImage } from "../services/recipe-generation";
 import { fireAndForget } from "../lib/fire-and-forget";
 import { inferMealTypes } from "../services/meal-type-inference";
 import { importRecipeFromUrl } from "../services/recipe-import";
-import { logger, toError } from "../lib/logger";
 import {
   normalizeTitle,
   normalizeDescription,
@@ -16,13 +15,16 @@ import {
   normalizeIngredient,
 } from "../lib/recipe-normalization";
 import { urlImportRateLimit } from "./_rate-limiters";
-import { formatZodError } from "./_helpers";
+import { formatZodError, handleRouteError } from "./_helpers";
 
 const importUrlSchema = z.object({
   url: z
     .string()
     .url()
-    .max(2000)
+    // 1024 matches typical browser/proxy URL limits (Chrome/IE are ~2KB total,
+    // but most origin servers reject anything over ~1KB). Longer URLs almost
+    // always indicate tracking params or pasted junk, not real recipe pages.
+    .max(1024)
     .refine(
       (url) => /^https?:\/\//.test(url),
       "Only HTTP/HTTPS URLs are supported",
@@ -91,8 +93,7 @@ export function register(app: Express): void {
 
         res.status(200).json(data);
       } catch (error) {
-        logger.error({ err: toError(error) }, "URL parse failed");
-        sendError(res, 500, "Failed to parse recipe", ErrorCode.INTERNAL_ERROR);
+        handleRouteError(res, error, "parse recipe from URL");
       }
     },
   );
@@ -219,13 +220,7 @@ export function register(app: Express): void {
 
         res.status(201).json(recipe);
       } catch (error) {
-        logger.error({ err: toError(error) }, "URL import failed");
-        sendError(
-          res,
-          500,
-          "Failed to import recipe",
-          ErrorCode.INTERNAL_ERROR,
-        );
+        handleRouteError(res, error, "import recipe from URL");
       }
     },
   );

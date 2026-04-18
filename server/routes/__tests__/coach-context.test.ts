@@ -19,7 +19,7 @@ vi.mock("../../storage", () => ({
 }));
 
 vi.mock("../../services/coach-warm-up", () => ({
-  setWarmUp: vi.fn(),
+  setWarmUp: vi.fn(() => ({ ok: true })),
   generateWarmUpId: vi.fn(() => "test-uuid-warmup"),
 }));
 

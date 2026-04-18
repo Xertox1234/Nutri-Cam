@@ -141,7 +141,15 @@ export function register(app: Express): void {
         // `${userId}-${Date.now()}` was trivially guessable).
         const warmUpId = generateWarmUpId();
 
-        setWarmUp(req.userId, conversationId, warmUpId, prepared);
+        const stored = setWarmUp(
+          req.userId,
+          conversationId,
+          warmUpId,
+          prepared,
+        );
+        if (!stored.ok) {
+          return sendError(res, 429, stored.reason, stored.code);
+        }
 
         res.json({ warmUpId });
       } catch (error) {
