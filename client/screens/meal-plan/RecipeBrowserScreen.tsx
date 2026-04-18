@@ -26,7 +26,7 @@ import { useAccessibility } from "@/hooks/useAccessibility";
 
 import { ThemedText } from "@/components/ThemedText";
 import { Chip } from "@/components/Chip";
-import { SkeletonBox } from "@/components/SkeletonLoader";
+import { SkeletonBox, SkeletonProvider } from "@/components/SkeletonLoader";
 import { FallbackImage } from "@/components/FallbackImage";
 import { EmptyState } from "@/components/EmptyState";
 import { useTheme } from "@/hooks/useTheme";
@@ -698,17 +698,19 @@ export default function RecipeBrowserScreen() {
 
       {/* Results */}
       {isLoading ? (
-        <View
-          style={styles.loadingContainer}
-          accessibilityLabel="Loading..."
-          accessibilityElementsHidden
-        >
-          <SkeletonBox width="100%" height={64} borderRadius={12} />
-          <View style={{ height: Spacing.sm }} />
-          <SkeletonBox width="100%" height={64} borderRadius={12} />
-          <View style={{ height: Spacing.sm }} />
-          <SkeletonBox width="100%" height={64} borderRadius={12} />
-        </View>
+        <SkeletonProvider>
+          <View
+            style={styles.loadingContainer}
+            accessibilityLabel="Loading..."
+            accessibilityElementsHidden
+          >
+            <SkeletonBox width="100%" height={64} borderRadius={12} />
+            <View style={{ height: Spacing.sm }} />
+            <SkeletonBox width="100%" height={64} borderRadius={12} />
+            <View style={{ height: Spacing.sm }} />
+            <SkeletonBox width="100%" height={64} borderRadius={12} />
+          </View>
+        </SkeletonProvider>
       ) : allRecipes.length === 0 ? (
         <View style={styles.emptyContainer}>
           {debouncedQuery ||

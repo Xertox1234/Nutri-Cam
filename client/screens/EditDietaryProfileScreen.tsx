@@ -13,7 +13,7 @@ import * as Haptics from "expo-haptics";
 import { ThemedText } from "@/components/ThemedText";
 import { Button } from "@/components/Button";
 import { InlineError } from "@/components/InlineError";
-import { SkeletonBox } from "@/components/SkeletonLoader";
+import { SkeletonBox, SkeletonProvider } from "@/components/SkeletonLoader";
 import { useTheme } from "@/hooks/useTheme";
 import { useDietaryProfileForm } from "@/hooks/useDietaryProfileForm";
 import { Spacing, BorderRadius, withOpacity } from "@/constants/theme";
@@ -36,129 +36,131 @@ function DietaryProfileSkeleton() {
   }, []);
 
   return (
-    <View
-      accessibilityElementsHidden
-      style={{ padding: Spacing.lg, gap: Spacing.xl }}
-    >
-      {/* Allergies section - chip grid */}
-      <View style={{ gap: Spacing.md }}>
-        <SkeletonBox width={100} height={20} />
-        <View
-          style={{ flexDirection: "row", flexWrap: "wrap", gap: Spacing.sm }}
-        >
-          <SkeletonBox
-            width={80}
-            height={36}
-            borderRadius={BorderRadius.full}
-          />
-          <SkeletonBox
-            width={60}
-            height={36}
-            borderRadius={BorderRadius.full}
-          />
-          <SkeletonBox
-            width={90}
-            height={36}
-            borderRadius={BorderRadius.full}
-          />
-          <SkeletonBox
-            width={70}
-            height={36}
-            borderRadius={BorderRadius.full}
-          />
-          <SkeletonBox
-            width={85}
-            height={36}
-            borderRadius={BorderRadius.full}
-          />
-        </View>
-      </View>
-      {/* Diet Type section - chip grid */}
-      <View style={{ gap: Spacing.md }}>
-        <SkeletonBox width={90} height={20} />
-        <View
-          style={{ flexDirection: "row", flexWrap: "wrap", gap: Spacing.sm }}
-        >
-          <SkeletonBox
-            width={75}
-            height={36}
-            borderRadius={BorderRadius.full}
-          />
-          <SkeletonBox
-            width={95}
-            height={36}
-            borderRadius={BorderRadius.full}
-          />
-          <SkeletonBox
-            width={65}
-            height={36}
-            borderRadius={BorderRadius.full}
-          />
-        </View>
-      </View>
-      {/* Activity Level section - list rows */}
-      <View style={{ gap: Spacing.md }}>
-        <SkeletonBox width={130} height={20} />
-        <View style={{ gap: Spacing.sm }}>
+    <SkeletonProvider>
+      <View
+        accessibilityElementsHidden
+        style={{ padding: Spacing.lg, gap: Spacing.xl }}
+      >
+        {/* Allergies section - chip grid */}
+        <View style={{ gap: Spacing.md }}>
+          <SkeletonBox width={100} height={20} />
           <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}
+            style={{ flexDirection: "row", flexWrap: "wrap", gap: Spacing.sm }}
           >
-            <SkeletonBox width="70%" height={16} />
-            <SkeletonBox width={20} height={20} borderRadius={10} />
-          </View>
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}
-          >
-            <SkeletonBox width="60%" height={16} />
-            <SkeletonBox width={20} height={20} borderRadius={10} />
-          </View>
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}
-          >
-            <SkeletonBox width="75%" height={16} />
-            <SkeletonBox width={20} height={20} borderRadius={10} />
+            <SkeletonBox
+              width={80}
+              height={36}
+              borderRadius={BorderRadius.full}
+            />
+            <SkeletonBox
+              width={60}
+              height={36}
+              borderRadius={BorderRadius.full}
+            />
+            <SkeletonBox
+              width={90}
+              height={36}
+              borderRadius={BorderRadius.full}
+            />
+            <SkeletonBox
+              width={70}
+              height={36}
+              borderRadius={BorderRadius.full}
+            />
+            <SkeletonBox
+              width={85}
+              height={36}
+              borderRadius={BorderRadius.full}
+            />
           </View>
         </View>
-      </View>
-      {/* Cooking Skill section - list rows */}
-      <View style={{ gap: Spacing.md }}>
-        <SkeletonBox width={120} height={20} />
-        <View style={{ gap: Spacing.sm }}>
+        {/* Diet Type section - chip grid */}
+        <View style={{ gap: Spacing.md }}>
+          <SkeletonBox width={90} height={20} />
           <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}
+            style={{ flexDirection: "row", flexWrap: "wrap", gap: Spacing.sm }}
           >
-            <SkeletonBox width="55%" height={16} />
-            <SkeletonBox width={20} height={20} borderRadius={10} />
+            <SkeletonBox
+              width={75}
+              height={36}
+              borderRadius={BorderRadius.full}
+            />
+            <SkeletonBox
+              width={95}
+              height={36}
+              borderRadius={BorderRadius.full}
+            />
+            <SkeletonBox
+              width={65}
+              height={36}
+              borderRadius={BorderRadius.full}
+            />
           </View>
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}
-          >
-            <SkeletonBox width="65%" height={16} />
-            <SkeletonBox width={20} height={20} borderRadius={10} />
+        </View>
+        {/* Activity Level section - list rows */}
+        <View style={{ gap: Spacing.md }}>
+          <SkeletonBox width={130} height={20} />
+          <View style={{ gap: Spacing.sm }}>
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <SkeletonBox width="70%" height={16} />
+              <SkeletonBox width={20} height={20} borderRadius={10} />
+            </View>
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <SkeletonBox width="60%" height={16} />
+              <SkeletonBox width={20} height={20} borderRadius={10} />
+            </View>
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <SkeletonBox width="75%" height={16} />
+              <SkeletonBox width={20} height={20} borderRadius={10} />
+            </View>
+          </View>
+        </View>
+        {/* Cooking Skill section - list rows */}
+        <View style={{ gap: Spacing.md }}>
+          <SkeletonBox width={120} height={20} />
+          <View style={{ gap: Spacing.sm }}>
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <SkeletonBox width="55%" height={16} />
+              <SkeletonBox width={20} height={20} borderRadius={10} />
+            </View>
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <SkeletonBox width="65%" height={16} />
+              <SkeletonBox width={20} height={20} borderRadius={10} />
+            </View>
           </View>
         </View>
       </View>
-    </View>
+    </SkeletonProvider>
   );
 }
 

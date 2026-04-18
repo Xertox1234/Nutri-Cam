@@ -9,7 +9,7 @@ import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 
 import { ThemedText } from "@/components/ThemedText";
 import { Card } from "@/components/Card";
-import { SkeletonBox } from "@/components/SkeletonLoader";
+import { SkeletonBox, SkeletonProvider } from "@/components/SkeletonLoader";
 import { FallbackImage } from "@/components/FallbackImage";
 import { useTheme } from "@/hooks/useTheme";
 import { useAccessibility } from "@/hooks/useAccessibility";
@@ -58,64 +58,72 @@ function ItemDetailSkeleton() {
   }, []);
 
   return (
-    <View accessibilityElementsHidden style={{ padding: Spacing.lg }}>
-      {/* Header card */}
-      <View
-        style={{
-          flexDirection: "row",
-          gap: Spacing.lg,
-          marginBottom: Spacing.xl,
-        }}
-      >
-        <SkeletonBox width={100} height={100} borderRadius={BorderRadius.lg} />
-        <View style={{ flex: 1, justifyContent: "center", gap: Spacing.sm }}>
-          <SkeletonBox width="80%" height={20} />
-          <SkeletonBox width="50%" height={16} />
-          <SkeletonBox width="40%" height={14} />
+    <SkeletonProvider>
+      <View accessibilityElementsHidden style={{ padding: Spacing.lg }}>
+        {/* Header card */}
+        <View
+          style={{
+            flexDirection: "row",
+            gap: Spacing.lg,
+            marginBottom: Spacing.xl,
+          }}
+        >
+          <SkeletonBox
+            width={100}
+            height={100}
+            borderRadius={BorderRadius.lg}
+          />
+          <View style={{ flex: 1, justifyContent: "center", gap: Spacing.sm }}>
+            <SkeletonBox width="80%" height={20} />
+            <SkeletonBox width="50%" height={16} />
+            <SkeletonBox width="40%" height={14} />
+          </View>
         </View>
-      </View>
-      {/* Section title */}
-      <SkeletonBox
-        width={140}
-        height={22}
-        style={{ marginBottom: Spacing.md }}
-      />
-      {/* Nutrition card */}
-      <View style={{ gap: Spacing.md }}>
-        <SkeletonBox width="50%" height={14} />
-        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-          <SkeletonBox width={80} height={16} />
-          <SkeletonBox width={50} height={28} />
-        </View>
-        <SkeletonBox width="100%" height={1} />
-        <View style={{ gap: Spacing.sm }}>
+        {/* Section title */}
+        <SkeletonBox
+          width={140}
+          height={22}
+          style={{ marginBottom: Spacing.md }}
+        />
+        {/* Nutrition card */}
+        <View style={{ gap: Spacing.md }}>
+          <SkeletonBox width="50%" height={14} />
           <View
             style={{ flexDirection: "row", justifyContent: "space-between" }}
           >
             <SkeletonBox width={80} height={16} />
-            <SkeletonBox width={40} height={16} />
+            <SkeletonBox width={50} height={28} />
           </View>
-          <View
-            style={{ flexDirection: "row", justifyContent: "space-between" }}
-          >
-            <SkeletonBox width={100} height={16} />
-            <SkeletonBox width={40} height={16} />
-          </View>
-          <View
-            style={{ flexDirection: "row", justifyContent: "space-between" }}
-          >
-            <SkeletonBox width={40} height={16} />
-            <SkeletonBox width={40} height={16} />
-          </View>
-          <View
-            style={{ flexDirection: "row", justifyContent: "space-between" }}
-          >
-            <SkeletonBox width={50} height={16} />
-            <SkeletonBox width={40} height={16} />
+          <SkeletonBox width="100%" height={1} />
+          <View style={{ gap: Spacing.sm }}>
+            <View
+              style={{ flexDirection: "row", justifyContent: "space-between" }}
+            >
+              <SkeletonBox width={80} height={16} />
+              <SkeletonBox width={40} height={16} />
+            </View>
+            <View
+              style={{ flexDirection: "row", justifyContent: "space-between" }}
+            >
+              <SkeletonBox width={100} height={16} />
+              <SkeletonBox width={40} height={16} />
+            </View>
+            <View
+              style={{ flexDirection: "row", justifyContent: "space-between" }}
+            >
+              <SkeletonBox width={40} height={16} />
+              <SkeletonBox width={40} height={16} />
+            </View>
+            <View
+              style={{ flexDirection: "row", justifyContent: "space-between" }}
+            >
+              <SkeletonBox width={50} height={16} />
+              <SkeletonBox width={40} height={16} />
+            </View>
           </View>
         </View>
       </View>
-    </View>
+    </SkeletonProvider>
   );
 }
 

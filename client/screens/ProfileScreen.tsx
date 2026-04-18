@@ -6,7 +6,7 @@ import Animated, { FadeInDown } from "react-native-reanimated";
 import { Feather } from "@expo/vector-icons";
 
 import { ThemedText } from "@/components/ThemedText";
-import { SkeletonBox } from "@/components/SkeletonLoader";
+import { SkeletonBox, SkeletonProvider } from "@/components/SkeletonLoader";
 import { UpgradeModal } from "@/components/UpgradeModal";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { MiniWidgetRow } from "@/components/profile/MiniWidgetRow";
@@ -213,78 +213,80 @@ export default function ProfileScreen() {
 function ProfileSkeleton({ theme }: { theme: any }) {
   const insets = useSafeAreaInsets();
   return (
-    <View style={[styles.root, { backgroundColor: theme.backgroundRoot }]}>
-      {/* Profile card skeleton */}
-      <View
-        style={[
-          styles.skeletonCard,
-          {
-            backgroundColor: theme.backgroundSecondary,
-            paddingTop: insets.top + Spacing.lg,
-          },
-        ]}
-      >
-        <View style={styles.skeletonRow}>
-          <SkeletonBox width={48} height={48} borderRadius={24} />
-          <View style={styles.skeletonInfo}>
-            <SkeletonBox width={120} height={18} borderRadius={4} />
-            <SkeletonBox width={80} height={28} borderRadius={14} />
+    <SkeletonProvider>
+      <View style={[styles.root, { backgroundColor: theme.backgroundRoot }]}>
+        {/* Profile card skeleton */}
+        <View
+          style={[
+            styles.skeletonCard,
+            {
+              backgroundColor: theme.backgroundSecondary,
+              paddingTop: insets.top + Spacing.lg,
+            },
+          ]}
+        >
+          <View style={styles.skeletonRow}>
+            <SkeletonBox width={48} height={48} borderRadius={24} />
+            <View style={styles.skeletonInfo}>
+              <SkeletonBox width={120} height={18} borderRadius={4} />
+              <SkeletonBox width={80} height={28} borderRadius={14} />
+            </View>
+          </View>
+        </View>
+        {/* Widget row skeleton */}
+        <View style={styles.skeletonWidgetRow}>
+          <SkeletonBox
+            width="100%"
+            height={88}
+            borderRadius={15}
+            style={{ flex: 1 }}
+          />
+          <SkeletonBox
+            width="100%"
+            height={88}
+            borderRadius={15}
+            style={{ flex: 1 }}
+          />
+          <SkeletonBox
+            width="100%"
+            height={88}
+            borderRadius={15}
+            style={{ flex: 1 }}
+          />
+        </View>
+        {/* Grid skeleton */}
+        <View style={styles.skeletonGrid}>
+          <View style={styles.skeletonGridRow}>
+            <SkeletonBox
+              width="100%"
+              height={72}
+              borderRadius={15}
+              style={{ flex: 1 }}
+            />
+            <SkeletonBox
+              width="100%"
+              height={72}
+              borderRadius={15}
+              style={{ flex: 1 }}
+            />
+          </View>
+          <View style={styles.skeletonGridRow}>
+            <SkeletonBox
+              width="100%"
+              height={72}
+              borderRadius={15}
+              style={{ flex: 1 }}
+            />
+            <SkeletonBox
+              width="100%"
+              height={72}
+              borderRadius={15}
+              style={{ flex: 1 }}
+            />
           </View>
         </View>
       </View>
-      {/* Widget row skeleton */}
-      <View style={styles.skeletonWidgetRow}>
-        <SkeletonBox
-          width="100%"
-          height={88}
-          borderRadius={15}
-          style={{ flex: 1 }}
-        />
-        <SkeletonBox
-          width="100%"
-          height={88}
-          borderRadius={15}
-          style={{ flex: 1 }}
-        />
-        <SkeletonBox
-          width="100%"
-          height={88}
-          borderRadius={15}
-          style={{ flex: 1 }}
-        />
-      </View>
-      {/* Grid skeleton */}
-      <View style={styles.skeletonGrid}>
-        <View style={styles.skeletonGridRow}>
-          <SkeletonBox
-            width="100%"
-            height={72}
-            borderRadius={15}
-            style={{ flex: 1 }}
-          />
-          <SkeletonBox
-            width="100%"
-            height={72}
-            borderRadius={15}
-            style={{ flex: 1 }}
-          />
-        </View>
-        <View style={styles.skeletonGridRow}>
-          <SkeletonBox
-            width="100%"
-            height={72}
-            borderRadius={15}
-            style={{ flex: 1 }}
-          />
-          <SkeletonBox
-            width="100%"
-            height={72}
-            borderRadius={15}
-            style={{ flex: 1 }}
-          />
-        </View>
-      </View>
-    </View>
+    </SkeletonProvider>
   );
 }
 

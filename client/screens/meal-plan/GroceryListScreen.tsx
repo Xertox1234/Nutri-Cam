@@ -24,7 +24,7 @@ import { useAccessibility } from "@/hooks/useAccessibility";
 
 import { ThemedText } from "@/components/ThemedText";
 import { SwipeableRow } from "@/components/SwipeableRow";
-import { SkeletonBox } from "@/components/SkeletonLoader";
+import { SkeletonBox, SkeletonProvider } from "@/components/SkeletonLoader";
 import { IngredientIcon } from "@/components/IngredientIcon";
 import { EmptyState } from "@/components/EmptyState";
 import { useTheme } from "@/hooks/useTheme";
@@ -310,19 +310,21 @@ export default function GroceryListScreen() {
           },
         ]}
       >
-        <View style={styles.skeletons}>
-          <SkeletonBox width="60%" height={20} borderRadius={4} />
-          <View style={{ height: Spacing.lg }} />
-          {[1, 2, 3, 4, 5].map((i) => (
-            <SkeletonBox
-              key={i}
-              width="100%"
-              height={40}
-              borderRadius={4}
-              style={{ marginBottom: Spacing.sm }}
-            />
-          ))}
-        </View>
+        <SkeletonProvider>
+          <View style={styles.skeletons}>
+            <SkeletonBox width="60%" height={20} borderRadius={4} />
+            <View style={{ height: Spacing.lg }} />
+            {[1, 2, 3, 4, 5].map((i) => (
+              <SkeletonBox
+                key={i}
+                width="100%"
+                height={40}
+                borderRadius={4}
+                style={{ marginBottom: Spacing.sm }}
+              />
+            ))}
+          </View>
+        </SkeletonProvider>
       </View>
     );
   }
