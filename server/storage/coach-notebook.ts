@@ -48,7 +48,15 @@ export async function createNotebookEntries(
     ...e,
     content: e.content.slice(0, MAX_ENTRY_CONTENT_LENGTH),
   }));
-  return db.insert(coachNotebook).values(clamped).returning();
+  // `dedupeKey` carries a SHA-256 fingerprint of the conversation turn; the
+  // unique index makes this insert idempotent when the SSE stream is retried.
+  // Rows without a `dedupeKey` (legacy/manual inserts) still insert normally
+  // because Postgres treats NULLs as distinct in a unique index.
+  return db
+    .insert(coachNotebook)
+    .values(clamped)
+    .onConflictDoNothing({ target: coachNotebook.dedupeKey })
+    .returning();
 }
 
 export async function updateNotebookEntryStatus(

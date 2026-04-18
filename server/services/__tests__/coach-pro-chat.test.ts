@@ -1,9 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { CoachChatEvent, CoachChatParams } from "../coach-pro-chat";
+import type {
+  ChatMessage,
+  CoachNotebookEntry,
+  UserProfile,
+  WeightLog,
+} from "@shared/schema";
+import type { CoachBlock } from "@shared/schemas/coach-blocks";
 
 // ── Imports (after mocks) ───────────────────────────────────
 
-import { handleCoachChat } from "../coach-pro-chat";
+import {
+  handleCoachChat,
+  hashCoachCacheKey,
+  hashNotebookDedupeKey,
+  _testInternals as coachProInternals,
+} from "../coach-pro-chat";
 import { storage } from "../../storage";
 import {
   generateCoachProResponse,
@@ -116,32 +128,78 @@ function makeParams(overrides: Partial<CoachChatParams> = {}): CoachChatParams {
   };
 }
 
+/** Partial UserProfile fixture — keeps only the fields the handler reads. */
+function makeProfile(
+  overrides: Partial<UserProfile> = {},
+): Partial<UserProfile> {
+  return {
+    dietType: "balanced",
+    allergies: [{ name: "peanuts", severity: "mild" }],
+    foodDislikes: ["olives"],
+    ...overrides,
+  } satisfies Partial<UserProfile>;
+}
+
+/** Partial WeightLog fixture. */
+function makeWeightLog(overrides: Partial<WeightLog> = {}): Partial<WeightLog> {
+  return {
+    weight: "75.0",
+    loggedAt: new Date(),
+    ...overrides,
+  } satisfies Partial<WeightLog>;
+}
+
+/** Partial ChatMessage fixture — fills in only the fields handleCoachChat reads. */
+function makeChatMessage(
+  overrides: Partial<ChatMessage> & Pick<ChatMessage, "role" | "content">,
+): Partial<ChatMessage> {
+  return overrides satisfies Partial<ChatMessage>;
+}
+
+/** Partial CoachNotebookEntry fixture for notebook injection tests. */
+function makeNotebookEntry(
+  overrides: Partial<CoachNotebookEntry> &
+    Pick<CoachNotebookEntry, "type" | "content">,
+): Partial<CoachNotebookEntry> {
+  return overrides satisfies Partial<CoachNotebookEntry>;
+}
+
+/**
+ * Cast helper for partial storage return values. Storage functions return
+ * fully-populated domain types; in tests we supply only the fields the
+ * handler actually reads. Using a centralized helper with a narrow generic
+ * signature replaces ~11 ad-hoc `as any` casts while still flagging
+ * structural mistakes at the call sites via `satisfies Partial<T>`.
+ */
+function asMockReturn<T>(value: Partial<T> | Partial<T>[]): T {
+  return value as T;
+}
+
 /** Set up default storage mock return values. */
 function setupDefaultStorage() {
-  vi.mocked(storage.getUserProfile).mockResolvedValue({
-    dietType: "balanced",
-    allergies: [{ name: "peanuts" }],
-    foodDislikes: ["olives"],
-  } as any);
+  vi.mocked(storage.getUserProfile).mockResolvedValue(
+    asMockReturn<UserProfile>(makeProfile()),
+  );
   vi.mocked(storage.getDailySummary).mockResolvedValue({
-    totalCalories: "800",
-    totalProtein: "40",
-    totalCarbs: "100",
-    totalFat: "30",
-  } as any);
-  vi.mocked(storage.getWeightLogs).mockResolvedValue([
-    { weight: "75.0", loggedAt: new Date() },
-  ] as any);
+    totalCalories: 800,
+    totalProtein: 40,
+    totalCarbs: 100,
+    totalFat: 30,
+    itemCount: 0,
+  });
+  vi.mocked(storage.getWeightLogs).mockResolvedValue(
+    [makeWeightLog()].map((w) => asMockReturn<WeightLog>(w)),
+  );
   vi.mocked(storage.getChatMessages).mockResolvedValue([]);
   vi.mocked(storage.getActiveNotebookEntries).mockResolvedValue([]);
   vi.mocked(storage.getCoachCachedResponse).mockResolvedValue(null);
-  vi.mocked(storage.createChatMessage).mockResolvedValue(undefined as any);
-  vi.mocked(storage.updateChatConversationTitle).mockResolvedValue(
-    undefined as any,
+  vi.mocked(storage.createChatMessage).mockResolvedValue(
+    asMockReturn<ChatMessage>({}),
   );
-  vi.mocked(storage.createNotebookEntries).mockResolvedValue(undefined as any);
-  vi.mocked(storage.archiveOldEntries).mockResolvedValue(undefined as any);
-  vi.mocked(storage.setCoachCachedResponse).mockResolvedValue(undefined as any);
+  vi.mocked(storage.updateChatConversationTitle).mockResolvedValue(undefined);
+  vi.mocked(storage.createNotebookEntries).mockResolvedValue([]);
+  vi.mocked(storage.archiveOldEntries).mockResolvedValue(0);
+  vi.mocked(storage.setCoachCachedResponse).mockResolvedValue(undefined);
 }
 
 // ── Tests ───────────────────────────────────────────────────
@@ -217,10 +275,12 @@ describe("handleCoachChat", () => {
     });
 
     it("does not cache when history has more than 1 message", async () => {
-      vi.mocked(storage.getChatMessages).mockResolvedValue([
-        { role: "user", content: "First" },
-        { role: "assistant", content: "Reply" },
-      ] as any);
+      vi.mocked(storage.getChatMessages).mockResolvedValue(
+        [
+          makeChatMessage({ role: "user", content: "First" }),
+          makeChatMessage({ role: "assistant", content: "Reply" }),
+        ].map((m) => asMockReturn<ChatMessage>(m)),
+      );
 
       const params = makeParams({ screenContext: undefined });
 
@@ -234,7 +294,10 @@ describe("handleCoachChat", () => {
 
   describe("warm-up consumption", () => {
     it("consumes warm-up when warmUpId is provided and isCoachPro", async () => {
-      const warmedMessages = [
+      const warmedMessages: {
+        role: "user" | "assistant" | "system";
+        content: string;
+      }[] = [
         { role: "system", content: "sys" },
         { role: "user", content: "interim transcript" },
       ];
@@ -248,7 +311,9 @@ describe("handleCoachChat", () => {
 
       await collectEvents(handleCoachChat(params));
 
-      expect(consumeWarmUp).toHaveBeenCalledWith("user-42", "warm-123");
+      // Signature is now (userId, conversationId, warmUpId) so the composite
+      // cache key is per-conversation, not per-user.
+      expect(consumeWarmUp).toHaveBeenCalledWith("user-42", 1, "warm-123");
       // The last message in warmedMessages should be replaced with final content
       // generateCoachProResponse is called with the replaced history
       expect(generateCoachProResponse).toHaveBeenCalled();
@@ -272,9 +337,11 @@ describe("handleCoachChat", () => {
 
     it("falls back to DB history when warm-up returns null", async () => {
       vi.mocked(consumeWarmUp).mockReturnValue(null);
-      vi.mocked(storage.getChatMessages).mockResolvedValue([
-        { role: "user", content: "Old message" },
-      ] as any);
+      vi.mocked(storage.getChatMessages).mockResolvedValue(
+        [makeChatMessage({ role: "user", content: "Old message" })].map((m) =>
+          asMockReturn<ChatMessage>(m),
+        ),
+      );
 
       const params = makeParams({
         warmUpId: "expired-warm",
@@ -283,7 +350,7 @@ describe("handleCoachChat", () => {
 
       await collectEvents(handleCoachChat(params));
 
-      expect(consumeWarmUp).toHaveBeenCalledWith("user-42", "expired-warm");
+      expect(consumeWarmUp).toHaveBeenCalledWith("user-42", 1, "expired-warm");
       // Should use DB history since warm-up returned null
       const passedHistory = vi.mocked(generateCoachProResponse).mock
         .calls[0][0];
@@ -333,10 +400,18 @@ describe("handleCoachChat", () => {
 
   describe("notebook injection", () => {
     it("injects notebook entries into context when entries exist (CoachPro)", async () => {
-      vi.mocked(storage.getActiveNotebookEntries).mockResolvedValue([
-        { type: "preference", content: "User likes salads" },
-        { type: "goal", content: "Lose 5kg by summer" },
-      ] as any);
+      vi.mocked(storage.getActiveNotebookEntries).mockResolvedValue(
+        [
+          makeNotebookEntry({
+            type: "preference",
+            content: "User likes salads",
+          }),
+          makeNotebookEntry({
+            type: "goal",
+            content: "Lose 5kg by summer",
+          }),
+        ].map((e) => asMockReturn<CoachNotebookEntry>(e)),
+      );
 
       const params = makeParams({ isCoachPro: true });
 
@@ -397,13 +472,18 @@ describe("handleCoachChat", () => {
     });
 
     it("yields blocks event when Coach Pro response contains blocks", async () => {
-      const mockBlocks = [{ type: "meal_plan", data: { title: "Lunch plan" } }];
+      const mockBlocks: CoachBlock[] = [
+        {
+          type: "meal_plan",
+          data: { title: "Lunch plan" },
+        } as unknown as CoachBlock,
+      ];
       vi.mocked(generateCoachProResponse).mockReturnValue(
         fakeStream(["Here is your plan."]),
       );
       vi.mocked(parseBlocksFromContent).mockReturnValue({
         text: "Here is your plan.",
-        blocks: mockBlocks as any,
+        blocks: mockBlocks,
       });
 
       const params = makeParams({ isCoachPro: true });
@@ -501,10 +581,12 @@ describe("handleCoachChat", () => {
     });
 
     it("does not auto-title when history has more than 1 message", async () => {
-      vi.mocked(storage.getChatMessages).mockResolvedValue([
-        { role: "user", content: "First" },
-        { role: "assistant", content: "Reply" },
-      ] as any);
+      vi.mocked(storage.getChatMessages).mockResolvedValue(
+        [
+          makeChatMessage({ role: "user", content: "First" }),
+          makeChatMessage({ role: "assistant", content: "Reply" }),
+        ].map((m) => asMockReturn<ChatMessage>(m)),
+      );
 
       const params = makeParams({});
 
@@ -596,13 +678,18 @@ describe("handleCoachChat", () => {
     });
 
     it("persists blocks metadata when blocks are present", async () => {
-      const mockBlocks = [{ type: "meal_plan", data: { title: "Lunch" } }];
+      const mockBlocks: CoachBlock[] = [
+        {
+          type: "meal_plan",
+          data: { title: "Lunch" },
+        } as unknown as CoachBlock,
+      ];
       vi.mocked(generateCoachProResponse).mockReturnValue(
         fakeStream(["Plan here."]),
       );
       vi.mocked(parseBlocksFromContent).mockReturnValue({
         text: "Plan here.",
-        blocks: mockBlocks as any,
+        blocks: mockBlocks,
       });
 
       const params = makeParams({ isCoachPro: true });
@@ -626,5 +713,100 @@ describe("handleCoachChat", () => {
 
       expect(storage.createChatMessage).not.toHaveBeenCalled();
     });
+  });
+});
+
+// ── Pure helpers extracted from handleCoachChat (L19) ───────
+
+describe("hashCoachCacheKey", () => {
+  it("produces deterministic 32-char hex for the same input", () => {
+    const a = hashCoachCacheKey("user-1", "what should I eat?");
+    const b = hashCoachCacheKey("user-1", "what should I eat?");
+    expect(a).toBe(b);
+    expect(a).toMatch(/^[0-9a-f]{32}$/);
+  });
+
+  it("produces different keys for different users with the same content", () => {
+    const a = hashCoachCacheKey("user-1", "hello");
+    const b = hashCoachCacheKey("user-2", "hello");
+    expect(a).not.toBe(b);
+  });
+
+  it("normalizes whitespace and case", () => {
+    const a = hashCoachCacheKey("user-1", "Hello World");
+    const b = hashCoachCacheKey("user-1", "  hello world  ");
+    expect(a).toBe(b);
+  });
+});
+
+describe("hashNotebookDedupeKey", () => {
+  const base = {
+    userId: "user-1",
+    conversationId: 42,
+    entryType: "preference",
+    entryContent: "likes salads",
+    lastUserMessage: "I like salads",
+    lastAssistantMessage: "Noted!",
+  };
+
+  it("produces the same key for the same conversation turn", () => {
+    expect(hashNotebookDedupeKey(base)).toBe(hashNotebookDedupeKey(base));
+  });
+
+  it("produces different keys when any component differs", () => {
+    const other = hashNotebookDedupeKey({
+      ...base,
+      entryContent: "dislikes olives",
+    });
+    expect(other).not.toBe(hashNotebookDedupeKey(base));
+  });
+
+  it("coaching_strategy is bucketed by ISO week, not turn content", () => {
+    const a = hashNotebookDedupeKey({
+      ...base,
+      entryType: "coaching_strategy",
+      entryContent: "be blunt",
+      lastUserMessage: "turn A",
+      lastAssistantMessage: "reply A",
+    });
+    const b = hashNotebookDedupeKey({
+      ...base,
+      entryType: "coaching_strategy",
+      entryContent: "be gentle",
+      lastUserMessage: "turn B",
+      lastAssistantMessage: "reply B",
+    });
+    // Same user + same week = same key regardless of content/turn.
+    expect(a).toBe(b);
+  });
+});
+
+describe("shouldRunArchive (time-gated archiveOldEntries)", () => {
+  beforeEach(() => {
+    coachProInternals.lastArchivedAt.clear();
+  });
+
+  it("returns true on first call and false within the throttle window", () => {
+    const now = Date.now();
+    expect(coachProInternals.shouldRunArchive("user-x", now)).toBe(true);
+    // Second call inside the 24-hour window is blocked.
+    expect(coachProInternals.shouldRunArchive("user-x", now + 1000)).toBe(
+      false,
+    );
+  });
+
+  it("returns true again once the throttle window has elapsed", () => {
+    const now = Date.now();
+    expect(coachProInternals.shouldRunArchive("user-x", now)).toBe(true);
+    const later = now + coachProInternals.ARCHIVE_THROTTLE_MS + 1000;
+    expect(coachProInternals.shouldRunArchive("user-x", later)).toBe(true);
+  });
+
+  it("tracks each user independently", () => {
+    const now = Date.now();
+    expect(coachProInternals.shouldRunArchive("user-a", now)).toBe(true);
+    expect(coachProInternals.shouldRunArchive("user-b", now)).toBe(true);
+    expect(coachProInternals.shouldRunArchive("user-a", now)).toBe(false);
+    expect(coachProInternals.shouldRunArchive("user-b", now)).toBe(false);
   });
 });

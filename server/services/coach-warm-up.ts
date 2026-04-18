@@ -7,61 +7,117 @@
  * Extracted from server/routes/coach-context.ts to avoid cross-route imports.
  */
 
-// In-memory warm-up cache: userId → { warmUpId, messages, preparedAt }
-const warmUpCache = new Map<
-  string,
-  {
-    warmUpId: string;
-    messages: { role: string; content: string }[];
-    preparedAt: number;
-  }
->();
+import crypto from "crypto";
+import { createSessionStore } from "../storage/sessions";
 
 export const WARM_UP_TTL_MS = 30_000;
 
-// Periodic sweep to remove expired warm-up entries (every 60s).
-// Entries expire after WARM_UP_TTL_MS but are only cleaned on consumption;
-// this sweep catches entries from users who never sent the final message.
-const warmUpSweepInterval = setInterval(() => {
-  const now = Date.now();
-  for (const [key, entry] of warmUpCache) {
-    if (now - entry.preparedAt > WARM_UP_TTL_MS) {
-      warmUpCache.delete(key);
-    }
-  }
-}, 60_000) as unknown as NodeJS.Timeout;
-warmUpSweepInterval.unref();
+/** Max warm-ups per user — user may have one per active conversation. */
+export const WARM_UP_MAX_PER_USER = 1;
+
+/** Global cap so a single tenant cannot exhaust process memory. */
+export const WARM_UP_MAX_GLOBAL = 1000;
+
+/** Chat message role union — matches the persisted `chat_messages.role`. */
+export type WarmUpMessageRole = "user" | "assistant" | "system";
+
+export interface WarmUpMessage {
+  role: WarmUpMessageRole;
+  content: string;
+}
+
+interface WarmUp {
+  userId: string;
+  conversationId: number;
+  warmUpId: string;
+  messages: WarmUpMessage[];
+  createdAt: number;
+}
 
 /**
- * Store a warm-up entry for a user. Evicts any existing entry.
+ * Generic bounded session store (inherits LRU-like caps, TTL sweep, and
+ * per-user/global limits from `createSessionStore`). The map key is the
+ * `(userId, conversationId)` tuple so a user with multiple concurrent coach
+ * conversations no longer has one warm-up overwrite the other.
+ */
+const warmUpStore = createSessionStore<WarmUp>({
+  maxPerUser: WARM_UP_MAX_PER_USER,
+  maxGlobal: WARM_UP_MAX_GLOBAL,
+  timeoutMs: WARM_UP_TTL_MS,
+  label: "coach warm-up",
+});
+
+function cacheKey(userId: string, conversationId: number): string {
+  return `${userId}:${conversationId}`;
+}
+
+/** Generate a warm-up id using cryptographic randomness (defense-in-depth). */
+export function generateWarmUpId(): string {
+  return crypto.randomUUID();
+}
+
+/**
+ * Store a warm-up entry for a user+conversation. Evicts any existing entry
+ * for the same key so the most recent interim transcript always wins.
  */
 export function setWarmUp(
   userId: string,
+  conversationId: number,
   warmUpId: string,
-  messages: { role: string; content: string }[],
+  messages: WarmUpMessage[],
 ): void {
-  warmUpCache.delete(userId);
-  warmUpCache.set(userId, {
+  const key = cacheKey(userId, conversationId);
+  // Remove any existing entry so we don't trip the per-user cap when the
+  // same user sends multiple warm-ups for the same conversation.
+  const existing = warmUpStore._internals.store.get(key);
+  if (existing) {
+    warmUpStore.clear(key);
+  }
+  // Insert with our composite key by bypassing `create`'s UUID generation.
+  // The generic store supports `create()` for auto-id usage, but here we
+  // want deterministic keying so `consumeWarmUp` can find the entry via
+  // `(userId, conversationId)`.
+  const data: WarmUp = {
+    userId,
+    conversationId,
     warmUpId,
     messages,
-    preparedAt: Date.now(),
-  });
+    createdAt: Date.now(),
+  };
+  const { store, timeouts, userCount } = warmUpStore._internals;
+  store.set(key, data);
+  userCount.set(userId, (userCount.get(userId) ?? 0) + 1);
+  const timeoutId = setTimeout(() => {
+    // Only clear if the entry hasn't already been consumed/replaced.
+    if (store.get(key) === data) warmUpStore.clear(key);
+  }, WARM_UP_TTL_MS);
+  // Don't keep the event loop alive in tests/CLI just for this timer.
+  (timeoutId as unknown as { unref?: () => void }).unref?.();
+  timeouts.set(key, timeoutId);
 }
 
 /**
- * Consume (and delete) a warm-up entry for a user.
- * Returns null if no matching entry exists or the entry has expired.
+ * Consume (and delete) a warm-up entry for a user+conversation.
+ * Returns null if no matching entry exists, the warm-up id doesn't match,
+ * or the entry has expired.
  */
 export function consumeWarmUp(
   userId: string,
+  conversationId: number,
   warmUpId: string,
-): { role: string; content: string }[] | null {
-  const cached = warmUpCache.get(userId);
+): WarmUpMessage[] | null {
+  const key = cacheKey(userId, conversationId);
+  const cached = warmUpStore._internals.store.get(key);
   if (!cached || cached.warmUpId !== warmUpId) return null;
-  if (Date.now() - cached.preparedAt > WARM_UP_TTL_MS) {
-    warmUpCache.delete(userId);
+  if (Date.now() - cached.createdAt > WARM_UP_TTL_MS) {
+    warmUpStore.clear(key);
     return null;
   }
-  warmUpCache.delete(userId);
+  warmUpStore.clear(key);
   return cached.messages;
 }
+
+/** Test-only internals — never import from production code. */
+export const _testInternals = {
+  warmUpStore,
+};

@@ -1,4 +1,5 @@
-import { calculateWeightTrend } from "../weight-trend";
+import { describe, it, expect } from "vitest";
+import { calculateWeeklyRate, calculateWeightTrend } from "../weight-trend";
 
 function makeWeightEntry(weight: number, daysAgo: number) {
   const date = new Date();
@@ -220,6 +221,47 @@ describe("Weight Trend", () => {
 
       // (74.1 + 74.2 + 74.4) / 3 = 74.2333... → 74.23
       expect(result.avg7Day).toBe(74.23);
+    });
+  });
+
+  describe("calculateWeeklyRate", () => {
+    it("returns null for empty logs", () => {
+      expect(calculateWeeklyRate([])).toBeNull();
+    });
+
+    it("returns null for a single entry", () => {
+      expect(calculateWeeklyRate([makeWeightEntry(75, 0)])).toBeNull();
+    });
+
+    it("returns null when span is shorter than 3 days", () => {
+      // newest-first order: logs[0] is most recent
+      const logs = [makeWeightEntry(74, 0), makeWeightEntry(75, 2)];
+      expect(calculateWeeklyRate(logs)).toBeNull();
+    });
+
+    it("returns the weekly rate when span is 3+ days", () => {
+      // newest=74 today, oldest=77 seven days ago → -3kg per week
+      const logs = [makeWeightEntry(74, 0), makeWeightEntry(77, 7)];
+      expect(calculateWeeklyRate(logs)).toBe(-3);
+    });
+
+    it("uses newest entry and oldest entry even with intermediate logs", () => {
+      // Only the first (newest) and last (oldest) entries are used.
+      const logs = [
+        makeWeightEntry(74, 0),
+        makeWeightEntry(100, 2), // outlier in the middle — should be ignored
+        makeWeightEntry(77, 7),
+      ];
+      expect(calculateWeeklyRate(logs)).toBe(-3);
+    });
+
+    it("rounds to 1 decimal place", () => {
+      // 74 - 75 = -1 over 7 days → -1 kg/week
+      const logs = [makeWeightEntry(74, 0), makeWeightEntry(75, 7)];
+      expect(calculateWeeklyRate(logs)).toBe(-1);
+      // 74.55 - 75 = -0.45 over 7 days = -0.45/week → -0.5 after rounding
+      const logs2 = [makeWeightEntry(74.55, 0), makeWeightEntry(75, 7)];
+      expect(calculateWeeklyRate(logs2)).toBe(-0.5);
     });
   });
 });

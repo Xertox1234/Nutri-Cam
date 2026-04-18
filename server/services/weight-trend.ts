@@ -13,6 +13,38 @@ interface WeightEntry {
   loggedAt: Date;
 }
 
+/**
+ * Minimum span (in days) between the newest and oldest log entry required to
+ * compute a meaningful weekly rate from `calculateWeeklyRate`. Anything less
+ * than this returns `null`.
+ */
+export const WEEKLY_RATE_MIN_DAYS = 3;
+
+/**
+ * Quick two-point weekly rate used by the Coach Pro context builder.
+ *
+ * Given a list of weight logs sorted newest-first, returns the weight change
+ * per week (rounded to 1 decimal) between the most recent entry and the
+ * oldest entry in the list. Returns `null` when fewer than two entries are
+ * supplied or the span is shorter than `WEEKLY_RATE_MIN_DAYS` days.
+ *
+ * This is intentionally simpler than `calculateWeightTrend`'s
+ * moving-average-based `weeklyRateOfChange` — the coach only needs a rough
+ * directional signal, not the full trend analysis.
+ */
+export function calculateWeeklyRate(logs: WeightEntry[]): number | null {
+  if (logs.length < 2) return null;
+  const newest = logs[0];
+  const oldest = logs[logs.length - 1];
+  const daysDiff =
+    (new Date(newest.loggedAt).getTime() -
+      new Date(oldest.loggedAt).getTime()) /
+    (1000 * 60 * 60 * 24);
+  if (daysDiff < WEEKLY_RATE_MIN_DAYS) return null;
+  const weightDiff = parseFloat(newest.weight) - parseFloat(oldest.weight);
+  return Math.round((weightDiff / daysDiff) * 7 * 10) / 10;
+}
+
 function movingAverage(entries: WeightEntry[], days: number): number | null {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - days);
