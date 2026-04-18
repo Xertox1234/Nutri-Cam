@@ -6,7 +6,7 @@ import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { Feather, Ionicons } from "@expo/vector-icons";
 
 import { ThemedText } from "@/components/ThemedText";
-import { SkeletonBox } from "@/components/SkeletonLoader";
+import { SkeletonBox, SkeletonProvider } from "@/components/SkeletonLoader";
 import { useTheme } from "@/hooks/useTheme";
 import { useHaptics } from "@/hooks/useHaptics";
 import { useCookbooks, useDeleteCookbook } from "@/hooks/useCookbooks";
@@ -133,17 +133,19 @@ export default function CookbookListScreen() {
           },
         ]}
       >
-        <View style={styles.skeletons}>
-          {[1, 2, 3].map((i) => (
-            <SkeletonBox
-              key={i}
-              width="100%"
-              height={64}
-              borderRadius={12}
-              style={{ marginBottom: Spacing.md }}
-            />
-          ))}
-        </View>
+        <SkeletonProvider>
+          <View style={styles.skeletons}>
+            {[1, 2, 3].map((i) => (
+              <SkeletonBox
+                key={i}
+                width="100%"
+                height={64}
+                borderRadius={12}
+                style={{ marginBottom: Spacing.md }}
+              />
+            ))}
+          </View>
+        </SkeletonProvider>
       </View>
     );
   }

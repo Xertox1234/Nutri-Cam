@@ -2,7 +2,12 @@
 import React from "react";
 import { screen } from "@testing-library/react";
 import { renderComponent } from "../../../test/utils/render-component";
-import { SkeletonBox, SkeletonItem, SkeletonList } from "../SkeletonLoader";
+import {
+  SkeletonBox,
+  SkeletonItem,
+  SkeletonList,
+  SkeletonProvider,
+} from "../SkeletonLoader";
 
 describe("SkeletonBox", () => {
   it("renders a div element", () => {
@@ -15,6 +20,35 @@ describe("SkeletonBox", () => {
       <SkeletonBox width={200} height={32} />,
     );
     expect(container.firstChild).toBeDefined();
+  });
+
+  it("renders standalone when no provider wraps it", () => {
+    // No provider → each box owns its own shimmer timer (fallback path).
+    const { container } = renderComponent(<SkeletonBox />);
+    expect(container.firstChild).toBeDefined();
+  });
+
+  it("renders inside a SkeletonProvider (shared driver path)", () => {
+    const { container } = renderComponent(
+      <SkeletonProvider>
+        <SkeletonBox />
+        <SkeletonBox />
+        <SkeletonBox />
+      </SkeletonProvider>,
+    );
+    // Provider wraps children; all three boxes share one shimmer driver.
+    expect(container.firstChild).toBeDefined();
+  });
+});
+
+describe("SkeletonProvider", () => {
+  it("renders its children", () => {
+    renderComponent(
+      <SkeletonProvider>
+        <span>child content</span>
+      </SkeletonProvider>,
+    );
+    expect(screen.getByText("child content")).toBeDefined();
   });
 });
 
