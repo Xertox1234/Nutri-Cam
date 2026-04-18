@@ -17,6 +17,11 @@ import {
   FontFamily,
   withOpacity,
 } from "@/constants/theme";
+import {
+  formatDietChipLabel,
+  hasCuisineText,
+  toggleDietTag,
+} from "./tags-step-utils";
 
 interface TagsStepProps {
   tags: TagsData;
@@ -36,11 +41,7 @@ export default function TagsStep({ tags, setTags }: TagsStepProps) {
   const handleTagToggle = useCallback(
     (tag: DietTag) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      const isActive = tags.dietTags.includes(tag);
-      const nextTags = isActive
-        ? tags.dietTags.filter((t) => t !== tag)
-        : [...tags.dietTags, tag];
-      setTags({ ...tags, dietTags: nextTags });
+      setTags({ ...tags, dietTags: toggleDietTag(tags.dietTags, tag) });
     },
     [tags, setTags],
   );
@@ -77,7 +78,7 @@ export default function TagsStep({ tags, setTags }: TagsStepProps) {
             accessibilityLabel="Cuisine type"
             accessibilityHint="Enter the cuisine type for this recipe"
           />
-          {tags.cuisine.trim().length > 0 && (
+          {hasCuisineText(tags.cuisine) && (
             <View
               style={[
                 styles.suggestedBadge,
@@ -126,7 +127,7 @@ export default function TagsStep({ tags, setTags }: TagsStepProps) {
                     },
                   ]}
                 >
-                  {isActive ? `${tag} ✓` : tag}
+                  {formatDietChipLabel(tag, isActive)}
                 </Text>
               </Pressable>
             );
