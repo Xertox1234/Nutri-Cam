@@ -9,3 +9,11 @@ export function stripAuthorId<T extends { authorId?: unknown }>(
 ): Omit<T, "authorId">[] {
   return recipes.map(({ authorId: _, ...rest }) => rest);
 }
+
+/** Single-recipe variant of `stripAuthorId` — prefer this over inline destructuring at call sites. */
+export function stripAuthorIdOne<T extends { authorId?: unknown }>(
+  recipe: T,
+): Omit<T, "authorId"> {
+  const { authorId: _, ...rest } = recipe;
+  return rest;
+}

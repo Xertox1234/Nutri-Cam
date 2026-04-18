@@ -111,6 +111,13 @@ export interface EvalCaseResult {
   coachResponse: string;
   assertions: AssertionResult;
   rubricScores: RubricScore[];
+  /**
+   * Model identifier used by the LLM judge for this case. Persisted per-case
+   * (not just per-run) so future multi-model comparisons — e.g., A/B rollouts
+   * that route different cases to different judge models — retain provenance
+   * at the case granularity required to reproduce or debug a specific score.
+   */
+  judgeModel: string;
   timestamp: string;
   latencyMs: number;
   wordCount: number;

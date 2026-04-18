@@ -27,7 +27,7 @@ import {
   getPremiumFeatures,
   parseQueryString,
 } from "./_helpers";
-import { stripAuthorId } from "./_recipe-helpers";
+import { stripAuthorId, stripAuthorIdOne } from "./_recipe-helpers";
 
 // Zod schemas for community CRUD endpoints
 const recipeGenerationSchema = z.object({
@@ -367,8 +367,7 @@ export function register(app: Express): void {
           return;
         }
 
-        const { authorId: _, ...safeRecipe } = recipe;
-        res.json(safeRecipe);
+        res.json(stripAuthorIdOne(recipe));
       } catch (error) {
         logger.error({ err: toError(error) }, "get recipe failed");
         sendError(res, 500, "Failed to fetch recipe", ErrorCode.INTERNAL_ERROR);

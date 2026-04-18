@@ -125,6 +125,7 @@ async function evaluateCase(
     coachResponse,
     assertions: assertionResult,
     rubricScores: judgeResult.scores,
+    judgeModel: judgeResult.judgeModel,
     timestamp: new Date().toISOString(),
     latencyMs,
     wordCount,
