@@ -46,6 +46,10 @@ export interface PremiumFeatures {
   recipePhotoImport: boolean;
   cookAndTrack: boolean;
   maxFavouriteRecipes: number;
+  /** Save a Spoonacular catalog recipe (costs 1 quota unit per save). */
+  catalogSave: boolean;
+  /** Import a recipe from an arbitrary URL (triggers AI image generation). */
+  urlImport: boolean;
 }
 
 /** Represents effectively unlimited scans (JSON-safe alternative to Infinity). */
@@ -86,6 +90,8 @@ export const TIER_FEATURES: Record<SubscriptionTier, PremiumFeatures> = {
     recipePhotoImport: false,
     cookAndTrack: false,
     maxFavouriteRecipes: 20,
+    catalogSave: false,
+    urlImport: false,
   },
   premium: {
     maxDailyScans: UNLIMITED_SCANS,
@@ -121,6 +127,8 @@ export const TIER_FEATURES: Record<SubscriptionTier, PremiumFeatures> = {
     recipePhotoImport: true,
     cookAndTrack: true,
     maxFavouriteRecipes: UNLIMITED_SCANS,
+    catalogSave: true,
+    urlImport: true,
   },
 };
 

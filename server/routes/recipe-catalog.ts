@@ -17,6 +17,7 @@ import {
 import { logger, toError } from "../lib/logger";
 import { mealPlanRateLimit } from "./_rate-limiters";
 import {
+  checkPremiumFeature,
   formatZodError,
   handleRouteError,
   parsePositiveIntParam,
@@ -152,6 +153,15 @@ export function register(app: Express): void {
     mealPlanRateLimit,
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       try {
+        // Gate before hitting Spoonacular (1 quota unit per detail fetch)
+        const features = await checkPremiumFeature(
+          req,
+          res,
+          "catalogSave",
+          "Catalog save",
+        );
+        if (!features) return;
+
         const id = parsePositiveIntParam(req.params.id);
         if (!id) {
           sendError(res, 400, "Invalid catalog ID", ErrorCode.VALIDATION_ERROR);

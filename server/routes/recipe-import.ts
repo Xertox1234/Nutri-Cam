@@ -15,7 +15,11 @@ import {
   normalizeIngredient,
 } from "../lib/recipe-normalization";
 import { urlImportRateLimit } from "./_rate-limiters";
-import { formatZodError, handleRouteError } from "./_helpers";
+import {
+  checkPremiumFeature,
+  formatZodError,
+  handleRouteError,
+} from "./_helpers";
 
 const importUrlSchema = z.object({
   url: z
@@ -105,6 +109,15 @@ export function register(app: Express): void {
     urlImportRateLimit,
     async (req: AuthenticatedRequest, res: Response): Promise<void> => {
       try {
+        // Gate before triggering fire-and-forget Runware/DALL-E image generation
+        const features = await checkPremiumFeature(
+          req,
+          res,
+          "urlImport",
+          "URL import",
+        );
+        if (!features) return;
+
         const parsed = importUrlSchema.safeParse(req.body);
         if (!parsed.success) {
           sendError(
