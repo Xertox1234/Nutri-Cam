@@ -4,6 +4,9 @@ This document captures key learnings, gotchas, and architectural decisions disco
 
 ## Table of Contents
 
+- [Parallel Filter Paths Drift: Fix One, Audit the Others (2026-04-18)](#parallel-filter-paths-drift-fix-one-audit-the-others-2026-04-18)
+- [Premium-Gate Parity Missed the Read Endpoints (2026-04-18)](#premium-gate-parity-missed-the-read-endpoints-2026-04-18)
+- [`setState` + `mutateAsync` Same Microtask — Closure Sees Pre-Render State (2026-04-18)](#setstate--mutateasync-same-microtask--closure-sees-pre-render-state-2026-04-18)
 - [Side Effects Inside `db.transaction` Silently Desync State on Rollback (2026-04-17)](#side-effects-inside-dbtransaction-silently-desync-state-on-rollback-2026-04-17)
 - [Commit Subject Drift — A "Parallel Tools" Commit That Wasn't (2026-04-17)](#commit-subject-drift--a-parallel-tools-commit-that-wasnt-2026-04-17)
 - [Two-Level Unsaved-Changes Prompt Fires Twice (2026-04-17)](#two-level-unsaved-changes-prompt-fires-twice-2026-04-17)
@@ -51,6 +54,117 @@ This document captures key learnings, gotchas, and architectural decisions disco
 - [Testing & Tooling Learnings](#testing--tooling-learnings)
 - [Database Migration Gotchas](#database-migration-gotchas)
 - [TypeScript Safety Learnings](#typescript-safety-learnings)
+
+---
+
+## [2026-04-18] Parallel Filter Paths Drift: Fix One, Audit the Others
+
+**Category:** Process / Code Review Lesson
+
+**Problem:** Commit `945df21` added `mealTypes text[]` to
+`community_recipes` and wired the GIN index filter into the MiniSearch
+path — the search UI worked for community breakfasts. But the SQL
+fallback in `getUnifiedRecipes` (`server/storage/meal-plans.ts`) still
+hardcoded a comment reading "community recipes have no mealTypes
+column" and skipped the filter entirely. Every request that missed the
+MiniSearch cache (cold start, index not yet warm, forced `.bypass=true`
+flag) returned dinner recipes for `GET /api/recipes/browse?mealType=breakfast`.
+
+**Root cause:** When a schema-level feature lands (new column, new
+index, new relation), there are typically 2-5 places it needs to be
+consumed: the search index write, the search index read, the SQL
+fallback path, the migration/backfill, and sometimes a cache
+invalidation. A PR that wires it into _one_ consumer passes review and
+passes tests, because the other consumers look identical to what they
+were before the column existed.
+
+**Rule:** After landing a new filter-relevant column, grep the codebase
+for every query that touches the same table and ask: "would this query
+want to filter on the new column too?" The answer is usually yes — the
+product feature is the filter, and the filter wants to work everywhere.
+
+**Discovered by:** 2026-04-18 audit H3. Also see 2026-04-12 "Fix One
+Protocol Handler, Grep All Consumers" — same shape, different domain.
+
+**References:**
+
+- `server/storage/meal-plans.ts:420-429` — fixed
+- `docs/patterns/database.md` — consider adding "Parallel Query Path Audit" checklist
+
+---
+
+## [2026-04-18] Premium-Gate Parity Missed the Read Endpoints
+
+**Category:** Security Gotcha
+
+**Problem:** Commit `b663764` titled "fix: gate recipe catalog save +
+URL import behind premium (H-2)" added `checkPremiumFeature()` to the
+POST endpoints that hit Spoonacular. Routine checkbox: write endpoints
+now require premium. But the GET endpoints (`/catalog/search`,
+`/catalog/:id`) that also proxy Spoonacular responses were untouched —
+a free-tier user could drain the paid Spoonacular quota by typing in
+the recipe browser without ever needing to "save" a result.
+
+**Root cause:** The mental model "premium gates writes, reads are
+free" leaks from standard REST auth patterns. For endpoints that hit
+**external paid APIs**, every request costs money — reads are not
+free. The sibling POST was the tell; nobody looked at the sibling GET.
+
+**Rule:** When adding a premium gate, list every endpoint in the same
+route file that calls the same external client, not just the endpoint
+on the ticket. If it hits Spoonacular/Runware/paid-USDA/OpenAI, it
+needs a gate.
+
+**Discovered by:** 2026-04-18 audit H7.
+
+**References:**
+
+- `server/routes/recipe-catalog.ts:66-147` — GET /search + GET /:id fixed
+- `docs/patterns/security.md` — "Premium-Gate Parity" pattern updated with reads
+
+---
+
+## [2026-04-18] `setState` + `mutateAsync` Same Microtask — Closure Sees Pre-Render State
+
+**Category:** React / TanStack Query Gotcha
+
+**Problem:** `CookSessionCaptureScreen.handleAnalyzePhoto` did:
+
+```typescript
+const sid = await ensureSession(); // creates session via mutation
+setSessionId(sid); // queues a re-render
+await addPhoto.mutateAsync(uri); // fires IMMEDIATELY — sees sessionId=null
+```
+
+`addPhoto` was `useAddCookPhoto(sessionId)` — a hook parameter closure.
+`setSessionId` schedules a re-render, but the re-render hasn't happened
+when `mutateAsync` runs on the next microtask. The mutation's `fn`
+captures `sessionId` from the _previous_ render, which is still `null`.
+The server got `POST /api/cooking/null/photos` and threw "No active
+session".
+
+**Fix shape:** Switch the mutation to accept `sessionId` as a **mutation
+variable**, not a hook parameter — the variable is read at call time,
+not at hook-init time:
+
+```typescript
+const addPhoto = useAddCookPhoto(); // no sessionId arg
+const sid = await ensureSession();
+await addPhoto.mutateAsync({ sessionId: sid, photoUri }); // always fresh
+```
+
+This is a general rule for TanStack Query mutations that consume
+freshly-set state in the same handler.
+
+**Discovered by:** 2026-04-18 audit H12. Pattern codified in
+`docs/patterns/hooks.md` → "Mutation Parameter Over Hook Parameter for
+Fresh State".
+
+**References:**
+
+- `client/hooks/useCookSession.ts:42-87` — `useAddCookPhoto` refactored
+- `client/screens/CookSessionCaptureScreen.tsx:86-114` — thread `sid` through `mutateAsync`
+- `docs/patterns/hooks.md` — "Mutation Parameter Over Hook Parameter"
 
 ---
 
