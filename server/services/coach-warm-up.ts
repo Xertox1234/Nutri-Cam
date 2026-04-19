@@ -6,50 +6,26 @@
  *
  * Extracted from server/routes/coach-context.ts to avoid cross-route imports.
  *
- * Note: the backing `SessionStore` primitive is a storage concern and lives
+ * Note: the backing `SessionStore` instance is a storage concern and lives
  * in `server/storage/sessions.ts`. This file composes a coach-specific
  * cache key + TTL-aware consume() on top of it.
  */
 
 import crypto from "crypto";
-import { createSessionStore } from "../storage/sessions";
+import {
+  warmUpStore,
+  WARM_UP_TTL_MS,
+  WARM_UP_MAX_PER_USER,
+  WARM_UP_MAX_GLOBAL,
+  type WarmUpMessage,
+} from "../storage/sessions";
 
-export const WARM_UP_TTL_MS = 30_000;
-
-/** Max warm-ups per user — user may have one per active conversation. */
-export const WARM_UP_MAX_PER_USER = 1;
-
-/** Global cap so a single tenant cannot exhaust process memory. */
-export const WARM_UP_MAX_GLOBAL = 1000;
+export { WARM_UP_TTL_MS, WARM_UP_MAX_PER_USER, WARM_UP_MAX_GLOBAL };
 
 /** Chat message role union — matches the persisted `chat_messages.role`. */
 export type WarmUpMessageRole = "user" | "assistant" | "system";
 
-export interface WarmUpMessage {
-  role: WarmUpMessageRole;
-  content: string;
-}
-
-interface WarmUp {
-  userId: string;
-  conversationId: number;
-  warmUpId: string;
-  messages: WarmUpMessage[];
-  createdAt: number;
-}
-
-/**
- * Generic bounded session store (inherits LRU-like caps, TTL sweep, and
- * per-user/global limits from `createSessionStore`). The map key is the
- * `(userId, conversationId)` tuple so a user with multiple concurrent coach
- * conversations no longer has one warm-up overwrite the other.
- */
-const warmUpStore = createSessionStore<WarmUp>({
-  maxPerUser: WARM_UP_MAX_PER_USER,
-  maxGlobal: WARM_UP_MAX_GLOBAL,
-  timeoutMs: WARM_UP_TTL_MS,
-  label: "coach warm-up",
-});
+export type { WarmUpMessage };
 
 function cacheKey(userId: string, conversationId: number): string {
   return `${userId}:${conversationId}`;
@@ -80,7 +56,7 @@ export function setWarmUp(
   messages: WarmUpMessage[],
 ): { ok: true } | { ok: false; reason: string; code: string } {
   const key = cacheKey(userId, conversationId);
-  const data: WarmUp = {
+  const data = {
     userId,
     conversationId,
     warmUpId,

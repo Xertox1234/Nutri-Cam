@@ -293,6 +293,21 @@ export function clearLabelSession(sessionId: string): void {
   labelStore.clear(sessionId);
 }
 
+// ── Coach warm-up session store ────────────────────────────────────────
+
+export interface WarmUpMessage {
+  role: "user" | "assistant" | "system";
+  content: string;
+}
+
+interface WarmUpSession {
+  userId: string;
+  conversationId: number;
+  warmUpId: string;
+  messages: WarmUpMessage[];
+  createdAt: number;
+}
+
 export interface CookingSession {
   id: string;
   userId: string;
@@ -326,6 +341,22 @@ export const frontLabelSessionStore = createSessionStore<FrontLabelSession>({
   label: "active front-label",
 });
 
+/** Max warm-ups per user — user may have one per active conversation. */
+export const WARM_UP_MAX_PER_USER = 1;
+
+/** Global cap so a single tenant cannot exhaust process memory. */
+export const WARM_UP_MAX_GLOBAL = 1000;
+
+/** Warm-up TTL in milliseconds (30 seconds). */
+export const WARM_UP_TTL_MS = 30_000;
+
+export const warmUpStore = createSessionStore<WarmUpSession>({
+  maxPerUser: WARM_UP_MAX_PER_USER,
+  maxGlobal: WARM_UP_MAX_GLOBAL,
+  timeoutMs: WARM_UP_TTL_MS,
+  label: "coach warm-up",
+});
+
 // ── Test internals ────────────────────────────────────────────────────
 
 export const _testInternals = {
@@ -339,4 +370,6 @@ export const _testInternals = {
   userCookingSessionCount: cookingSessionStore._internals.userCount,
   frontLabelSessionStore: frontLabelSessionStore._internals.store,
   userFrontLabelSessionCount: frontLabelSessionStore._internals.userCount,
+  warmUpSessionStore: warmUpStore._internals.store,
+  userWarmUpSessionCount: warmUpStore._internals.userCount,
 };
