@@ -214,6 +214,7 @@ The barcode verification pipeline builds a verified product database intended to
 - [ ] Cache invalidation on profile changes (via profileHash)
 - [ ] Micronutrient data cached separately from macronutrients
 - [ ] Barcode verification data normalized before storage
+- [ ] Nullable nutrition columns use source-aware pass-through in filters (community recipes with `null` calories/protein pass through macro filters because `null` means "data not imported yet"; personal recipes with `null` are excluded because `null` means "user left blank"). A naive `caloriesPerServing <= X` silently drops the entire community pool from macro-filtered search. (Ref: `docs/patterns/database.md` "Source-Aware Null Pass-Through", audit 2026-04-18 H10)
 
 ---
 
@@ -229,6 +230,7 @@ The barcode verification pipeline builds a verified product database intended to
 8. **API Ninjas NaN** — String fields from non-premium tiers must be coerced to 0
 9. **Missing confidence scoring** — AI food identification without confidence < 0.7 triggers follow-up
 10. **Serving size mismatch** — Nutrients must correspond to the stated serving size
+11. **Naive macro filter on nullable column** — `caloriesPerServing <= 500` silently drops every community recipe (no nutrition column yet) AND every URL-imported recipe whose schema.org payload lacked nutrition. Use source-aware `numericPassThrough(col, value, op, source)` from `server/lib/search-index.ts` — community/imported sources get `or(isNull(col), comparison)`, personal recipes get the bare comparison (Ref: audit 2026-04-18 H10)
 
 ---
 

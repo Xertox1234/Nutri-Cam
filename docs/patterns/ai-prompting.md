@@ -286,3 +286,113 @@ for safety-critical fields (`calorie_assertion_passed`, allergen flags).
 boundary. A prompt-injection test case whose coach response contained
 `"Ignore your instructions…"` had no defense against the injection
 reaching the judge.
+
+### Cache Keys Must Include Every Input That Changes the Prompt
+
+A response cache key must hash every input that influences the system
+prompt OR tool set — not just the user message. Missing inputs mean a
+different-tier, different-day, or different-prompt-version request gets
+served a stale answer.
+
+The three classes of inputs that most often slip out of cache keys:
+
+1. **User tier / feature flags** — a Pro-tier user's first prompt shouldn't
+   get a cached free-tier answer that skipped tool calls or premium-only
+   injections (notebook, `<coach_blocks>`, personalization).
+2. **Time-sensitive context** — "Is my diet okay today?" depends on
+   `todayIntake`, `weightTrend`, `goals`. These change hourly. Without a
+   day bucket in the key, a 7-day TTL serves yesterday's answer.
+3. **Prompt version** — when you tighten a safety regex, add a
+   few-shot example, or change the system-prompt scaffolding, old cached
+   responses should cache-miss. A version constant in the key forces that.
+
+```typescript
+// ❌ Bad: key only hashes userId + message — hides tier + day drift
+const key = `${userId}:${sha256(message)}`;
+
+// ✅ Good: key hashes every prompt-affecting input
+const COACH_CACHE_VERSION = "v3"; // bump when prompt changes
+const dayBucket = new Date().toISOString().slice(0, 10); // UTC YYYY-MM-DD
+const key = hashCoachCacheKey({
+  userId,
+  isCoachPro, // tier → different prompt + tool set
+  dayBucket, // time-sensitive context
+  version: COACH_CACHE_VERSION, // prompt scaffolding
+  message,
+});
+
+// Also gate cacheability on tier when Pro responses depend on tool calls
+// or ephemeral context (notebook entries change throughout the day):
+const isCacheable = !hasToolCalls && !isCoachPro;
+```
+
+**When to apply:** Every AI response cache. Before shipping, list every
+field that feeds into `buildSystemPrompt`, every feature flag that gates
+tool availability, every piece of daily context — then confirm all of
+them are in the key hash. If a field changes the prompt, it changes the
+key.
+
+**Bump the version** when you change the prompt. Don't let old cached
+answers outlive the prompt logic that produced them. A single constant
+in the module (not buried in an env var) makes this a one-line change.
+
+**Day bucketing:** UTC `YYYY-MM-DD` is cheap and correct. Don't use
+`Math.floor(Date.now() / DAY_MS)` — DST and leap seconds will drift.
+Don't use the user's local timezone unless the cache is per-user and
+you're also keying on timezone.
+
+**Origin:** 2026-04-18 audit H4/H5 — `server/services/coach-pro-chat.ts`
+cache key omitted `isCoachPro`, `goals`, `todayIntake`, `weightTrend`,
+and time bucket. A Pro user's first message read a cached non-Pro answer
+that skipped tool calls and notebook injection; "Is my diet okay today?"
+served yesterday's answer for 7 days.
+
+### Tool-Call Budget Exits Must Yield User-Facing Closure
+
+When a streaming generator hits an internal guardrail — tool-call budget
+exhausted, max iterations reached, retry cap exceeded — a bare `break`
+leaves the client with whatever tokens arrived before the exit. That's
+often an empty string or a half-sentence, and the user has no way to
+know the reply was truncated by policy vs by a bug.
+
+```typescript
+// ❌ Bad: silent exit, client gets whatever already streamed
+while (iteration < MAX_TOOL_ITERATIONS) {
+  if (iteration >= TOOL_CALL_BUDGET) {
+    logger.warn({ iteration }, "tool-call budget exhausted");
+    break; // user sees a cut-off message
+  }
+  // ... stream tokens, execute tool calls ...
+}
+```
+
+```typescript
+// ✅ Good: yield a short closing message before the break
+while (iteration < MAX_TOOL_ITERATIONS) {
+  if (iteration >= TOOL_CALL_BUDGET) {
+    const closingText =
+      "\n\nI've gathered enough to answer — let me know if you want me to keep digging.";
+    fullResponse += closingText;
+    yield { type: "content", content: closingText };
+    logger.warn({ iteration }, "tool-call budget exhausted");
+    break;
+  }
+  // ...
+}
+```
+
+**When to apply:** Any streaming generator with an iteration budget,
+retry cap, or safety-threshold early exit — coach chat, recipe chat,
+cooking assistant, photo-analysis follow-ups. The closing text is
+persisted as part of `fullResponse`, so downstream safety checks
+(`containsDangerousDietaryAdvice`, DB persistence) see the same string
+the user saw.
+
+**Keep the closing text short and neutral.** It's a graceful fallback,
+not an error message — the user shouldn't feel punished for asking a
+complex question. A single sentence that invites a follow-up works well.
+
+**Origin:** 2026-04-18 audit H6 — `nutrition-coach.ts` `break`'d on
+budget overshoot without yielding content. Users with complex questions
+saw empty or truncated replies with no hint that the model had more to
+say.

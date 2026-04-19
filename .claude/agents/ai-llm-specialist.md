@@ -309,6 +309,13 @@ When reviewing or writing AI service code, verify:
 - [ ] `cacheId` returned to client for child cache lookups
 - [ ] Cache dedup via `uniqueIndex` + `onConflictDoUpdate`
 - [ ] `fireAndForget()` for non-critical cache operations
+- [ ] Cache key hashes **every input that changes the prompt or tool set**: user tier (`isCoachPro`, `subscriptionTier`), time-sensitive context (UTC `dayBucket` — `new Date().toISOString().slice(0, 10)`, not `Math.floor(Date.now()/DAY_MS)`), and a prompt-version constant (`COACH_CACHE_VERSION = "v3"` in the module). Missing any = stale or cross-tier serving. Also gate `isCacheable` on tier when Pro responses depend on ephemeral context (notebook entries, tool calls).
+- [ ] Bump the prompt-version constant when changing the system prompt, tool schema, or safety regex — old responses should cache-miss.
+
+### Streaming Generator Exits
+
+- [ ] Every `break` inside the streaming tool-call loop yields a short closing message to the user before the break — budget overshoot, max-iteration cap, retry exhaustion. A silent `break` leaves the client with whatever already streamed (often empty).
+- [ ] The closing text is appended to `fullResponse` so it flows through `containsDangerousDietaryAdvice` and DB persistence — the persisted response matches what the user saw.
 
 ### Architecture
 
@@ -334,6 +341,9 @@ When reviewing or writing AI service code, verify:
 10. **Serial tool-call execution** - `for (const tc of toolCallsArray) { await executeToolCall(...) }` serializes independent tool calls into the streaming critical path. Replace with `Promise.all(toolCallsArray.map(...))` capturing `{ tc, result }` tuples, then append results in order (Ref: audit 2026-04-17 H7 — commit `b41245f` subject claimed this was fixed but the code wasn't actually updated; don't trust commit subjects, grep the code).
 11. **`JSON.parse` + type assertion on LLM output** - Casts hide schema drift. Unknown enum values silently coerce via `as RubricDimension`, and aggregators' `if (entry)` guards drop them without signal. Use `zod.safeParse()` with `.refine()` for enum fields; fail closed on invalid shape (Ref: audit 2026-04-17 H11).
 12. **Eval judge on model alias without recording model** - `model: "claude-sonnet-4-6"` (no dated snapshot) without an env override and without persisting `judgeModel` in `EvalRunResult` means Anthropic alias rolls silently shift historical scores. Pin via `DEFAULT_JUDGE_MODEL = process.env.X || "..."`, record per-result, and set `temperature: 0` (Ref: audit 2026-04-17 H8).
+13. **Cache key missing tier / day / version** - `hashCoachCacheKey({ userId, messageHash })` will serve a Pro user a free-tier cached answer, serve "today's" answer for 7 days (default TTL), and serve stale responses across system-prompt tightenings. Always include `isCoachPro`, UTC `dayBucket`, and `COACH_CACHE_VERSION`. Also set `isCacheable = !hasToolCalls && !isCoachPro` when Pro responses depend on tool calls or ephemeral notebook context (Ref: audit 2026-04-18 H4/H5).
+14. **`break` without closing message in streaming tool-call loop** - `if (iteration >= BUDGET) { break; }` leaves the client with a cut-off reply. Yield a short "I've gathered enough to answer" sentence before the break so the user gets closure AND downstream safety checks (`containsDangerousDietaryAdvice`) see the full persisted response (Ref: audit 2026-04-18 H6).
+15. **AI generation route without `userProfile` resolution** - Every AI recipe/photo/coach endpoint must `await storage.getUserProfile(req.userId)` before calling the generator, then pass it through. Allergen safety depends on it. The sibling endpoint often does this correctly — parity-drift is the usual cause (Ref: audit 2026-04-18 H2).
 
 ---
 

@@ -1507,15 +1507,25 @@ app.post(
 );
 ```
 
-**Audit step for any new AI endpoint:**
+**Audit step for any new AI or external-quota endpoint:**
 
 1. Grep `server/routes/` for sibling endpoints calling the same
-   `generateX`/`analyzeX`/`chatX` service.
+   `generateX`/`analyzeX`/`chatX` service OR the same third-party client
+   (Spoonacular, Runware, USDA-paid-tier, etc.).
 2. Confirm the new endpoint imports from `./_helpers` (`checkPremiumFeature`,
    `handleRouteError`) and `./_rate-limiters` (not inline `rateLimit()`).
-3. Confirm the daily-quota check runs BEFORE the AI call, not after.
+3. Confirm the daily-quota check runs BEFORE the AI/external call, not after.
+4. **Include GET/read endpoints that hit external quotas, not just writes.**
+   A `GET /catalog/search?q=...` that proxies to Spoonacular drains the
+   same quota as `POST /catalog/save` — gate both. Premium parity is
+   about "does this request cost money" not "does this request mutate
+   state".
 
 **Origin:** 2026-04-17 audit H2 — `POST /api/meal-plan/recipes/generate`
 (new endpoint supporting the recipe wizard) had only a 5/min inline
 `rateLimit`, while the existing `POST /api/recipes/generate` enforced
 `checkPremiumFeature("recipeGeneration")` + `dailyRecipeGenerations`.
+2026-04-18 audit H7 extended the rule to read endpoints — commit
+`b663764` gated the POST siblings of catalog save / URL import but
+missed `GET /catalog/search` and `GET /catalog/:id`, which drain the
+same Spoonacular quota per call.
