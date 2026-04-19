@@ -2145,3 +2145,86 @@ app.post(
 **When NOT to use:** Simple CRUD where the user provides all data directly — no intermediate preview needed.
 
 **Reference:** `server/routes/recipe-generate.ts`, `server/routes/recipes.ts` (parse-url endpoint)
+
+---
+
+## kJ → kcal Conversion in Nutrition Parsers
+
+**Problem:** Third-party nutrition sources (LD+JSON on recipe websites, Spoonacular, USDA) may return energy values in kilojoules instead of kilocalories. Storing kJ directly would produce values ~4.18× too large — silently corrupting calorie data and goal tracking.
+
+**Pattern:** Any parser or service that consumes nutrition values must detect kJ and convert before storing.
+
+```typescript
+// LD+JSON (recipe-import.ts) — detect from the value string
+function parseNutritionValue(value: string | undefined): string | null {
+  if (!value) return null;
+  const match = value.match(/([\d.]+)\s*(kJ|KJ)?/i);
+  if (!match) return null;
+  let num = parseFloat(match[1]);
+  if (!Number.isFinite(num) || num < 0) return null; // guard NaN and negatives
+  if (match[2]) {
+    num = Math.round(num / 4.184); // kJ → kcal
+  }
+  return String(num);
+}
+
+// Spoonacular (recipe-catalog.ts) — detect from the unit field
+function findNutrient(nutrients: Nutrient[], name: string): number | null {
+  const n = nutrients.find(
+    (nut) => nut.name.toLowerCase() === name.toLowerCase(),
+  );
+  if (!n) return null;
+  if (name.toLowerCase() === "calories" && n.unit !== "kcal") {
+    log.warn(
+      { unit: n.unit, amount: n.amount },
+      "unexpected Calories unit — expected kcal",
+    );
+    if (n.unit === "kJ") return Math.round(n.amount / 4.184);
+  }
+  return n.amount;
+}
+```
+
+**Rules:**
+
+- Conversion factor: `kcal = Math.round(kJ / 4.184)`
+- Always guard with `Number.isFinite` before arithmetic — `parseFloat("abc")` returns `NaN`
+- Always reject negative values — log a warning and return `null`
+- Log unexpected units as warnings so future contract shifts are observable
+
+**References:** `server/services/recipe-import.ts` → `parseNutritionValue`, `server/services/recipe-catalog.ts` → `findNutrient`, audit finding M19/M23 (2026-04-18)
+
+---
+
+## Unit Normalization at API Boundary (Weight)
+
+**Problem:** The `weight_logs` table stores weights as decimal strings. If the client sends `lb` and the server stores it as-is, the table contains a mix of lb and kg values — making trend calculations and comparisons meaningless (75.5 lb looks like 75.5 kg, which is 166 lb).
+
+**Pattern:** Normalize to a single canonical unit (kg) at the API boundary before storage. Never store the client's raw numeric value when units may vary.
+
+```typescript
+// server/routes/weight.ts
+const createWeightLogSchema = z.object({
+  weight: z.number().positive().max(999),
+  unit: z.enum(["lb", "kg"]).default("lb"),
+  // ...
+});
+
+const weightKg =
+  validated.unit === "lb" ? validated.weight * 0.453592 : validated.weight;
+
+await storage.createWeightLog({
+  weight: weightKg.toFixed(2), // always kg
+  unit: "kg", // always "kg" in DB
+  // ...
+});
+```
+
+**Rules:**
+
+- The `unit` column in `weight_logs` is always `"kg"` after this normalization (external sources like HealthKit already send kg)
+- The `unit` field in the request schema lets mobile clients send lb (the common user-facing unit in North America) without needing to convert client-side
+- DB default `"lb"` exists only to classify rows created before this normalization was introduced — treat those rows as ambiguous-unit data
+- Always store with `.toFixed(2)` to preserve two decimal places of precision
+
+**References:** `server/routes/weight.ts`, `server/services/healthkit-sync.ts`, `shared/schema.ts` → `weightLogs`, audit finding M25 (2026-04-18)

@@ -2453,3 +2453,10 @@ dev adding a filter will reach for the bad pattern otherwise.
 any `maxCalories`/`minProtein` search silently dropped the entire
 community pool — including the 25 seed recipes every demo user starts
 with.
+
+**Resolution note (2026-04-18 M22):** The H10 bandaid (`numericPassThrough`
+helper in `recipe-search.ts`) was only needed because `communityRecipes` had
+no nutrition columns. Once those columns were added and backfilled, the
+pass-through was removed and community recipes are filtered on real data.
+**The preferred fix is always to populate the schema** — source-aware null
+pass-through is a temporary bridge, not a permanent architecture decision.
