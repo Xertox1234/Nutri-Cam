@@ -2228,3 +2228,80 @@ await storage.createWeightLog({
 - Always store with `.toFixed(2)` to preserve two decimal places of precision
 
 **References:** `server/routes/weight.ts`, `server/services/healthkit-sync.ts`, `shared/schema.ts` → `weightLogs`, audit finding M25 (2026-04-18)
+
+### SSE AbortController — Cancel OpenAI Stream on Client Disconnect
+
+When streaming an OpenAI response to a client over SSE, the server must propagate the client's disconnect signal all the way to the OpenAI SDK. Without this, the SDK keeps generating tokens (and billing) after the client leaves.
+
+**Pattern:**
+
+1. Create an `AbortController` at the route level, next to `let aborted = false`.
+2. Call `abortController.abort()` everywhere `aborted = true` is set (req.close, SSE timeout).
+3. Pass `abortSignal` through the service layer to the generator function.
+4. Pass `{ signal: abortSignal }` as the second argument to `openai.chat.completions.create`.
+
+```typescript
+// Route handler (server/routes/chat.ts)
+const abortController = new AbortController();
+let aborted = false;
+req.on("close", () => {
+  aborted = true;
+  abortController.abort();              // ← kills the OpenAI stream
+});
+const sseTimeout = setTimeout(() => {
+  aborted = true;
+  abortController.abort();              // ← kills the OpenAI stream on timeout
+  ...
+}, SSE_TIMEOUT_MS);
+
+for await (const event of handleCoachChat({
+  ...
+  isAborted: () => aborted,
+  abortSignal: abortController.signal,  // ← passed through service layer
+})) { ... }
+
+// Service (coach-pro-chat.ts)
+export interface CoachChatParams {
+  abortSignal?: AbortSignal;            // optional — defaults to no signal
+}
+
+// Generator (nutrition-coach.ts)
+export async function* generateCoachResponse(
+  messages, context, abortSignal?: AbortSignal,
+) {
+  const stream = await openai.chat.completions.create(
+    { model, stream: true, messages, ... },
+    { timeout: OPENAI_TIMEOUT_STREAM_MS, signal: abortSignal },
+  );
+  ...
+}
+```
+
+**Why `isAborted()` still exists alongside `abortSignal`:**
+`isAborted()` gates the chunk-yield loop inside the generator (fast exit between chunks). `abortSignal` is passed to the SDK to cancel _in-flight_ network I/O before the next chunk arrives. Both are needed — they operate at different granularities.
+
+**References:** `server/routes/chat.ts`, `server/services/coach-pro-chat.ts`, `server/services/nutrition-coach.ts`, audit finding M8 (2026-04-18)
+
+### Safety Filter Re-scan on Response Cache Hits
+
+When a cached response is read from the cache, re-run safety checks before serving it. A response may have been cached before a safety filter was added or before safety thresholds were tightened. Skipping the re-scan means dangerous content stays live until the TTL expires.
+
+```typescript
+let cachedResponse = await storage.getCoachCachedResponse(questionHash);
+
+// Re-scan after retrieving from cache — safety thresholds may have changed
+// since the entry was stored (M6 — 2026-04-18)
+if (cachedResponse && containsDangerousDietaryAdvice(cachedResponse)) {
+  cachedResponse = null; // force fresh generation
+}
+```
+
+Also bump the cache version constant (`COACH_CACHE_VERSION`) whenever safety logic changes so all stale entries are cache-missed immediately:
+
+```typescript
+// Bump this string whenever safety filters change — forces cache miss for all
+// existing entries rather than waiting for natural TTL expiry (H5 — 2026-04-18)
+const COACH_CACHE_VERSION = "v2-2026-04-18";
+```
+
+**References:** `server/services/coach-pro-chat.ts` → `hashCoachCacheKey`, `COACH_CACHE_VERSION`, audit finding M6 (2026-04-18)
