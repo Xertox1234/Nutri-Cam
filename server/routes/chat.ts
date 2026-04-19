@@ -293,15 +293,21 @@ export function register(app: Express): void {
         res.setHeader("Connection", "keep-alive");
         res.flushHeaders();
 
-        // Track client disconnect to stop consuming OpenAI tokens
+        // Track client disconnect to stop consuming OpenAI tokens.
+        // AbortController wires the HTTP close event directly into the OpenAI
+        // SDK so in-flight generation is cancelled immediately, not just after
+        // the next chunk boundary. (M8 — 2026-04-18)
+        const abortController = new AbortController();
         let aborted = false;
         req.on("close", () => {
           aborted = true;
+          abortController.abort();
         });
 
         // SSE timeout — prevent hung connections
         const sseTimeout = setTimeout(() => {
           aborted = true;
+          abortController.abort();
           if (!res.writableEnded) {
             res.write(
               `data: ${JSON.stringify({ error: "Response timeout" })}\n\n`,
@@ -436,6 +442,7 @@ export function register(app: Express): void {
                 dailyFatGoal: user.dailyFatGoal,
               },
               isAborted: () => aborted,
+              abortSignal: abortController.signal,
             })) {
               if (aborted) break;
               const eventJson = JSON.stringify(

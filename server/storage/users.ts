@@ -31,6 +31,7 @@ import {
   sql,
   getTableColumns,
 } from "drizzle-orm";
+import { removeFromIndex } from "../lib/search-index";
 
 // ============================================================================
 // USER CRUD
@@ -195,6 +196,12 @@ export async function deleteUser(id: string): Promise<boolean> {
       await tx
         .delete(communityRecipes)
         .where(eq(communityRecipes.authorId, id));
+
+      // M17 (2026-04-18): Evict deleted recipes from the in-memory MiniSearch
+      // index so they stop surfacing in recipe search until the next restart.
+      for (const recipe of orphanedRecipes) {
+        removeFromIndex(`community:${recipe.id}`);
+      }
     }
 
     const result = await tx

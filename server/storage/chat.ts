@@ -215,7 +215,61 @@ export async function createChatMessageWithLimitCheck(
       if (!hasExistingMessage) {
         // First message — check shared recipe+remix generation quota.
         // Count: recipe user messages + distinct remix conversations today.
-        const recipeMessageCount = await tx
+        // M15 (2026-04-18): run both count queries in parallel to halve
+        // advisory-lock hold time.
+        const [recipeMessageCount, remixConvCount] = await Promise.all([
+          tx
+            .select({ count: sql<number>`count(*)` })
+            .from(chatMessages)
+            .innerJoin(
+              chatConversations,
+              eq(chatMessages.conversationId, chatConversations.id),
+            )
+            .where(
+              and(
+                eq(chatConversations.userId, userId),
+                eq(chatConversations.type, "recipe"),
+                eq(chatMessages.role, "user"),
+                gte(chatMessages.createdAt, startOfDay),
+                lt(chatMessages.createdAt, endOfDay),
+              ),
+            ),
+          tx
+            .select({
+              count: sql<number>`count(DISTINCT ${chatConversations.id})`,
+            })
+            .from(chatConversations)
+            .innerJoin(
+              chatMessages,
+              eq(chatMessages.conversationId, chatConversations.id),
+            )
+            .where(
+              and(
+                eq(chatConversations.userId, userId),
+                eq(chatConversations.type, "remix"),
+                eq(chatMessages.role, "user"),
+                gte(chatConversations.createdAt, startOfDay),
+                lt(chatConversations.createdAt, endOfDay),
+              ),
+            ),
+        ]);
+
+        const totalGenerations =
+          Number(recipeMessageCount[0]?.count ?? 0) +
+          Number(remixConvCount[0]?.count ?? 0);
+
+        if (totalGenerations >= dailyLimit) {
+          return null;
+        }
+      }
+      // If hasExistingMessage, skip quota check — refinements are free
+    } else if (conversationType === "recipe") {
+      // Recipe messages share quota with remix conversations.
+      // Count recipe user messages + distinct remix conversations (not remix messages).
+      // M15 (2026-04-18): run both count queries in parallel to halve
+      // advisory-lock hold time.
+      const [recipeMessageCount, remixConvCount] = await Promise.all([
+        tx
           .select({ count: sql<number>`count(*)` })
           .from(chatMessages)
           .innerJoin(
@@ -230,9 +284,8 @@ export async function createChatMessageWithLimitCheck(
               gte(chatMessages.createdAt, startOfDay),
               lt(chatMessages.createdAt, endOfDay),
             ),
-          );
-
-        const remixConvCount = await tx
+          ),
+        tx
           .select({
             count: sql<number>`count(DISTINCT ${chatConversations.id})`,
           })
@@ -249,55 +302,8 @@ export async function createChatMessageWithLimitCheck(
               gte(chatConversations.createdAt, startOfDay),
               lt(chatConversations.createdAt, endOfDay),
             ),
-          );
-
-        const totalGenerations =
-          Number(recipeMessageCount[0]?.count ?? 0) +
-          Number(remixConvCount[0]?.count ?? 0);
-
-        if (totalGenerations >= dailyLimit) {
-          return null;
-        }
-      }
-      // If hasExistingMessage, skip quota check — refinements are free
-    } else if (conversationType === "recipe") {
-      // Recipe messages share quota with remix conversations.
-      // Count recipe user messages + distinct remix conversations (not remix messages).
-      const recipeMessageCount = await tx
-        .select({ count: sql<number>`count(*)` })
-        .from(chatMessages)
-        .innerJoin(
-          chatConversations,
-          eq(chatMessages.conversationId, chatConversations.id),
-        )
-        .where(
-          and(
-            eq(chatConversations.userId, userId),
-            eq(chatConversations.type, "recipe"),
-            eq(chatMessages.role, "user"),
-            gte(chatMessages.createdAt, startOfDay),
-            lt(chatMessages.createdAt, endOfDay),
           ),
-        );
-
-      const remixConvCount = await tx
-        .select({
-          count: sql<number>`count(DISTINCT ${chatConversations.id})`,
-        })
-        .from(chatConversations)
-        .innerJoin(
-          chatMessages,
-          eq(chatMessages.conversationId, chatConversations.id),
-        )
-        .where(
-          and(
-            eq(chatConversations.userId, userId),
-            eq(chatConversations.type, "remix"),
-            eq(chatMessages.role, "user"),
-            gte(chatConversations.createdAt, startOfDay),
-            lt(chatConversations.createdAt, endOfDay),
-          ),
-        );
+      ]);
 
       const totalGenerations =
         Number(recipeMessageCount[0]?.count ?? 0) +
@@ -401,14 +407,25 @@ export async function saveRecipeFromChat(
     // 3. Validate metadata with Zod — no unsafe `as` casts on DB values
     const parsed = recipeChatMetadataSchema.safeParse(msg.metadata);
 
-    // Handle legacy or non-recipe messages: check raw savedRecipeId for idempotency
+    // Handle legacy or non-recipe messages: check raw savedRecipeId for idempotency.
+    // Use parseInt (not Number) to avoid NaN/0 coercion; add authorId ownership filter
+    // so a crafted savedRecipeId cannot surface another user's recipe. (M13 — 2026-04-18)
     const rawMetadata = msg.metadata as Record<string, unknown>;
     if (rawMetadata.savedRecipeId) {
-      const [existing] = await tx
-        .select()
-        .from(communityRecipes)
-        .where(eq(communityRecipes.id, Number(rawMetadata.savedRecipeId)));
-      return existing || null;
+      const legacyId = parseInt(String(rawMetadata.savedRecipeId), 10);
+      if (legacyId > 0) {
+        const [existing] = await tx
+          .select()
+          .from(communityRecipes)
+          .where(
+            and(
+              eq(communityRecipes.id, legacyId),
+              eq(communityRecipes.authorId, userId),
+            ),
+          );
+        return existing || null;
+      }
+      return null;
     }
 
     // 4. Extract validated recipe data from metadata

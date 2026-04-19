@@ -17,10 +17,74 @@
  */
 
 import type { ChatCompletionTool } from "openai/resources/chat/completions";
+import { z } from "zod";
 import { storage } from "../storage";
 import { lookupNutrition } from "./nutrition-lookup";
 import { searchCatalogRecipes } from "./recipe-catalog";
 import { logger } from "../lib/logger";
+
+// ---------------------------------------------------------------------------
+// Per-tool Zod schemas (M11 — 2026-04-18)
+// Validate tool args before dispatch so phantom params never reach handlers.
+// ---------------------------------------------------------------------------
+
+const lookupNutritionSchema = z.object({
+  query: z.string().min(1),
+});
+
+const searchRecipesSchema = z.object({
+  query: z.string().min(1),
+  diet: z.string().optional(),
+  cuisine: z.string().optional(),
+  maxReadyTime: z.number().optional(),
+});
+
+const getDailyLogDetailsSchema = z.object({
+  date: z.string().optional(),
+});
+
+const logFoodItemSchema = z.object({
+  name: z.string().min(1),
+  calories: z.number().nonnegative(),
+  protein: z.number().nonnegative().optional(),
+  carbs: z.number().nonnegative().optional(),
+  fat: z.number().nonnegative().optional(),
+  servingSize: z.string().optional(),
+});
+
+const getPantryItemsSchema = z.object({
+  expiringWithinDays: z.number().optional(),
+});
+
+const getMealPlanSchema = z.object({
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+});
+
+const addToMealPlanSchema = z.object({
+  plannedDate: z.string().optional(),
+  mealType: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+const addToGroceryListSchema = z.object({
+  listName: z.string().optional(),
+  items: z
+    .array(
+      z.object({
+        name: z.string(),
+        quantity: z.string().optional(),
+        unit: z.string().optional(),
+      }),
+    )
+    .optional(),
+});
+
+const getSubstitutionsSchema = z.object({
+  ingredients: z
+    .array(z.object({ name: z.string(), unit: z.string().optional() }))
+    .optional(),
+});
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -323,10 +387,15 @@ export async function executeToolCall(
 
   switch (toolName) {
     case "lookup_nutrition": {
-      const query = String(args.query ?? "");
-      const result = await lookupNutrition(query);
+      const parsed = lookupNutritionSchema.safeParse(args);
+      if (!parsed.success) {
+        return {
+          error: `Invalid lookup_nutrition args: ${parsed.error.message}`,
+        };
+      }
+      const result = await lookupNutrition(parsed.data.query);
       if (!result) {
-        return { error: `No nutrition data found for "${query}"` };
+        return { error: `No nutrition data found for "${parsed.data.query}"` };
       }
       return result;
     }
@@ -369,16 +438,20 @@ export async function executeToolCall(
     }
 
     case "log_food_item": {
+      const parsed = logFoodItemSchema.safeParse(args);
+      if (!parsed.success) {
+        return { error: `Invalid log_food_item args: ${parsed.error.message}` };
+      }
       // Return proposal — client renders as action card for user confirmation
       return {
         proposal: true,
         action: "log_food",
-        description: String(args.name ?? args.description ?? ""),
-        calories: Number(args.calories ?? 0),
-        protein: Number(args.protein ?? 0),
-        carbs: Number(args.carbs ?? 0),
-        fat: Number(args.fat ?? 0),
-        mealType: args.mealType ? String(args.mealType) : undefined,
+        description: parsed.data.name,
+        calories: parsed.data.calories,
+        protein: parsed.data.protein ?? 0,
+        carbs: parsed.data.carbs ?? 0,
+        fat: parsed.data.fat ?? 0,
+        servingSize: parsed.data.servingSize,
         message:
           "I've prepared this to log. Please confirm by tapping 'Log it' below.",
       };
