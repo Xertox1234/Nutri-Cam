@@ -21,6 +21,8 @@ vi.mock("../../storage", () => ({
       .mockResolvedValue({ list: { id: 1 }, items: [{ id: 1 }] }),
     getGroceryLists: vi.fn().mockResolvedValue({ lists: [], total: 0 }),
     createScannedItemWithLog: vi.fn().mockResolvedValue({ id: 42 }),
+    // M2: search_recipes now fetches user profile for allergen intolerances
+    getUserProfile: vi.fn().mockResolvedValue(null),
   },
 }));
 

@@ -21,18 +21,30 @@ export function validateBlocks(rawBlocks: unknown[]): CoachBlock[] {
   return valid;
 }
 
+/** Maximum length of content scanned for coach_blocks fences (defense-in-depth
+ *  against theoretical ReDoS on unterminated fences). Responses are already
+ *  capped at 1500 tokens upstream, but this explicit guard makes the limit
+ *  local and auditable. L4 — 2026-04-18. */
+const MAX_BLOCKS_CONTENT_LENGTH = 16_000;
+
 export function parseBlocksFromContent(content: string): {
   text: string;
   blocks: CoachBlock[];
 } {
+  // L4: cap length before running the regex to bound backtracking on
+  // unterminated fences.
+  const safeContent =
+    content.length > MAX_BLOCKS_CONTENT_LENGTH
+      ? content.slice(0, MAX_BLOCKS_CONTENT_LENGTH)
+      : content;
   const blockPattern = /```coach_blocks\n([\s\S]*?)```/;
-  const match = content.match(blockPattern);
+  const match = safeContent.match(blockPattern);
 
   if (!match) {
-    return { text: content.trim(), blocks: [] };
+    return { text: safeContent.trim(), blocks: [] };
   }
 
-  const text = content.replace(blockPattern, "").trim();
+  const text = safeContent.replace(blockPattern, "").trim();
 
   try {
     const rawBlocks = JSON.parse(match[1]);

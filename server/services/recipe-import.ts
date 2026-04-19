@@ -25,7 +25,24 @@ const schemaOrgRecipeSchema = z.object({
   "@type": z.union([z.literal("Recipe"), z.array(z.string())]),
   name: z.string(),
   description: z.string().optional(),
-  image: z.union([z.string(), z.array(z.string())]).optional(),
+  image: z
+    .union([
+      z
+        .string()
+        .url()
+        .refine((u) => /^https?:\/\//i.test(u), {
+          message: "image URL must use http or https",
+        }),
+      z.array(
+        z
+          .string()
+          .url()
+          .refine((u) => /^https?:\/\//i.test(u), {
+            message: "image URL must use http or https",
+          }),
+      ),
+    ])
+    .optional(),
   recipeIngredient: z.array(z.string()).optional(),
   recipeInstructions: z
     .union([z.string(), z.array(z.union([z.string(), howToStepSchema]))])
@@ -134,11 +151,25 @@ export function parseIngredientString(raw: string): ParsedIngredient {
 
 /**
  * Extract numeric value from nutrition string (e.g., "250 calories" → "250").
+ *
+ * Handles kJ → kcal conversion: "1046 kJ" → "250" (÷ 4.184, rounded).
+ * Logs a warning for negative values (returns null instead of storing them).
  */
 function parseNutritionValue(value: string | undefined): string | null {
   if (!value) return null;
-  const match = value.match(/([\d.]+)/);
-  return match ? match[1] : null;
+  const match = value.match(/([\d.]+)\s*(kJ|KJ)?/i);
+  if (!match) return null;
+  let num = parseFloat(match[1]);
+  if (!Number.isFinite(num)) return null;
+  if (num < 0) {
+    log.warn({ value }, "negative nutrition value in LD+JSON — ignoring");
+    return null;
+  }
+  // Convert kilojoules to kilocalories
+  if (match[2]) {
+    num = Math.round(num / 4.184);
+  }
+  return String(num);
 }
 
 function extractFirstString(val: string | string[] | undefined): string | null {

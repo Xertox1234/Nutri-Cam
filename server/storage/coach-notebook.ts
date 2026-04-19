@@ -10,6 +10,7 @@ import type {
 import { db } from "../db";
 import { logger } from "../lib/logger";
 import { eq, and, desc, lte, sql, inArray } from "drizzle-orm";
+import { createHash } from "crypto";
 
 export async function getActiveNotebookEntries(
   userId: string,
@@ -59,11 +60,15 @@ export async function createNotebookEntries(
     (e) => e.dedupeKey == null || e.dedupeKey === "",
   ).length;
   if (missingDedupeKey > 0) {
-    const userId = clamped.find((e) => e.userId)?.userId;
+    const rawUserId = clamped.find((e) => e.userId)?.userId;
+    // M4: hash the userId before logging to avoid PII in log aggregators.
+    const userIdHash = rawUserId
+      ? createHash("sha256").update(rawUserId).digest("hex").slice(0, 12)
+      : undefined;
     logger.warn(
       {
         reason: "coach_notebook.dedupeKey_missing",
-        userId,
+        userIdHash,
         missingDedupeKey,
         totalEntries: clamped.length,
       },

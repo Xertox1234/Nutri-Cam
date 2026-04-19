@@ -332,11 +332,21 @@ export async function executeToolCall(
     }
 
     case "search_recipes": {
+      // M2: resolve user allergens and pass as intolerances so Spoonacular
+      // filters them out — AI exclusion prompts are insufficient alone.
+      const profile = await storage.getUserProfile(userId);
+      const allergyNames = (
+        (profile?.allergies as { name: string }[] | null) ?? []
+      )
+        .map((a) => a?.name)
+        .filter(Boolean);
       const result = await searchCatalogRecipes({
         query: String(args.query ?? ""),
         diet: args.diet ? String(args.diet) : undefined,
         cuisine: args.cuisine ? String(args.cuisine) : undefined,
         maxReadyTime: args.maxReadyTime ? Number(args.maxReadyTime) : undefined,
+        intolerances:
+          allergyNames.length > 0 ? allergyNames.join(",") : undefined,
         number: 5,
       });
       return { results: result.results };

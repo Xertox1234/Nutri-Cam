@@ -12,6 +12,7 @@ import { eq, desc, and, gte, lt, sql } from "drizzle-orm";
 import { getDayBounds } from "./helpers";
 import { recipeChatMetadataSchema } from "@shared/schemas/recipe-chat";
 import { inferMealTypes } from "../lib/meal-type-inference";
+import { logger } from "../lib/logger";
 
 // ============================================================================
 // CHAT CONVERSATIONS
@@ -480,10 +481,13 @@ export async function getCoachCachedResponse(
   if (!cached) return null;
 
   // Fire-and-forget hit count increment
+  // L1: log errors instead of silencing them indefinitely.
   db.update(coachResponseCache)
     .set({ hitCount: sql`${coachResponseCache.hitCount} + 1` })
     .where(eq(coachResponseCache.id, cached.id))
-    .catch(() => {});
+    .catch((err: unknown) => {
+      logger.error({ err }, "coach cache hit-count update failed");
+    });
 
   return cached.response;
 }

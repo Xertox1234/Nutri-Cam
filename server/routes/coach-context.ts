@@ -129,6 +129,17 @@ export function register(app: Express): void {
           );
         }
 
+        // M3: Only coach-type conversations support warm-up. Warming a
+        // recipe/remix conversation wastes the user's slot — reject it.
+        if (conversation.type !== "coach") {
+          return sendError(
+            res,
+            400,
+            "Warm-up is only supported for coach conversations",
+            ErrorCode.VALIDATION_ERROR,
+          );
+        }
+
         // Pre-fetch conversation history
         const messages = await storage.getChatMessages(conversationId, 20);
         const prepared = messages.map((m) => ({
