@@ -498,6 +498,8 @@ export const communityRecipes = pgTable(
     ingredients: jsonb("ingredients")
       .$type<{ name: string; quantity: string; unit: string }[]>()
       .default([]),
+    // text (not decimal) mirrors scannedItems.calories convention — values parsed
+    // and validated (>= 0) at the application boundary via parseNutritionValue().
     caloriesPerServing: text("calories_per_serving"),
     proteinPerServing: text("protein_per_serving"),
     carbsPerServing: text("carbs_per_serving"),

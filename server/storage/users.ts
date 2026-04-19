@@ -175,14 +175,17 @@ export async function incrementTokenVersion(
  * Community recipes (which use SET NULL) are explicitly deleted first.
  */
 export async function deleteUser(id: string): Promise<boolean> {
-  return db.transaction(async (tx) => {
-    // Community recipes use onDelete: "set null" so they must be explicitly removed.
-    // Also clean up any cookbook junction rows referencing those recipes.
-    const orphanedRecipes = await tx
-      .select({ id: communityRecipes.id })
-      .from(communityRecipes)
-      .where(eq(communityRecipes.authorId, id));
+  // Collect recipe IDs before the transaction so we can evict from the
+  // in-memory search index AFTER commit — side effects inside the callback
+  // fire before the transaction commits and can't be rolled back if the
+  // subsequent tx.delete(users) throws. (See docs/patterns/database.md
+  // "Side-Effect Ordering Around db.transaction".)
+  const orphanedRecipes = await db
+    .select({ id: communityRecipes.id })
+    .from(communityRecipes)
+    .where(eq(communityRecipes.authorId, id));
 
+  const deleted = await db.transaction(async (tx) => {
     if (orphanedRecipes.length > 0) {
       const recipeIds = orphanedRecipes.map((r) => r.id);
       await tx
@@ -196,12 +199,6 @@ export async function deleteUser(id: string): Promise<boolean> {
       await tx
         .delete(communityRecipes)
         .where(eq(communityRecipes.authorId, id));
-
-      // M17 (2026-04-18): Evict deleted recipes from the in-memory MiniSearch
-      // index so they stop surfacing in recipe search until the next restart.
-      for (const recipe of orphanedRecipes) {
-        removeFromIndex(`community:${recipe.id}`);
-      }
     }
 
     const result = await tx
@@ -210,6 +207,16 @@ export async function deleteUser(id: string): Promise<boolean> {
       .returning({ id: users.id });
     return result.length > 0;
   });
+
+  // Post-commit: evict deleted recipes from the MiniSearch index so they
+  // stop surfacing in search results. Only fires when the transaction succeeded.
+  if (deleted && orphanedRecipes.length > 0) {
+    for (const recipe of orphanedRecipes) {
+      removeFromIndex(`community:${recipe.id}`);
+    }
+  }
+
+  return deleted;
 }
 
 // ============================================================================
