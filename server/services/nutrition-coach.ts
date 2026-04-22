@@ -380,7 +380,9 @@ export async function* generateCoachProResponse(
           return {
             tc,
             result: {
-              error: `Tool ${tc.function.name} is temporarily unavailable`,
+              error: true,
+              code: "SERVICE_UNAVAILABLE",
+              message: `${tc.function.name} is temporarily unavailable`,
             },
           };
         }

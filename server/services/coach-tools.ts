@@ -24,6 +24,37 @@ import { searchCatalogRecipes } from "./recipe-catalog";
 import { logger } from "../lib/logger";
 
 // ---------------------------------------------------------------------------
+// Structured error type returned by all tool call paths.
+// The `code` field lets the model distinguish arg errors from service failures.
+// ---------------------------------------------------------------------------
+
+export type ToolErrorResult = {
+  error: true;
+  code: "INVALID_ARGS" | "NOT_FOUND" | "SERVICE_UNAVAILABLE";
+  message: string;
+};
+
+function invalidArgs(toolName: string, message: string): ToolErrorResult {
+  return {
+    error: true,
+    code: "INVALID_ARGS",
+    message: `${toolName}: ${message}`,
+  };
+}
+
+function notFound(message: string): ToolErrorResult {
+  return { error: true, code: "NOT_FOUND", message };
+}
+
+function serviceUnavailable(toolName: string): ToolErrorResult {
+  return {
+    error: true,
+    code: "SERVICE_UNAVAILABLE",
+    message: `${toolName} is temporarily unavailable`,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Per-tool Zod schemas (M11 — 2026-04-18)
 // Validate tool args before dispatch so phantom params never reach handlers.
 // ---------------------------------------------------------------------------
@@ -389,13 +420,11 @@ export async function executeToolCall(
     case "lookup_nutrition": {
       const parsed = lookupNutritionSchema.safeParse(args);
       if (!parsed.success) {
-        return {
-          error: `Invalid lookup_nutrition args: ${parsed.error.message}`,
-        };
+        return invalidArgs("lookup_nutrition", parsed.error.message);
       }
       const result = await lookupNutrition(parsed.data.query);
       if (!result) {
-        return { error: `No nutrition data found for "${parsed.data.query}"` };
+        return notFound(`No nutrition data found for "${parsed.data.query}"`);
       }
       return result;
     }
@@ -403,9 +432,7 @@ export async function executeToolCall(
     case "search_recipes": {
       const parsed = searchRecipesSchema.safeParse(args);
       if (!parsed.success) {
-        return {
-          error: `Invalid search_recipes args: ${parsed.error.message}`,
-        };
+        return invalidArgs("search_recipes", parsed.error.message);
       }
       // M2: resolve user allergens and pass as intolerances so Spoonacular
       // filters them out — AI exclusion prompts are insufficient alone.
@@ -430,9 +457,7 @@ export async function executeToolCall(
     case "get_daily_log_details": {
       const parsed = getDailyLogDetailsSchema.safeParse(args);
       if (!parsed.success) {
-        return {
-          error: `Invalid get_daily_log_details args: ${parsed.error.message}`,
-        };
+        return invalidArgs("get_daily_log_details", parsed.error.message);
       }
       const date = parsed.data.date ? new Date(parsed.data.date) : new Date();
 
@@ -451,7 +476,7 @@ export async function executeToolCall(
     case "log_food_item": {
       const parsed = logFoodItemSchema.safeParse(args);
       if (!parsed.success) {
-        return { error: `Invalid log_food_item args: ${parsed.error.message}` };
+        return invalidArgs("log_food_item", parsed.error.message);
       }
       // Return proposal — client renders as action card for user confirmation
       return {
@@ -471,9 +496,7 @@ export async function executeToolCall(
     case "get_pantry_items": {
       const parsed = getPantryItemsSchema.safeParse(args);
       if (!parsed.success) {
-        return {
-          error: `Invalid get_pantry_items args: ${parsed.error.message}`,
-        };
+        return invalidArgs("get_pantry_items", parsed.error.message);
       }
       const { expiringWithinDays } = parsed.data;
       if (expiringWithinDays !== undefined) {
@@ -491,7 +514,7 @@ export async function executeToolCall(
     case "get_meal_plan": {
       const parsed = getMealPlanSchema.safeParse(args);
       if (!parsed.success) {
-        return { error: `Invalid get_meal_plan args: ${parsed.error.message}` };
+        return invalidArgs("get_meal_plan", parsed.error.message);
       }
       const today = new Date().toISOString().split("T")[0];
       const startDate = parsed.data.startDate ?? today;
@@ -509,9 +532,7 @@ export async function executeToolCall(
     case "add_to_meal_plan": {
       const parsed = addToMealPlanSchema.safeParse(args);
       if (!parsed.success) {
-        return {
-          error: `Invalid add_to_meal_plan args: ${parsed.error.message}`,
-        };
+        return invalidArgs("add_to_meal_plan", parsed.error.message);
       }
       // Return proposal — client renders as meal plan card for user confirmation
       return {
@@ -528,9 +549,7 @@ export async function executeToolCall(
     case "add_to_grocery_list": {
       const parsed = addToGroceryListSchema.safeParse(args);
       if (!parsed.success) {
-        return {
-          error: `Invalid add_to_grocery_list args: ${parsed.error.message}`,
-        };
+        return invalidArgs("add_to_grocery_list", parsed.error.message);
       }
       // Return proposal — client renders for user confirmation
       return {
@@ -550,9 +569,7 @@ export async function executeToolCall(
     case "get_substitutions": {
       const parsed = getSubstitutionsSchema.safeParse(args);
       if (!parsed.success) {
-        return {
-          error: `Invalid get_substitutions args: ${parsed.error.message}`,
-        };
+        return invalidArgs("get_substitutions", parsed.error.message);
       }
       // Lazy import to avoid circular dependency with recipe-catalog
       const { getSubstitutions } = await import("./ingredient-substitution");
