@@ -126,8 +126,8 @@ function buildSystemPrompt(
   }
 
   // Inject current time so the model can suggest contextually appropriate meals
-  const hours = now.getHours();
-  const minutes = now.getMinutes().toString().padStart(2, "0");
+  const hours = now.getUTCHours();
+  const minutes = now.getUTCMinutes().toString().padStart(2, "0");
   const period = hours >= 12 ? "PM" : "AM";
   const displayHour = hours % 12 || 12;
   parts.push(`Current time: ${displayHour}:${minutes} ${period}`);

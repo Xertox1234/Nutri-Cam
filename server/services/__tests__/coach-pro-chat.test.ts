@@ -59,10 +59,14 @@ vi.mock("../notebook-extraction", () => ({
   extractNotebookEntries: vi.fn().mockResolvedValue([]),
 }));
 
-vi.mock("../../lib/ai-safety", () => ({
-  sanitizeContextField: vi.fn((text: string) => text),
-  containsDangerousDietaryAdvice: vi.fn().mockReturnValue(false),
-}));
+vi.mock("../../lib/ai-safety", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../lib/ai-safety")>();
+  return {
+    ...actual,
+    sanitizeContextField: vi.fn((text: string) => text),
+    containsDangerousDietaryAdvice: vi.fn().mockReturnValue(false),
+  };
+});
 
 vi.mock("../../lib/fire-and-forget", () => ({
   fireAndForget: vi.fn((_label: string, promise: Promise<unknown>) => {
@@ -746,5 +750,19 @@ describe("shouldRunArchive (time-gated archiveOldEntries)", () => {
     expect(coachProInternals.shouldRunArchive("user-b", now)).toBe(true);
     expect(coachProInternals.shouldRunArchive("user-a", now)).toBe(false);
     expect(coachProInternals.shouldRunArchive("user-b", now)).toBe(false);
+  });
+});
+
+describe("getSystemPromptTemplateVersion (real implementation)", () => {
+  it("returns a stable 16-char hex string", async () => {
+    // Use the real module, not the mocked one
+    const { getSystemPromptTemplateVersion } =
+      await vi.importActual<typeof import("../nutrition-coach")>(
+        "../nutrition-coach",
+      );
+    const v1 = getSystemPromptTemplateVersion();
+    const v2 = getSystemPromptTemplateVersion();
+    expect(v1).toMatch(/^[0-9a-f]{16}$/);
+    expect(v1).toBe(v2);
   });
 });
