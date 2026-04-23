@@ -756,8 +756,8 @@ describe("shouldRunArchive (time-gated archiveOldEntries)", () => {
 describe("tryArchiveNotebook", () => {
   it("calls archiveOldEntries when throttle allows", async () => {
     const { tryArchiveNotebook } = await import("../coach-pro-chat");
-    // Clear the in-memory throttle state for this user
-    coachProInternals.lastArchivedAt.delete("user-archive-test");
+    // Clear the in-memory throttle state — tryArchiveNotebook uses "open:" prefix
+    coachProInternals.lastArchivedAt.delete("open:user-archive-test");
 
     await tryArchiveNotebook("user-archive-test");
 
@@ -769,8 +769,8 @@ describe("tryArchiveNotebook", () => {
 
   it("does not call archiveOldEntries when throttle blocks", async () => {
     const { tryArchiveNotebook } = await import("../coach-pro-chat");
-    // Set last archived to now so throttle blocks
-    coachProInternals.lastArchivedAt.set("user-throttled", Date.now());
+    // Set last archived to now so throttle blocks — tryArchiveNotebook uses "open:" prefix
+    coachProInternals.lastArchivedAt.set("open:user-throttled", Date.now());
 
     vi.mocked(storage.archiveOldEntries).mockClear();
     await tryArchiveNotebook("user-throttled");

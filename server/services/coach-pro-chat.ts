@@ -191,7 +191,7 @@ export const _testInternals = {
  * it to once per 24h per user.
  */
 export async function tryArchiveNotebook(userId: string): Promise<void> {
-  if (!shouldRunArchive(userId, Date.now())) return;
+  if (!shouldRunArchive(`open:${userId}`, Date.now())) return;
   await storage.archiveOldEntries(userId, 30);
 }
 

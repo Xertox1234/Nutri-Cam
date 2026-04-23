@@ -264,7 +264,7 @@ export default function RecipeChatScreen() {
             <RecipeCard
               recipe={recipe}
               allergenWarning={allergenWarning}
-              isImageLoading={isStreaming_ && !recipe.imageUrl}
+              isImageLoading={isStreaming_ && recipe.imageUrl === undefined}
               isSaved={isAlreadySaved}
               isSaving={
                 saveRecipeMutation.isPending && !isAlreadySaved && !isStreaming_

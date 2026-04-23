@@ -413,7 +413,7 @@ export async function executeToolCall(
   toolName: string,
   args: ToolArgs,
   userId: string,
-): Promise<unknown> {
+): Promise<ToolErrorResult | object> {
   logger.debug({ toolName, userId }, "Executing coach tool call");
 
   switch (toolName) {
