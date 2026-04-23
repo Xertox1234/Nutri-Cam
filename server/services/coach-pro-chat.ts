@@ -186,6 +186,16 @@ export const _testInternals = {
 };
 
 /**
+ * Run notebook archival for a user if the per-user throttle allows it.
+ * Safe to call from any frequent handler — the in-memory throttle gates
+ * it to once per 24h per user.
+ */
+export async function tryArchiveNotebook(userId: string): Promise<void> {
+  if (!shouldRunArchive(userId, Date.now())) return;
+  await storage.archiveOldEntries(userId, 30);
+}
+
+/**
  * Orchestrates the coach chat response — yields SSE events for the route
  * handler to write, handles persistence and side-effects internally.
  */

@@ -753,6 +753,32 @@ describe("shouldRunArchive (time-gated archiveOldEntries)", () => {
   });
 });
 
+describe("tryArchiveNotebook", () => {
+  it("calls archiveOldEntries when throttle allows", async () => {
+    const { tryArchiveNotebook } = await import("../coach-pro-chat");
+    // Clear the in-memory throttle state for this user
+    coachProInternals.lastArchivedAt.delete("user-archive-test");
+
+    await tryArchiveNotebook("user-archive-test");
+
+    expect(storage.archiveOldEntries).toHaveBeenCalledWith(
+      "user-archive-test",
+      30,
+    );
+  });
+
+  it("does not call archiveOldEntries when throttle blocks", async () => {
+    const { tryArchiveNotebook } = await import("../coach-pro-chat");
+    // Set last archived to now so throttle blocks
+    coachProInternals.lastArchivedAt.set("user-throttled", Date.now());
+
+    vi.mocked(storage.archiveOldEntries).mockClear();
+    await tryArchiveNotebook("user-throttled");
+
+    expect(storage.archiveOldEntries).not.toHaveBeenCalled();
+  });
+});
+
 describe("getSystemPromptTemplateVersion (real implementation)", () => {
   it("returns a stable 16-char hex string", async () => {
     // Use the real module, not the mocked one

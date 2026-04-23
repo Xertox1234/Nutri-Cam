@@ -22,7 +22,10 @@ import {
 } from "../services/recipe-chat";
 import { remixConversationMetadataSchema } from "@shared/schemas/recipe-chat";
 import { logger, toError } from "../lib/logger";
-import { handleCoachChat } from "../services/coach-pro-chat";
+import {
+  handleCoachChat,
+  tryArchiveNotebook,
+} from "../services/coach-pro-chat";
 
 const SSE_TIMEOUT_MS = 120_000; // 2 minutes max per SSE connection
 const SSE_MAX_RESPONSE_BYTES = 50 * 1024; // 50KB max response size
@@ -186,6 +189,10 @@ export function register(app: Express): void {
           );
 
         const messages = await storage.getChatMessages(id, 100);
+        fireAndForget(
+          "coach-notebook-archival",
+          tryArchiveNotebook(req.userId),
+        );
         res.json(messages);
       } catch (error) {
         handleRouteError(res, error, "fetch messages");
