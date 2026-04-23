@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { setWarmUp, consumeWarmUp, WARM_UP_TTL_MS } from "../coach-warm-up";
 
 vi.mock("../../lib/logger", () => ({
@@ -8,6 +8,8 @@ vi.mock("../../lib/logger", () => ({
     warn: vi.fn(),
     error: vi.fn(),
   }),
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  toError: (e: unknown) => (e instanceof Error ? e : new Error(String(e))),
 }));
 
 describe("consumeWarmUp", () => {
@@ -16,6 +18,10 @@ describe("consumeWarmUp", () => {
   beforeEach(() => {
     // Consume any stale entry to isolate tests
     consumeWarmUp("user1", 1, "stale");
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("returns messages when warm-up exists and id matches", () => {
