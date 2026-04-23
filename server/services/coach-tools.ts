@@ -17,10 +17,105 @@
  */
 
 import type { ChatCompletionTool } from "openai/resources/chat/completions";
+import { z } from "zod";
 import { storage } from "../storage";
 import { lookupNutrition } from "./nutrition-lookup";
 import { searchCatalogRecipes } from "./recipe-catalog";
 import { logger } from "../lib/logger";
+
+// ---------------------------------------------------------------------------
+// Structured error type returned by all tool call paths.
+// The `code` field lets the model distinguish arg errors from service failures.
+// ---------------------------------------------------------------------------
+
+export type ToolErrorResult = {
+  error: true;
+  code: "INVALID_ARGS" | "NOT_FOUND" | "SERVICE_UNAVAILABLE";
+  message: string;
+};
+
+function invalidArgs(toolName: string, message: string): ToolErrorResult {
+  return {
+    error: true,
+    code: "INVALID_ARGS",
+    message: `${toolName}: ${message}`,
+  };
+}
+
+function notFound(message: string): ToolErrorResult {
+  return { error: true, code: "NOT_FOUND", message };
+}
+
+export function serviceUnavailable(toolName: string): ToolErrorResult {
+  return {
+    error: true,
+    code: "SERVICE_UNAVAILABLE",
+    message: `${toolName} is temporarily unavailable`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Per-tool Zod schemas (M11 — 2026-04-18)
+// Validate tool args before dispatch so phantom params never reach handlers.
+// ---------------------------------------------------------------------------
+
+const lookupNutritionSchema = z.object({
+  query: z.string().min(1),
+});
+
+const searchRecipesSchema = z.object({
+  query: z.string().min(1),
+  diet: z.string().optional(),
+  cuisine: z.string().optional(),
+  maxReadyTime: z.number().optional(),
+});
+
+const getDailyLogDetailsSchema = z.object({
+  date: z.string().optional(),
+});
+
+const logFoodItemSchema = z.object({
+  name: z.string().min(1),
+  calories: z.number().nonnegative(),
+  protein: z.number().nonnegative().optional(),
+  carbs: z.number().nonnegative().optional(),
+  fat: z.number().nonnegative().optional(),
+  servingSize: z.string().optional(),
+});
+
+const getPantryItemsSchema = z.object({
+  expiringWithinDays: z.number().optional(),
+});
+
+const getMealPlanSchema = z.object({
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+});
+
+const addToMealPlanSchema = z.object({
+  plannedDate: z.string().optional(),
+  mealType: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+const addToGroceryListSchema = z.object({
+  listName: z.string().optional(),
+  items: z
+    .array(
+      z.object({
+        name: z.string(),
+        quantity: z.string().optional(),
+        unit: z.string().optional(),
+      }),
+    )
+    .optional(),
+});
+
+const getSubstitutionsSchema = z.object({
+  ingredients: z
+    .array(z.object({ name: z.string(), unit: z.string().optional() }))
+    .optional(),
+});
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -318,33 +413,53 @@ export async function executeToolCall(
   toolName: string,
   args: ToolArgs,
   userId: string,
-): Promise<unknown> {
+): Promise<ToolErrorResult | object> {
   logger.debug({ toolName, userId }, "Executing coach tool call");
 
   switch (toolName) {
     case "lookup_nutrition": {
-      const query = String(args.query ?? "");
-      const result = await lookupNutrition(query);
+      const parsed = lookupNutritionSchema.safeParse(args);
+      if (!parsed.success) {
+        return invalidArgs("lookup_nutrition", parsed.error.message);
+      }
+      const result = await lookupNutrition(parsed.data.query);
       if (!result) {
-        return { error: `No nutrition data found for "${query}"` };
+        return notFound(`No nutrition data found for "${parsed.data.query}"`);
       }
       return result;
     }
 
     case "search_recipes": {
+      const parsed = searchRecipesSchema.safeParse(args);
+      if (!parsed.success) {
+        return invalidArgs("search_recipes", parsed.error.message);
+      }
+      // M2: resolve user allergens and pass as intolerances so Spoonacular
+      // filters them out — AI exclusion prompts are insufficient alone.
+      const profile = await storage.getUserProfile(userId);
+      const allergyNames = (
+        (profile?.allergies as { name: string }[] | null) ?? []
+      )
+        .map((a) => a?.name)
+        .filter(Boolean);
       const result = await searchCatalogRecipes({
-        query: String(args.query ?? ""),
-        diet: args.diet ? String(args.diet) : undefined,
-        cuisine: args.cuisine ? String(args.cuisine) : undefined,
-        maxReadyTime: args.maxReadyTime ? Number(args.maxReadyTime) : undefined,
+        query: parsed.data.query,
+        diet: parsed.data.diet,
+        cuisine: parsed.data.cuisine,
+        maxReadyTime: parsed.data.maxReadyTime,
+        intolerances:
+          allergyNames.length > 0 ? allergyNames.join(",") : undefined,
         number: 5,
       });
       return { results: result.results };
     }
 
     case "get_daily_log_details": {
-      const dateStr = args.date ? String(args.date) : undefined;
-      const date = dateStr ? new Date(dateStr) : new Date();
+      const parsed = getDailyLogDetailsSchema.safeParse(args);
+      if (!parsed.success) {
+        return invalidArgs("get_daily_log_details", parsed.error.message);
+      }
+      const date = parsed.data.date ? new Date(parsed.data.date) : new Date();
 
       const [logs, totals] = await Promise.all([
         storage.getDailyLogs(userId, date),
@@ -359,26 +474,31 @@ export async function executeToolCall(
     }
 
     case "log_food_item": {
+      const parsed = logFoodItemSchema.safeParse(args);
+      if (!parsed.success) {
+        return invalidArgs("log_food_item", parsed.error.message);
+      }
       // Return proposal — client renders as action card for user confirmation
       return {
         proposal: true,
         action: "log_food",
-        description: String(args.name ?? args.description ?? ""),
-        calories: Number(args.calories ?? 0),
-        protein: Number(args.protein ?? 0),
-        carbs: Number(args.carbs ?? 0),
-        fat: Number(args.fat ?? 0),
-        mealType: args.mealType ? String(args.mealType) : undefined,
+        description: parsed.data.name,
+        calories: parsed.data.calories,
+        protein: parsed.data.protein ?? 0,
+        carbs: parsed.data.carbs ?? 0,
+        fat: parsed.data.fat ?? 0,
+        servingSize: parsed.data.servingSize,
         message:
           "I've prepared this to log. Please confirm by tapping 'Log it' below.",
       };
     }
 
     case "get_pantry_items": {
-      const expiringWithinDays = args.expiringWithinDays
-        ? Number(args.expiringWithinDays)
-        : undefined;
-
+      const parsed = getPantryItemsSchema.safeParse(args);
+      if (!parsed.success) {
+        return invalidArgs("get_pantry_items", parsed.error.message);
+      }
+      const { expiringWithinDays } = parsed.data;
       if (expiringWithinDays !== undefined) {
         const items = await storage.getExpiringPantryItems(
           userId,
@@ -392,73 +512,79 @@ export async function executeToolCall(
     }
 
     case "get_meal_plan": {
+      const parsed = getMealPlanSchema.safeParse(args);
+      if (!parsed.success) {
+        return invalidArgs("get_meal_plan", parsed.error.message);
+      }
       const today = new Date().toISOString().split("T")[0];
-      const startDate = args.startDate ? String(args.startDate) : today;
+      const startDate = parsed.data.startDate ?? today;
       const defaultEnd = new Date(
         new Date(startDate).getTime() + 6 * 24 * 60 * 60 * 1000,
       )
         .toISOString()
         .split("T")[0];
-      const endDate = args.endDate ? String(args.endDate) : defaultEnd;
+      const endDate = parsed.data.endDate ?? defaultEnd;
 
       const items = await storage.getMealPlanItems(userId, startDate, endDate);
       return { startDate, endDate, items };
     }
 
     case "add_to_meal_plan": {
+      const parsed = addToMealPlanSchema.safeParse(args);
+      if (!parsed.success) {
+        return invalidArgs("add_to_meal_plan", parsed.error.message);
+      }
       // Return proposal — client renders as meal plan card for user confirmation
       return {
         proposal: true,
         action: "add_meal_plan",
-        plannedDate: String(
-          args.plannedDate ?? new Date().toISOString().split("T")[0],
-        ),
-        mealType: String(args.mealType ?? "lunch"),
-        notes: args.notes ? String(args.notes) : undefined,
+        plannedDate:
+          parsed.data.plannedDate ?? new Date().toISOString().split("T")[0],
+        mealType: parsed.data.mealType ?? "lunch",
+        notes: parsed.data.notes,
         message: "I've prepared this meal plan addition. Please confirm below.",
       };
     }
 
     case "add_to_grocery_list": {
+      const parsed = addToGroceryListSchema.safeParse(args);
+      if (!parsed.success) {
+        return invalidArgs("add_to_grocery_list", parsed.error.message);
+      }
       // Return proposal — client renders for user confirmation
-      const rawItems = Array.isArray(args.items) ? args.items : [];
       return {
         proposal: true,
         action: "add_grocery_list",
-        listName: args.listName ? String(args.listName) : "Coach Grocery List",
-        items: rawItems.map((i: unknown) => {
-          const item = i as Record<string, unknown>;
-          return {
-            name: String(item.name ?? ""),
-            quantity: item.quantity ? String(item.quantity) : null,
-            unit: item.unit ? String(item.unit) : null,
-          };
-        }),
+        listName: parsed.data.listName ?? "Coach Grocery List",
+        items: (parsed.data.items ?? []).map((i) => ({
+          name: i.name,
+          quantity: i.quantity ?? null,
+          unit: i.unit ?? null,
+        })),
         message:
           "Here are the items I'd add to your grocery list. Please confirm below.",
       };
     }
 
     case "get_substitutions": {
+      const parsed = getSubstitutionsSchema.safeParse(args);
+      if (!parsed.success) {
+        return invalidArgs("get_substitutions", parsed.error.message);
+      }
       // Lazy import to avoid circular dependency with recipe-catalog
       const { getSubstitutions } = await import("./ingredient-substitution");
-      const rawIngredients = Array.isArray(args.ingredients)
-        ? args.ingredients
-        : [];
+      const rawIngredients = parsed.data.ingredients ?? [];
 
-      const ingredients = rawIngredients.map((i: unknown, index: number) => {
-        const item = i as Record<string, unknown>;
-        return {
-          id: String(index + 1),
-          name: String(item.name ?? ""),
-          quantity: 1,
-          unit: item.unit ? String(item.unit) : "",
-          confidence: 1,
-          category: "other" as const,
-          photoId: "",
-          userEdited: false,
-        };
-      });
+      const ingredients = rawIngredients.map((item, index) => ({
+        id: String(index + 1),
+        name: item.name,
+        quantity: 1,
+        unit: item.unit ?? "",
+        confidence: 1,
+        category: "other" as const,
+        photoId: "",
+        userEdited: false,
+      }));
 
       const result = await getSubstitutions(ingredients, null);
       return result;

@@ -180,6 +180,13 @@ export function useSendMessage(conversationId: number | null) {
                   );
                 }
 
+                // Image unavailable — server confirmed no image will arrive
+                if (data.imageUnavailable) {
+                  setStreamingRecipe((prev) =>
+                    prev ? { ...prev, imageUrl: null } : null,
+                  );
+                }
+
                 // Text content chunk
                 if (data.content) {
                   streamingContentRef.current += data.content;

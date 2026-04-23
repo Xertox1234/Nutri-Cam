@@ -269,6 +269,10 @@ export async function getAllPublicCommunityRecipes(): Promise<
       mealTypes: communityRecipes.mealTypes,
       difficulty: communityRecipes.difficulty,
       servings: communityRecipes.servings,
+      caloriesPerServing: communityRecipes.caloriesPerServing,
+      proteinPerServing: communityRecipes.proteinPerServing,
+      carbsPerServing: communityRecipes.carbsPerServing,
+      fatPerServing: communityRecipes.fatPerServing,
       imageUrl: communityRecipes.imageUrl,
       createdAt: communityRecipes.createdAt,
     })
@@ -293,6 +297,10 @@ export async function getAllPublicCommunityRecipes(): Promise<
  * Note: community recipe ingredients live in the JSONB `ingredients` column
  * (unlike meal-plan recipes which use a separate `recipe_ingredients` table),
  * so there's no join here.
+ *
+ * Defense-in-depth (L28): if a `discardedAt` soft-delete column is ever added
+ * to `communityRecipes`, add `isNull(communityRecipes.discardedAt)` to the
+ * where clause below so discarded recipes are excluded from backfill processing.
  */
 export async function getCommunityRecipesWithEmptyMealTypes(): Promise<
   {

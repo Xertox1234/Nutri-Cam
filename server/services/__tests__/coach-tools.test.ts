@@ -21,6 +21,8 @@ vi.mock("../../storage", () => ({
       .mockResolvedValue({ list: { id: 1 }, items: [{ id: 1 }] }),
     getGroceryLists: vi.fn().mockResolvedValue({ lists: [], total: 0 }),
     createScannedItemWithLog: vi.fn().mockResolvedValue({ id: 42 }),
+    // M2: search_recipes now fetches user profile for allergen intolerances
+    getUserProfile: vi.fn().mockResolvedValue(null),
   },
 }));
 
@@ -120,5 +122,60 @@ describe("Coach Tools Service", () => {
 
   it("exports MAX_TOOL_CALLS_PER_RESPONSE as 5", () => {
     expect(MAX_TOOL_CALLS_PER_RESPONSE).toBe(5);
+  });
+
+  describe("structured error returns", () => {
+    it("returns INVALID_ARGS error for empty lookup_nutrition query", async () => {
+      const result = await executeToolCall(
+        "lookup_nutrition",
+        { query: "" },
+        "user1",
+      );
+      expect(result).toMatchObject({
+        error: true,
+        code: "INVALID_ARGS",
+        message: expect.stringContaining("lookup_nutrition"),
+      });
+    });
+
+    it("returns NOT_FOUND error when nutrition lookup returns null", async () => {
+      const { lookupNutrition } = await import("../nutrition-lookup");
+      vi.mocked(lookupNutrition).mockResolvedValueOnce(null);
+      const result = await executeToolCall(
+        "lookup_nutrition",
+        { query: "imaginary food" },
+        "user1",
+      );
+      expect(result).toMatchObject({
+        error: true,
+        code: "NOT_FOUND",
+        message: expect.stringContaining("imaginary food"),
+      });
+    });
+
+    it("returns INVALID_ARGS error for empty search_recipes query", async () => {
+      const result = await executeToolCall(
+        "search_recipes",
+        { query: "" },
+        "user1",
+      );
+      expect(result).toMatchObject({
+        error: true,
+        code: "INVALID_ARGS",
+        message: expect.stringContaining("search_recipes"),
+      });
+    });
+
+    it("returns INVALID_ARGS error for log_food_item with missing name", async () => {
+      const result = await executeToolCall(
+        "log_food_item",
+        { calories: 100 },
+        "user1",
+      );
+      expect(result).toMatchObject({
+        error: true,
+        code: "INVALID_ARGS",
+      });
+    });
   });
 });

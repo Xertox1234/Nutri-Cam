@@ -498,6 +498,12 @@ export const communityRecipes = pgTable(
     ingredients: jsonb("ingredients")
       .$type<{ name: string; quantity: string; unit: string }[]>()
       .default([]),
+    // text (not decimal) mirrors scannedItems.calories convention — values parsed
+    // and validated (>= 0) at the application boundary via parseNutritionValue().
+    caloriesPerServing: text("calories_per_serving"),
+    proteinPerServing: text("protein_per_serving"),
+    carbsPerServing: text("carbs_per_serving"),
+    fatPerServing: text("fat_per_serving"),
     imageUrl: text("image_url"),
     isPublic: boolean("is_public").default(true),
     likeCount: integer("like_count").default(0),
@@ -797,6 +803,7 @@ export const weightLogs = pgTable(
       .references(() => users.id, { onDelete: "cascade" })
       .notNull(),
     weight: decimal("weight", { precision: 6, scale: 2 }).notNull(),
+    unit: text("unit").default("lb").notNull(),
     source: text("source").default("manual"),
     note: text("note"),
     loggedAt: timestamp("logged_at")
@@ -875,6 +882,12 @@ export const chatConversations = pgTable(
     userTypeIdx: index("chat_conversations_user_type_idx").on(
       table.userId,
       table.type,
+    ),
+    // M14 (2026-04-18): getChatConversations filters by userId and sorts by
+    // updatedAt DESC — composite index eliminates the sort+filter scan.
+    userUpdatedAtIdx: index("chat_conversations_user_updated_at_idx").on(
+      table.userId,
+      table.updatedAt,
     ),
   }),
 );
@@ -1458,9 +1471,12 @@ export const coachNotebook = pgTable(
     sourceConversationIdx: index("coach_notebook_source_conv_idx").on(
       table.sourceConversationId,
     ),
-    dedupeKeyUniqueIdx: uniqueIndex("coach_notebook_turn_fingerprint_idx").on(
-      table.dedupeKey,
-    ),
+    // M16 (2026-04-18): Partial index — only enforce uniqueness when dedupeKey
+    // IS NOT NULL so NULL-keyed rows (old entries) don't block each other and
+    // onConflictDoNothing correctly skips duplicate keyed inserts.
+    dedupeKeyUniqueIdx: uniqueIndex("coach_notebook_turn_fingerprint_idx")
+      .on(table.dedupeKey)
+      .where(sql`${table.dedupeKey} IS NOT NULL`),
     typeCheck: check(
       "coach_notebook_type_check",
       sql`${table.type} IN ('insight', 'commitment', 'preference', 'goal', 'motivation', 'emotional_context', 'conversation_summary', 'coaching_strategy')`,

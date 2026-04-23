@@ -149,27 +149,37 @@ export function createSessionStore<
       key: string,
       data: T,
     ): { ok: true } | { ok: false; reason: string; code: string } {
-      // Clear any existing entry at this key first so replacing the same
-      // session doesn't trip the per-user cap. After this, the user's
-      // effective slot usage drops by one, making room for the new insert.
-      if (store.has(key)) {
-        clearSession(key);
-      }
+      // Determine whether the existing entry at this key (if any) belongs to
+      // the same user, so we can account for the freed slot in the cap checks
+      // below BEFORE actually clearing it. This prevents a scenario where the
+      // old entry is cleared first and then the cap rejects the new one,
+      // leaving the user with no session at all.
+      const existing = store.get(key);
+      const isSameUser = existing?.userId === data.userId;
 
-      if (store.size >= opts.maxGlobal) {
+      // Net session count after the replace: current total minus the one we're
+      // about to evict (if any), since we'll add one back immediately.
+      const netGlobal = store.size - (existing ? 1 : 0);
+      if (netGlobal >= opts.maxGlobal) {
         return {
           ok: false,
           reason: "Server is busy, please try again later",
           code: "SESSION_LIMIT_REACHED",
         };
       }
-      const count = userCount.get(data.userId) ?? 0;
-      if (count >= opts.maxPerUser) {
+      const currentUserCount = userCount.get(data.userId) ?? 0;
+      const netUserCount = currentUserCount - (isSameUser ? 1 : 0);
+      if (netUserCount >= opts.maxPerUser) {
         return {
           ok: false,
           reason: `Too many ${label} sessions. Please confirm or wait for existing sessions to expire.`,
           code: "USER_SESSION_LIMIT",
         };
+      }
+
+      // Cap checks passed — now safe to clear the old entry and write the new one.
+      if (existing) {
+        clearSession(key);
       }
 
       store.set(key, data);
@@ -293,6 +303,21 @@ export function clearLabelSession(sessionId: string): void {
   labelStore.clear(sessionId);
 }
 
+// ── Coach warm-up session store ────────────────────────────────────────
+
+export interface WarmUpMessage {
+  role: "user" | "assistant" | "system";
+  content: string;
+}
+
+interface WarmUpSession {
+  userId: string;
+  conversationId: number;
+  warmUpId: string;
+  messages: WarmUpMessage[];
+  createdAt: number;
+}
+
 export interface CookingSession {
   id: string;
   userId: string;
@@ -326,6 +351,22 @@ export const frontLabelSessionStore = createSessionStore<FrontLabelSession>({
   label: "active front-label",
 });
 
+/** Max warm-ups per user — user may have one per active conversation. */
+export const WARM_UP_MAX_PER_USER = 1;
+
+/** Global cap so a single tenant cannot exhaust process memory. */
+export const WARM_UP_MAX_GLOBAL = 1000;
+
+/** Warm-up TTL in milliseconds (30 seconds). */
+export const WARM_UP_TTL_MS = 30_000;
+
+export const warmUpStore = createSessionStore<WarmUpSession>({
+  maxPerUser: WARM_UP_MAX_PER_USER,
+  maxGlobal: WARM_UP_MAX_GLOBAL,
+  timeoutMs: WARM_UP_TTL_MS,
+  label: "coach warm-up",
+});
+
 // ── Test internals ────────────────────────────────────────────────────
 
 export const _testInternals = {
@@ -339,4 +380,6 @@ export const _testInternals = {
   userCookingSessionCount: cookingSessionStore._internals.userCount,
   frontLabelSessionStore: frontLabelSessionStore._internals.store,
   userFrontLabelSessionCount: frontLabelSessionStore._internals.userCount,
+  warmUpSessionStore: warmUpStore._internals.store,
+  userWarmUpSessionCount: warmUpStore._internals.userCount,
 };

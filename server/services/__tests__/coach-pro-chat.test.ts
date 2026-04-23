@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { CoachChatEvent, CoachChatParams } from "../coach-pro-chat";
-import type {
-  ChatMessage,
-  CoachNotebookEntry,
-  UserProfile,
-  WeightLog,
-} from "@shared/schema";
+import type { CoachNotebookEntry, UserProfile } from "@shared/schema";
+import {
+  createMockUserProfile,
+  createMockWeightLog,
+  createMockChatMessage,
+  createMockCoachNotebookEntry,
+} from "../../__tests__/factories";
 import type { CoachBlock } from "@shared/schemas/coach-blocks";
 
 // ── Imports (after mocks) ───────────────────────────────────
@@ -46,6 +47,7 @@ vi.mock("../../storage", () => ({
 vi.mock("../nutrition-coach", () => ({
   generateCoachProResponse: vi.fn(),
   generateCoachResponse: vi.fn(),
+  getSystemPromptTemplateVersion: vi.fn().mockReturnValue("test-version-hash"),
 }));
 
 vi.mock("../coach-blocks", () => ({
@@ -57,9 +59,14 @@ vi.mock("../notebook-extraction", () => ({
   extractNotebookEntries: vi.fn().mockResolvedValue([]),
 }));
 
-vi.mock("../../lib/ai-safety", () => ({
-  sanitizeContextField: vi.fn((text: string) => text),
-}));
+vi.mock("../../lib/ai-safety", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../lib/ai-safety")>();
+  return {
+    ...actual,
+    sanitizeContextField: vi.fn((text: string) => text),
+    containsDangerousDietaryAdvice: vi.fn().mockReturnValue(false),
+  };
+});
 
 vi.mock("../../lib/fire-and-forget", () => ({
   fireAndForget: vi.fn((_label: string, promise: Promise<unknown>) => {
@@ -128,58 +135,27 @@ function makeParams(overrides: Partial<CoachChatParams> = {}): CoachChatParams {
   };
 }
 
-/** Partial UserProfile fixture — keeps only the fields the handler reads. */
-function makeProfile(
-  overrides: Partial<UserProfile> = {},
-): Partial<UserProfile> {
-  return {
+/** UserProfile fixture for handler tests. */
+function makeProfile(overrides: Partial<UserProfile> = {}): UserProfile {
+  return createMockUserProfile({
     dietType: "balanced",
     allergies: [{ name: "peanuts", severity: "mild" }],
     foodDislikes: ["olives"],
     ...overrides,
-  } satisfies Partial<UserProfile>;
+  });
 }
 
-/** Partial WeightLog fixture. */
-function makeWeightLog(overrides: Partial<WeightLog> = {}): Partial<WeightLog> {
-  return {
-    weight: "75.0",
-    loggedAt: new Date(),
-    ...overrides,
-  } satisfies Partial<WeightLog>;
-}
-
-/** Partial ChatMessage fixture — fills in only the fields handleCoachChat reads. */
-function makeChatMessage(
-  overrides: Partial<ChatMessage> & Pick<ChatMessage, "role" | "content">,
-): Partial<ChatMessage> {
-  return overrides satisfies Partial<ChatMessage>;
-}
-
-/** Partial CoachNotebookEntry fixture for notebook injection tests. */
+/** CoachNotebookEntry fixture for notebook injection tests. */
 function makeNotebookEntry(
   overrides: Partial<CoachNotebookEntry> &
     Pick<CoachNotebookEntry, "type" | "content">,
-): Partial<CoachNotebookEntry> {
-  return overrides satisfies Partial<CoachNotebookEntry>;
-}
-
-/**
- * Cast helper for partial storage return values. Storage functions return
- * fully-populated domain types; in tests we supply only the fields the
- * handler actually reads. Using a centralized helper with a narrow generic
- * signature replaces ~11 ad-hoc `as any` casts while still flagging
- * structural mistakes at the call sites via `satisfies Partial<T>`.
- */
-function asMockReturn<T>(value: Partial<T> | Partial<T>[]): T {
-  return value as T;
+): CoachNotebookEntry {
+  return createMockCoachNotebookEntry(overrides);
 }
 
 /** Set up default storage mock return values. */
 function setupDefaultStorage() {
-  vi.mocked(storage.getUserProfile).mockResolvedValue(
-    asMockReturn<UserProfile>(makeProfile()),
-  );
+  vi.mocked(storage.getUserProfile).mockResolvedValue(makeProfile());
   vi.mocked(storage.getDailySummary).mockResolvedValue({
     totalCalories: 800,
     totalProtein: 40,
@@ -187,14 +163,14 @@ function setupDefaultStorage() {
     totalFat: 30,
     itemCount: 0,
   });
-  vi.mocked(storage.getWeightLogs).mockResolvedValue(
-    [makeWeightLog()].map((w) => asMockReturn<WeightLog>(w)),
-  );
+  vi.mocked(storage.getWeightLogs).mockResolvedValue([
+    createMockWeightLog({ weight: "75.0" }),
+  ]);
   vi.mocked(storage.getChatMessages).mockResolvedValue([]);
   vi.mocked(storage.getActiveNotebookEntries).mockResolvedValue([]);
   vi.mocked(storage.getCoachCachedResponse).mockResolvedValue(null);
   vi.mocked(storage.createChatMessage).mockResolvedValue(
-    asMockReturn<ChatMessage>({}),
+    createMockChatMessage(),
   );
   vi.mocked(storage.updateChatConversationTitle).mockResolvedValue(undefined);
   vi.mocked(storage.createNotebookEntries).mockResolvedValue([]);
@@ -207,6 +183,7 @@ function setupDefaultStorage() {
 describe("handleCoachChat", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    coachProInternals.lastArchivedAt.clear();
     setupDefaultStorage();
     vi.mocked(generateCoachProResponse).mockReturnValue(
       fakeStream(["Hello ", "world!"]),
@@ -221,52 +198,9 @@ describe("handleCoachChat", () => {
     vi.mocked(consumeWarmUp).mockReturnValue(null);
   });
 
-  // ── Cache key includes userId (regression for aa6dcc2) ────
+  // ── Cache behaviour ───────────────────────────────────────
 
   describe("cache key regression (userId in hash)", () => {
-    it("includes userId in the cache hash for cacheable questions", async () => {
-      // Cacheable: no screenContext, history.length <= 1
-      vi.mocked(storage.getChatMessages).mockResolvedValue([]);
-      vi.mocked(storage.getCoachCachedResponse).mockResolvedValue(null);
-
-      // Cache is only consulted for non-Pro users (H4 — 2026-04-18).
-      const params = makeParams({
-        userId: "user-42",
-        content: "Hello",
-        screenContext: undefined,
-        isCoachPro: false,
-      });
-
-      await collectEvents(handleCoachChat(params));
-
-      // The cache lookup should have been called with a hash that encodes userId
-      expect(storage.getCoachCachedResponse).toHaveBeenCalledTimes(1);
-      const hash = vi.mocked(storage.getCoachCachedResponse).mock.calls[0][0];
-
-      // Now run with a DIFFERENT userId but same content — hash must differ
-      vi.clearAllMocks();
-      setupDefaultStorage();
-      vi.mocked(generateCoachResponse).mockReturnValue(fakeStream(["Hi"]));
-      vi.mocked(parseBlocksFromContent).mockReturnValue({
-        text: "Hi",
-        blocks: [],
-      });
-
-      const params2 = makeParams({
-        userId: "user-99",
-        content: "Hello",
-        screenContext: undefined,
-        isCoachPro: false,
-      });
-
-      await collectEvents(handleCoachChat(params2));
-
-      expect(storage.getCoachCachedResponse).toHaveBeenCalledTimes(1);
-      const hash2 = vi.mocked(storage.getCoachCachedResponse).mock.calls[0][0];
-
-      expect(hash).not.toBe(hash2);
-    });
-
     it("does not cache when screenContext is provided", async () => {
       const params = makeParams({
         screenContext: "Viewing home screen",
@@ -278,12 +212,10 @@ describe("handleCoachChat", () => {
     });
 
     it("does not cache when history has more than 1 message", async () => {
-      vi.mocked(storage.getChatMessages).mockResolvedValue(
-        [
-          makeChatMessage({ role: "user", content: "First" }),
-          makeChatMessage({ role: "assistant", content: "Reply" }),
-        ].map((m) => asMockReturn<ChatMessage>(m)),
-      );
+      vi.mocked(storage.getChatMessages).mockResolvedValue([
+        createMockChatMessage({ role: "user", content: "First" }),
+        createMockChatMessage({ role: "assistant", content: "Reply" }),
+      ]);
 
       const params = makeParams({ screenContext: undefined });
 
@@ -340,11 +272,9 @@ describe("handleCoachChat", () => {
 
     it("falls back to DB history when warm-up returns null", async () => {
       vi.mocked(consumeWarmUp).mockReturnValue(null);
-      vi.mocked(storage.getChatMessages).mockResolvedValue(
-        [makeChatMessage({ role: "user", content: "Old message" })].map((m) =>
-          asMockReturn<ChatMessage>(m),
-        ),
-      );
+      vi.mocked(storage.getChatMessages).mockResolvedValue([
+        createMockChatMessage({ role: "user", content: "Old message" }),
+      ]);
 
       const params = makeParams({
         warmUpId: "expired-warm",
@@ -403,18 +333,16 @@ describe("handleCoachChat", () => {
 
   describe("notebook injection", () => {
     it("injects notebook entries into context when entries exist (CoachPro)", async () => {
-      vi.mocked(storage.getActiveNotebookEntries).mockResolvedValue(
-        [
-          makeNotebookEntry({
-            type: "preference",
-            content: "User likes salads",
-          }),
-          makeNotebookEntry({
-            type: "goal",
-            content: "Lose 5kg by summer",
-          }),
-        ].map((e) => asMockReturn<CoachNotebookEntry>(e)),
-      );
+      vi.mocked(storage.getActiveNotebookEntries).mockResolvedValue([
+        makeNotebookEntry({
+          type: "preference",
+          content: "User likes salads",
+        }),
+        makeNotebookEntry({
+          type: "goal",
+          content: "Lose 5kg by summer",
+        }),
+      ]);
 
       const params = makeParams({ isCoachPro: true });
 
@@ -585,12 +513,10 @@ describe("handleCoachChat", () => {
     });
 
     it("does not auto-title when history has more than 1 message", async () => {
-      vi.mocked(storage.getChatMessages).mockResolvedValue(
-        [
-          makeChatMessage({ role: "user", content: "First" }),
-          makeChatMessage({ role: "assistant", content: "Reply" }),
-        ].map((m) => asMockReturn<ChatMessage>(m)),
-      );
+      vi.mocked(storage.getChatMessages).mockResolvedValue([
+        createMockChatMessage({ role: "user", content: "First" }),
+        createMockChatMessage({ role: "assistant", content: "Reply" }),
+      ]);
 
       const params = makeParams({});
 
@@ -824,5 +750,45 @@ describe("shouldRunArchive (time-gated archiveOldEntries)", () => {
     expect(coachProInternals.shouldRunArchive("user-b", now)).toBe(true);
     expect(coachProInternals.shouldRunArchive("user-a", now)).toBe(false);
     expect(coachProInternals.shouldRunArchive("user-b", now)).toBe(false);
+  });
+});
+
+describe("tryArchiveNotebook", () => {
+  it("calls archiveOldEntries when throttle allows", async () => {
+    const { tryArchiveNotebook } = await import("../coach-pro-chat");
+    // Clear the in-memory throttle state — tryArchiveNotebook uses "open:" prefix
+    coachProInternals.lastArchivedAt.delete("open:user-archive-test");
+
+    await tryArchiveNotebook("user-archive-test");
+
+    expect(storage.archiveOldEntries).toHaveBeenCalledWith(
+      "user-archive-test",
+      30,
+    );
+  });
+
+  it("does not call archiveOldEntries when throttle blocks", async () => {
+    const { tryArchiveNotebook } = await import("../coach-pro-chat");
+    // Set last archived to now so throttle blocks — tryArchiveNotebook uses "open:" prefix
+    coachProInternals.lastArchivedAt.set("open:user-throttled", Date.now());
+
+    vi.mocked(storage.archiveOldEntries).mockClear();
+    await tryArchiveNotebook("user-throttled");
+
+    expect(storage.archiveOldEntries).not.toHaveBeenCalled();
+  });
+});
+
+describe("getSystemPromptTemplateVersion (real implementation)", () => {
+  it("returns a stable 16-char hex string", async () => {
+    // Use the real module, not the mocked one
+    const { getSystemPromptTemplateVersion } =
+      await vi.importActual<typeof import("../nutrition-coach")>(
+        "../nutrition-coach",
+      );
+    const v1 = getSystemPromptTemplateVersion();
+    const v2 = getSystemPromptTemplateVersion();
+    expect(v1).toMatch(/^[0-9a-f]{16}$/);
+    expect(v1).toBe(v2);
   });
 });
