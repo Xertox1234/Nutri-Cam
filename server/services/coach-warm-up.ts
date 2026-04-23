@@ -12,6 +12,7 @@
  */
 
 import crypto from "crypto";
+import { createServiceLogger } from "../lib/logger";
 import {
   warmUpStore,
   WARM_UP_TTL_MS,
@@ -19,6 +20,8 @@ import {
   WARM_UP_MAX_GLOBAL,
   type WarmUpMessage,
 } from "../storage/sessions";
+
+const log = createServiceLogger("coach-warm-up");
 
 export { WARM_UP_TTL_MS, WARM_UP_MAX_PER_USER, WARM_UP_MAX_GLOBAL };
 
@@ -81,8 +84,16 @@ export function consumeWarmUp(
   // (H9 — 2026-04-18: was reading `warmUpStore._internals.store.get(key)`,
   // bypassing the session-store contract.)
   const cached = warmUpStore.get(key);
-  if (!cached || cached.warmUpId !== warmUpId) return null;
+  if (!cached) {
+    log.debug({ userId, conversationId }, "warm_up_not_found");
+    return null;
+  }
+  if (cached.warmUpId !== warmUpId) {
+    log.debug({ userId, conversationId }, "warm_up_id_mismatch");
+    return null;
+  }
   if (Date.now() - cached.createdAt > WARM_UP_TTL_MS) {
+    log.debug({ userId, conversationId }, "warm_up_expired");
     warmUpStore.clear(key);
     return null;
   }
