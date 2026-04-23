@@ -19,11 +19,15 @@ import { storage } from "../storage";
 import {
   generateCoachResponse,
   generateCoachProResponse,
+  getSystemPromptTemplateVersion,
   type CoachContext,
 } from "./nutrition-coach";
 import { parseBlocksFromContent, BLOCKS_SYSTEM_PROMPT } from "./coach-blocks";
 import { extractNotebookEntries } from "./notebook-extraction";
-import { sanitizeContextField } from "../lib/ai-safety";
+import {
+  sanitizeContextField,
+  containsDangerousDietaryAdvice,
+} from "../lib/ai-safety";
 import { fireAndForget } from "../lib/fire-and-forget";
 import { consumeWarmUp } from "./coach-warm-up";
 import { calculateWeeklyRate } from "./weight-trend";
@@ -54,15 +58,13 @@ export interface CoachChatParams {
   };
   /** Called each iteration to check if the client disconnected. */
   isAborted: () => boolean;
+  /**
+   * AbortSignal wired to the HTTP close event. Passed to the OpenAI SDK so
+   * in-flight generation is cancelled when the client disconnects, stopping
+   * token consumption immediately. (M8 — 2026-04-18)
+   */
+  abortSignal?: AbortSignal;
 }
-
-/**
- * Version tag included in the coach cache key. Bump when the system prompt,
- * the tool set, or any other logic that affects the cached response text
- * changes — old entries will then be cache-missed and regenerated instead
- * of served stale. (H5 — 2026-04-18)
- */
-const COACH_CACHE_VERSION = "v2-2026-04-18";
 
 /** UTC day bucket — e.g. `"2026-04-18"`. Used to expire cached coach answers
  *  whose prompt includes today's numeric context (goals, intake, weight). */
@@ -72,12 +74,14 @@ function getUtcDayBucket(d: Date = new Date()): string {
 
 /**
  * Build the SHA-256 cache key used for coach-response caching. The key includes:
+ *  - prompt template version — automatically derived from the static system
+ *    prompt hash so cache entries stale out when the prompt prose changes,
+ *    eliminating the need for a manual version bump (H5 — 2026-04-18)
  *  - userId  — different users must not share answers
  *  - isCoachPro — Pro and non-Pro prompts diverge (tools, notebook); a cached
  *    non-Pro answer must never be replayed to a Pro user (H4 — 2026-04-18)
  *  - dayBucket — the prompt embeds `todayIntake`, `goals`, `weightTrend`,
  *    so entries stale out at UTC midnight (H5 — 2026-04-18)
- *  - version — lets us roll the cache forward when prompts/tools change
  */
 export function hashCoachCacheKey(
   userId: string,
@@ -88,7 +92,7 @@ export function hashCoachCacheKey(
   return createHash("sha256")
     .update(
       [
-        COACH_CACHE_VERSION,
+        getSystemPromptTemplateVersion(),
         userId,
         isCoachPro ? "pro" : "free",
         dayBucket,
@@ -182,6 +186,16 @@ export const _testInternals = {
 };
 
 /**
+ * Run notebook archival for a user if the per-user throttle allows it.
+ * Safe to call from any frequent handler — the in-memory throttle gates
+ * it to once per 24h per user.
+ */
+export async function tryArchiveNotebook(userId: string): Promise<void> {
+  if (!shouldRunArchive(`open:${userId}`, Date.now())) return;
+  await storage.archiveOldEntries(userId, 30);
+}
+
+/**
  * Orchestrates the coach chat response — yields SSE events for the route
  * handler to write, handles persistence and side-effects internally.
  */
@@ -197,6 +211,7 @@ export async function* handleCoachChat(
     isCoachPro,
     user,
     isAborted,
+    abortSignal,
   } = params;
 
   const today = new Date();
@@ -234,10 +249,15 @@ export async function* handleCoachChat(
     dietaryProfile: {
       dietType: profile?.dietType || null,
       // Use the shared `Allergy` schema type instead of an inline `{ name }` cast.
+      // Sanitize at the context boundary (M40 — 2026-04-18) so both the prompt
+      // builder and any future consumers see clean values.
       allergies: ((profile?.allergies as Allergy[] | null) || [])
         .map((a) => a?.name)
-        .filter(Boolean),
-      dislikes: (profile?.foodDislikes as string[]) || [],
+        .filter(Boolean)
+        .map((name) => sanitizeContextField(name, 100)),
+      dislikes: ((profile?.foodDislikes as string[]) || []).map((d) =>
+        sanitizeContextField(d, 100),
+      ),
     },
     screenContext,
   };
@@ -303,6 +323,14 @@ export async function* handleCoachChat(
     cachedResponse = await storage.getCoachCachedResponse(questionHash);
   }
 
+  // M6 (2026-04-18): Re-scan cached responses for dangerous dietary advice before
+  // serving. A response may have been cached before the safety filter existed, or
+  // safety thresholds may have been tightened since it was stored. Discarding the
+  // entry forces a fresh generation that goes through the live safety checks.
+  if (cachedResponse && containsDangerousDietaryAdvice(cachedResponse)) {
+    cachedResponse = null;
+  }
+
   let fullResponse = "";
 
   if (cachedResponse) {
@@ -326,13 +354,18 @@ export async function* handleCoachChat(
       messageHistory,
       context,
       userId,
+      abortSignal,
     )) {
       if (isAborted()) break;
       fullResponse += chunk;
       yield { type: "content", content: chunk };
     }
   } else {
-    for await (const chunk of generateCoachResponse(messageHistory, context)) {
+    for await (const chunk of generateCoachResponse(
+      messageHistory,
+      context,
+      abortSignal,
+    )) {
       if (isAborted()) break;
       fullResponse += chunk;
       yield { type: "content", content: chunk };

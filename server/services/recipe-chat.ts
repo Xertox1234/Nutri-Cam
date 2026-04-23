@@ -35,6 +35,7 @@ export type RecipeChatSSEEvent =
       messageId?: number;
     }
   | { content: ""; imageUrl: string; messageId?: number }
+  | { content: ""; imageUnavailable: true }
   | { done: true };
 
 export interface RecipeChatRecipe {
@@ -426,7 +427,7 @@ export async function* generateRecipeChatResponse(
       allergenWarning,
     };
 
-    // Await image generation with timeout — yield imageUrl event before done
+    // Await image generation with timeout — yield image event (imageUrl or imageUnavailable) before done
     try {
       const imageUrl = await Promise.race([
         generateRecipeImage(
@@ -437,9 +438,12 @@ export async function* generateRecipeChatResponse(
       ]);
       if (imageUrl) {
         yield { content: "", imageUrl };
+      } else {
+        yield { content: "", imageUnavailable: true };
       }
     } catch (error) {
       log.warn({ err: toError(error) }, "recipe image generation failed");
+      yield { content: "", imageUnavailable: true };
     }
   }
 

@@ -136,7 +136,8 @@ describe("Coach Notebook Storage", () => {
       expect(logger.warn).toHaveBeenCalledWith(
         expect.objectContaining({
           reason: "coach_notebook.dedupeKey_missing",
-          userId: testUser.id,
+          // M4: userId is hashed (first 12 hex chars of SHA-256) before logging
+          userIdHash: expect.stringMatching(/^[0-9a-f]{12}$/),
           missingDedupeKey: 2,
           totalEntries: 2,
         }),

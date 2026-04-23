@@ -22,7 +22,10 @@ import {
 } from "../services/recipe-chat";
 import { remixConversationMetadataSchema } from "@shared/schemas/recipe-chat";
 import { logger, toError } from "../lib/logger";
-import { handleCoachChat } from "../services/coach-pro-chat";
+import {
+  handleCoachChat,
+  tryArchiveNotebook,
+} from "../services/coach-pro-chat";
 
 const SSE_TIMEOUT_MS = 120_000; // 2 minutes max per SSE connection
 const SSE_MAX_RESPONSE_BYTES = 50 * 1024; // 50KB max response size
@@ -186,6 +189,10 @@ export function register(app: Express): void {
           );
 
         const messages = await storage.getChatMessages(id, 100);
+        fireAndForget(
+          "coach-notebook-archival",
+          tryArchiveNotebook(req.userId),
+        );
         res.json(messages);
       } catch (error) {
         handleRouteError(res, error, "fetch messages");
@@ -293,15 +300,21 @@ export function register(app: Express): void {
         res.setHeader("Connection", "keep-alive");
         res.flushHeaders();
 
-        // Track client disconnect to stop consuming OpenAI tokens
+        // Track client disconnect to stop consuming OpenAI tokens.
+        // AbortController wires the HTTP close event directly into the OpenAI
+        // SDK so in-flight generation is cancelled immediately, not just after
+        // the next chunk boundary. (M8 — 2026-04-18)
+        const abortController = new AbortController();
         let aborted = false;
         req.on("close", () => {
           aborted = true;
+          abortController.abort();
         });
 
         // SSE timeout — prevent hung connections
         const sseTimeout = setTimeout(() => {
           aborted = true;
+          abortController.abort();
           if (!res.writableEnded) {
             res.write(
               `data: ${JSON.stringify({ error: "Response timeout" })}\n\n`,
@@ -383,6 +396,11 @@ export function register(app: Express): void {
               } else if ("imageUrl" in event && event.imageUrl) {
                 recipeImageUrl = event.imageUrl;
                 res.write(`data: ${eventJson}\n\n`);
+              } else if (
+                "imageUnavailable" in event &&
+                event.imageUnavailable
+              ) {
+                res.write(`data: ${eventJson}\n\n`);
               } else if ("content" in event && event.content) {
                 fullTextResponse += event.content;
                 res.write(`data: ${eventJson}\n\n`);
@@ -436,6 +454,7 @@ export function register(app: Express): void {
                 dailyFatGoal: user.dailyFatGoal,
               },
               isAborted: () => aborted,
+              abortSignal: abortController.signal,
             })) {
               if (aborted) break;
               const eventJson = JSON.stringify(
