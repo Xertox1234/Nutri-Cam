@@ -95,8 +95,7 @@ export function RecipeGenerationModal({
           : "Recipe generation failed";
       AccessibilityInfo.announceForAccessibility(msg);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- announce only on error state change
-  }, [generateMutation.isError]);
+  }, [generateMutation.isError, generateMutation.error]);
 
   const handleGenerate = () => {
     haptics.impact(Haptics.ImpactFeedbackStyle.Medium);
