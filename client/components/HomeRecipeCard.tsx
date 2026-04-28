@@ -68,7 +68,6 @@ export const HomeRecipeCard = React.memo(function HomeRecipeCard({
             fallbackIconSize={40}
             resizeMode="cover"
             accessible={false}
-            accessibilityLabel={`Photo of ${recipe.title}`}
           />
 
           {/* Difficulty badge */}
@@ -92,8 +91,7 @@ export const HomeRecipeCard = React.memo(function HomeRecipeCard({
                 styles.allergenDot,
                 { backgroundColor: withOpacity(theme.error, 0.9) },
               ]}
-              accessibilityLabel="Contains your allergens"
-              accessibilityRole="text"
+              accessible={false}
             >
               <Feather
                 name="alert-triangle"
