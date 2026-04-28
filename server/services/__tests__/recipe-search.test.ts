@@ -84,7 +84,6 @@ const baseCommunityRecipe: CommunityRecipe = {
   fatPerServing: "15",
   imageUrl: null,
   isPublic: true,
-  likeCount: 5,
   remixedFromId: null,
   remixedFromTitle: null,
   createdAt: new Date("2024-05-01"),

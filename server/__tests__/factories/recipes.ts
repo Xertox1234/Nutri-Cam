@@ -99,7 +99,6 @@ const communityRecipeDefaults: CommunityRecipe = {
   fatPerServing: null,
   imageUrl: null,
   isPublic: true,
-  likeCount: 0,
   remixedFromId: null,
   remixedFromTitle: null,
   createdAt: new Date("2024-01-01"),

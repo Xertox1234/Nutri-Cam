@@ -3,16 +3,8 @@
  * Extracted for testability — no React or RN dependencies.
  */
 
-export const DIET_OPTIONS = [
-  "Vegetarian",
-  "Vegan",
-  "Gluten-Free",
-  "Low-Carb",
-  "Keto",
-  "Dairy-Free",
-  "Kid-Friendly",
-  "Quick & Easy",
-] as const;
+// Re-export from shared so the client and server both use the canonical set.
+export { DIET_OPTIONS } from "@shared/schemas/recipe";
 
 export const TIME_OPTIONS = [
   { label: "15 min", value: "15 minutes" },
@@ -24,7 +16,16 @@ export const TIME_OPTIONS = [
 
 export const SERVING_OPTIONS = [1, 2, 4, 6, 8] as const;
 
-/** Format a list of foods into a comma-separated ingredient context string. */
+/**
+ * Format a list of foods into a comma-separated ingredient context string.
+ *
+ * Trust boundary (M3): the `name` and `quantity` fields here originate from
+ * the vision model's photo-analysis output (AI-generated, not direct user
+ * input). The assembled string is sent to the server as `productName` where
+ * `sanitizeUserInput()` is applied before it is injected into the
+ * recipe-generation prompt — that call in `recipe-generation.ts` is the
+ * server-side trust boundary for this data path.
+ */
 export function formatIngredientsContext(
   foods: { name: string; quantity: string }[],
 ): string {

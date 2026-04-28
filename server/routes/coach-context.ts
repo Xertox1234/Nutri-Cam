@@ -3,7 +3,7 @@ import { z } from "zod";
 import { storage } from "../storage";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/auth";
 import { checkPremiumFeature, handleRouteError } from "./_helpers";
-import { crudRateLimit } from "./_rate-limiters";
+import { crudRateLimit, chatRateLimit } from "./_rate-limiters";
 import { sendError } from "../lib/api-errors";
 import { ErrorCode } from "@shared/constants/error-codes";
 import {
@@ -86,10 +86,13 @@ export function register(app: Express): void {
   );
 
   // POST /api/coach/warm-up
+  // Use chatRateLimit (20 req/min) rather than crudRateLimit (30 req/min) because
+  // warm-up pre-fetches conversation history and builds OpenAI context — as
+  // expensive as a full chat turn (L19).
   app.post(
     "/api/coach/warm-up",
     requireAuth,
-    crudRateLimit,
+    chatRateLimit,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const features = await checkPremiumFeature(

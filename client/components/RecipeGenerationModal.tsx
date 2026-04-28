@@ -61,7 +61,8 @@ export function RecipeGenerationModal({
   const [timeConstraint, setTimeConstraint] = useState<string | undefined>(
     undefined,
   );
-  const [shareToPublic, setShareToPublic] = useState(true);
+  // Privacy-by-default: start private so users explicitly opt in to sharing (L16).
+  const [shareToPublic, setShareToPublic] = useState(false);
 
   const accentColor = theme.link;
   const accentBg = useMemo(() => withOpacity(accentColor, 0.12), [accentColor]);
@@ -89,7 +90,7 @@ export function RecipeGenerationModal({
       setServings(2);
       setSelectedDiets([]);
       setTimeConstraint(undefined);
-      setShareToPublic(true);
+      setShareToPublic(false);
       onComplete(recipe);
     },
     onError: () => {

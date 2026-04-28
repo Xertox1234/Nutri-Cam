@@ -152,6 +152,10 @@ export async function generateRecipeContent(
     ? `Time constraint: ${sanitizeUserInput(input.timeConstraint)} or less.`
     : "";
 
+  // Trust boundary (M3): productName may originate from vision-model output
+  // (photo-scan food names assembled by formatIngredientsContext on the client).
+  // sanitizeUserInput() is the server-side gate for this data path — it strips
+  // control characters, injection patterns, and truncates to 2000 chars.
   const sanitizedProductName = sanitizeUserInput(input.productName);
 
   const userParts: string[] = [

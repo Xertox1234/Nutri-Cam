@@ -37,12 +37,36 @@ export const importUrlSchema = z.object({
 
 export type ImportUrlParams = z.infer<typeof importUrlSchema>;
 
+/**
+ * Canonical allowlist of diet preference options. Kept in shared/ so both the
+ * client UI (RecipeGenerationModal) and the server Zod schema reference the
+ * same set — prevents arbitrary strings from flowing into AI prompts (M2).
+ */
+export const DIET_OPTIONS = [
+  "Vegetarian",
+  "Vegan",
+  "Gluten-Free",
+  "Low-Carb",
+  "Keto",
+  "Dairy-Free",
+  "Kid-Friendly",
+  "Quick & Easy",
+] as const;
+
+export type DietOption = (typeof DIET_OPTIONS)[number];
+
 /** Schema for community recipe generation (POST /api/recipes/generate). */
 export const recipeGenerationSchema = z.object({
   productName: z.string().min(3).max(200),
-  barcode: z.string().max(100).optional().nullable(),
+  /** Barcode must match the project-wide digit-only format (8–14 digits). */
+  barcode: z
+    .string()
+    .regex(/^\d{8,14}$/, "Barcode must be 8–14 digits")
+    .optional()
+    .nullable(),
   servings: z.number().int().min(1).max(20).optional(),
-  dietPreferences: z.array(z.string().max(50)).max(10).optional(),
+  /** Only known diet options are accepted — prevents prompt injection via free-text. */
+  dietPreferences: z.array(z.enum(DIET_OPTIONS)).max(10).optional(),
   timeConstraint: z.string().max(50).optional(),
   shareToPublic: z.boolean().optional(),
 });

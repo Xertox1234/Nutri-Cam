@@ -80,7 +80,18 @@ async function main(): Promise<void> {
       );
     }
 
-    fs.writeFileSync(opts.outputPath, buf);
+    // Guard against path traversal: outputPath must resolve within ASSETS (L18).
+    const resolvedOutput = path.resolve(opts.outputPath);
+    if (
+      !resolvedOutput.startsWith(ASSETS + path.sep) &&
+      resolvedOutput !== ASSETS
+    ) {
+      throw new Error(
+        `Output path ${opts.outputPath} is outside the assets directory — refusing to write`,
+      );
+    }
+
+    fs.writeFileSync(resolvedOutput, buf);
     console.log(`  ✓ Saved (${(buf.length / 1024).toFixed(0)} KB)`);
     return buf;
   }
