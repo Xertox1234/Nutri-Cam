@@ -456,7 +456,6 @@ async function seedOneRecipe(
       ...(macros ?? {}),
       imageUrl,
       isPublic: true,
-      likeCount: 0,
     });
     console.log(`${prefix}: ✓ inserted`);
     return "inserted";

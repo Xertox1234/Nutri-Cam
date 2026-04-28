@@ -266,7 +266,6 @@ const FEATURED_COLUMNS = {
   fatPerServing: communityRecipes.fatPerServing,
   imageUrl: communityRecipes.imageUrl,
   isPublic: communityRecipes.isPublic,
-  likeCount: communityRecipes.likeCount,
   remixedFromId: communityRecipes.remixedFromId,
   remixedFromTitle: communityRecipes.remixedFromTitle,
   createdAt: communityRecipes.createdAt,

@@ -132,7 +132,22 @@ describe("Meal Suggestions Routes", () => {
       vi.mocked(storage.getMealSuggestionCache).mockResolvedValue(
         createMockMealSuggestionCache({
           id: 1,
-          suggestions: [{ title: "Cached Meal" }],
+          suggestions: [
+            {
+              title: "Cached Meal",
+              description: "desc",
+              reasoning: "reason",
+              calories: 400,
+              protein: 30,
+              carbs: 40,
+              fat: 10,
+              prepTimeMinutes: 20,
+              difficulty: "Easy" as const,
+              ingredients: [],
+              instructions: [],
+              dietTags: [],
+            },
+          ],
         }),
       );
       vi.mocked(storage.incrementMealSuggestionCacheHit).mockResolvedValue(
