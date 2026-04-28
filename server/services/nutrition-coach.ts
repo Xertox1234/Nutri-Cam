@@ -362,6 +362,10 @@ export async function* generateCoachProResponse(
       return;
     }
 
+    if (finishReason === "length") {
+      log.warn({ toolCallCount }, "coach_pro_finish_reason_length");
+    }
+
     // If finish_reason is not "tool_calls", we're done
     if (finishReason !== "tool_calls" || pendingToolCalls.size === 0) {
       break;
