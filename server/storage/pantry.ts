@@ -82,10 +82,17 @@ export async function createPantryItems(
   return db.insert(pantryItems).values(items).returning();
 }
 
+export type PantryItemUpdates = Partial<
+  Pick<
+    InsertPantryItem,
+    "name" | "quantity" | "unit" | "category" | "expiresAt"
+  >
+>;
+
 export async function updatePantryItem(
   id: number,
   userId: string,
-  updates: Partial<InsertPantryItem>,
+  updates: PantryItemUpdates,
 ): Promise<PantryItem | undefined> {
   const [updated] = await db
     .update(pantryItems)
