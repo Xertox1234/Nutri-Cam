@@ -169,6 +169,30 @@ When rebanding or changing background colours, every foreground colour that was 
 
 **Where it applies:** `backgroundRoot`, `backgroundDefault`, `backgroundSecondary` changes all affect every screen. Even a small luminance shift (white → cream) is enough to break borderline colours.
 
+### FontFamily Constants Instead of fontWeight Strings
+
+Always use `FontFamily` constants from `@/constants/theme` instead of inline `fontWeight` strings.
+
+```typescript
+import { FontFamily } from "@/constants/theme";
+
+// Good: resolves to the correct pre-built Poppins variant
+fontFamily: FontFamily.semiBold; // "Poppins_600SemiBold"
+fontFamily: FontFamily.medium; // "Poppins_500Medium"
+fontFamily: FontFamily.regular; // "Poppins_400Regular"
+
+// Bad: tells Android to synthesize bold from the base typeface
+fontWeight: "600";
+fontWeight: "500";
+fontWeight: "bold";
+```
+
+**Why it matters on Android:** With custom fonts loaded via `expo-google-fonts`, Android maps `fontFamily: "Poppins_600SemiBold"` to the matching pre-built `.ttf` variant. When you use `fontWeight: "600"` instead, Android receives no `fontFamily` hint and synthesises a bold weight from whichever base typeface it resolves — typically the regular Poppins variant — producing visibly different letter spacing and stroke width compared to the true semibold cut.
+
+iOS handles `fontWeight` more gracefully by searching the font bundle for matching weight descriptors, so the bug is Android-only and easy to miss in iOS-first development.
+
+**Exception — static `StyleSheet.create` blocks:** If the component does not use `useTheme()` and the font variant will never change, `FontFamily` constants are still safe because they are plain string literals that do not depend on context.
+
 ### Dynamic Color Injection into Static StyleSheet
 
 When a component's `StyleSheet.create` block contains a hardcoded colour that needs to be theme-responsive, inject the theme value via array style at the call site instead of restructuring the entire component.
