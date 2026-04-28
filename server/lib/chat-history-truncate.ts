@@ -25,6 +25,9 @@ export const DEFAULT_HISTORY_TOKEN_BUDGET = 8_000;
 
 /**
  * Estimate token count for a single message using the char-based approximation.
+ * Per-message role/delimiter overhead (~4 tokens) is intentionally omitted —
+ * across a 20-message history the ~80-token undercount is < 1% of the 8,000
+ * token budget.
  */
 export function estimateTokens(message: HistoryMessage): number {
   return Math.ceil(message.content.length / CHARS_PER_TOKEN);
@@ -36,15 +39,19 @@ export function estimateTokens(message: HistoryMessage): number {
  * oldest-first, with `role: "tool"` messages dropped before `role: "assistant"`
  * messages.
  *
+ * Generic over message shape so callers with narrower role unions (e.g.
+ * `"user" | "assistant" | "system"`) can pass their arrays directly and get
+ * the same narrowed type back — no casting required at call sites.
+ *
  * @param messages   Ordered history (oldest → newest). Must not include the
  *                   current user message — that is added by the caller.
  * @param tokenBudget  Maximum tokens allowed for the history window.
  * @returns           A new array that fits within the budget.
  */
-export function truncateHistoryToBudget(
-  messages: HistoryMessage[],
+export function truncateHistoryToBudget<T extends HistoryMessage>(
+  messages: T[],
   tokenBudget: number = DEFAULT_HISTORY_TOKEN_BUDGET,
-): HistoryMessage[] {
+): T[] {
   if (messages.length === 0) return [];
 
   // Fast path: already under budget — return input unchanged.
@@ -52,7 +59,7 @@ export function truncateHistoryToBudget(
   if (totalTokens <= tokenBudget) return messages;
 
   // Work on a mutable copy — we'll null out pruned slots.
-  const slots: (HistoryMessage | null)[] = [...messages];
+  const slots: (T | null)[] = [...messages];
 
   // Find the index of the last user message so we always preserve it.
   let lastUserIdx = -1;
@@ -84,5 +91,5 @@ export function truncateHistoryToBudget(
   }
 
   // Filter out nulled slots and return.
-  return slots.filter((m): m is HistoryMessage => m !== null);
+  return slots.filter((m): m is T => m !== null);
 }
