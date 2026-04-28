@@ -558,3 +558,56 @@ const recipeType = item.source === "personal" ? "mealPlan" : item.source;
 **When NOT to use:** Sources already share the same DB table/type, or when only one source is rendered at a time (use separate components instead).
 
 **Reference:** `shared/types/recipe-search.ts`, `server/services/recipe-search.ts` (normalizers), `client/screens/meal-plan/RecipeBrowserScreen.tsx` (unified rendering)
+
+### Generic Utilities That Preserve Caller-Side Type Narrowing
+
+When a utility function only reads a base-type's properties but doesn't
+add new ones, making it generic lets callers with narrower unions pass
+their arrays directly and receive the same narrowed type back. Without
+the generic, call sites must widen to the base type going in, then
+re-narrow coming out — type-casting noise that obscures the real data
+shape and creates a latent correctness hazard if the narrowing is wrong.
+
+```typescript
+// ❌ Without generic: call site needs two .map() casts
+interface HistoryMessage { role: "user" | "assistant" | "system" | "tool"; content: string; }
+
+function truncateHistory(messages: HistoryMessage[]): HistoryMessage[] { ... }
+
+// Caller's array is { role: "user" | "assistant" | "system" } — no "tool"
+// Must widen in, then re-narrow back out:
+messageHistory = truncateHistory(
+  messageHistory.map((m) => ({ role: m.role as HistoryMessage["role"], content: m.content })),
+).map((m) => ({ role: m.role as "user" | "assistant" | "system", content: m.content }));
+```
+
+```typescript
+// ✅ With generic: caller passes array directly, gets narrowed type back
+function truncateHistory<T extends HistoryMessage>(messages: T[]): T[] { ... }
+
+// No casting needed — T is inferred as the caller's narrower type:
+messageHistory = truncateHistory(messageHistory);
+```
+
+**When to apply:**
+
+- The function filters, sorts, or reorders items without changing their
+  type (e.g. `truncateHistoryToBudget`, pagination slicers)
+- Callers use a union that is a strict subset of the base type's union
+- The function body only needs to read the base-type properties (use
+  `m.role === "tool"` against the base, not against `T`)
+
+**When NOT to apply:**
+
+- The function maps items to a different shape (return type differs from
+  input type — generics won't help here)
+- All callers use the exact base type anyway (the generic buys nothing)
+
+**Reference:** `server/lib/chat-history-truncate.ts` —
+`truncateHistoryToBudget<T extends HistoryMessage>` lets
+`coach-pro-chat.ts` pass its `{ role: "user" | "assistant" | "system" }[]`
+directly without casting.
+
+**Origin:** 2026-04-28 code review — the initial implementation used a
+double `.map()` to satisfy the `HistoryMessage` type, which would have
+silently corrupted `"tool"` roles if message storage were ever extended.
