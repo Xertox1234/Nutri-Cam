@@ -396,3 +396,86 @@ complex question. A single sentence that invites a follow-up works well.
 budget overshoot without yielding content. Users with complex questions
 saw empty or truncated replies with no hint that the model had more to
 say.
+
+### Token-Budget-Aware History Truncation
+
+When chat history is fetched from the database before an OpenAI call,
+tool-call payloads (daily logs, ingredient lists) can grow large enough
+to cause `finish_reason: "length"` responses. A fixed message-count cap
+doesn't help once individual messages are large — use a token-budget
+guard instead.
+
+**Pruning order (oldest-first within each tier):**
+
+1. `role: "tool"` messages — largest payloads, safe to drop (model
+   rarely references a specific tool result more than one turn later)
+2. `role: "assistant"` messages — reasoning context, still prunable
+3. `role: "user"` messages — preserve the most recent one always;
+   drop older ones only if the above two tiers are exhausted
+
+**Char-based token estimation** (`Math.ceil(len / 4)`) is sufficient
+as a starting point. It omits the ~4-token per-message overhead
+(role + delimiters), but at an 8,000-token budget across 20 messages
+the undercount is <1%. No `tiktoken` dependency needed.
+
+```typescript
+// server/lib/chat-history-truncate.ts
+const CHARS_PER_TOKEN = 4;
+export const DEFAULT_HISTORY_TOKEN_BUDGET = 8_000;
+
+export function truncateHistoryToBudget<T extends HistoryMessage>(
+  messages: T[],
+  tokenBudget = DEFAULT_HISTORY_TOKEN_BUDGET,
+): T[] {
+  const total = messages.reduce(
+    (sum, m) => sum + Math.ceil(m.content.length / CHARS_PER_TOKEN),
+    0,
+  );
+  if (total <= tokenBudget) return messages;
+
+  const slots: (T | null)[] = [...messages];
+  const lastUserIdx = slots.findLastIndex((m) => m?.role === "user");
+  let remaining = total;
+
+  for (const role of ["tool", "assistant"] as const) {
+    for (let i = 0; i < slots.length && remaining > tokenBudget; i++) {
+      const m = slots[i];
+      if (m && m.role === role && i !== lastUserIdx) {
+        remaining -= Math.ceil(m.content.length / CHARS_PER_TOKEN);
+        slots[i] = null;
+      }
+    }
+  }
+  return slots.filter((m): m is T => m !== null);
+}
+```
+
+**Apply after context injection.** If you inject notebook content or
+warm-up messages before truncation, truncation covers both paths. If
+you truncate first, a large injection can silently re-exceed the budget.
+
+**Add an observability canary.** Log a structured warning when
+`finish_reason === "length"` so you can verify the budget is working
+and catch edge cases (very large system prompts, etc.):
+
+```typescript
+if (finishReason === "length") {
+  log.warn({ toolCallCount }, "coach_pro_finish_reason_length");
+}
+```
+
+**Keep the utility pure.** Place it in `server/lib/` with no imports
+from services or storage so it can be unit-tested without mocks.
+
+**When to apply:** Any server-side streaming endpoint that builds
+OpenAI history from the database — coach chat, recipe chat, cooking
+assistant. Apply early: before the first `finish_reason: "length"` hit
+production rather than after.
+
+**Reference:** `server/lib/chat-history-truncate.ts`,
+`server/services/coach-pro-chat.ts` (integration after warm-up block),
+`server/services/nutrition-coach.ts` (observability canary)
+
+**Origin:** 2026-04-28 — deferred from 2026-04-19 coach improvements
+plan; implemented when tool-call payloads made the 20-message fixed cap
+insufficient.
