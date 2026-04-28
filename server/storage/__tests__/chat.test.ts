@@ -34,8 +34,9 @@ const {
   updateChatConversationTitle,
   getDailyChatMessageCount,
   createChatMessageWithLimitCheck,
-  saveRecipeFromChat,
 } = await import("../chat");
+
+const { saveRecipeFromChat } = await import("../recipe-from-chat");
 
 let tx: NodePgDatabase<typeof schema>;
 let testUser: schema.User;
