@@ -44,6 +44,14 @@ const {
   getMealPlanItemById,
   addMealPlanItem,
   removeMealPlanItem,
+  getPlannedNutritionSummary,
+  getMealPlanIngredientsForDateRange,
+  getFrequentRecipesForMealType,
+  createMealPlanFromSuggestions,
+  batchUpdateMealTypes,
+} = await import("../meal-plans");
+
+const {
   createGroceryList: _createGroceryList,
   getGroceryLists,
   getGroceryListWithItems,
@@ -52,18 +60,16 @@ const {
   updateGroceryListItemChecked,
   deleteGroceryListItem,
   updateGroceryListItemPantryFlag,
+} = await import("../grocery-lists");
+
+const {
   getPantryItems,
   getPantryItem,
   createPantryItem,
   updatePantryItem,
   deletePantryItem,
   getExpiringPantryItems,
-  getPlannedNutritionSummary,
-  getMealPlanIngredientsForDateRange,
-  getFrequentRecipesForMealType,
-  createMealPlanFromSuggestions,
-  batchUpdateMealTypes,
-} = await import("../meal-plans");
+} = await import("../pantry");
 
 // Widen the insert type to allow passing `createdAt` for ordering tests.
 const createGroceryList = _createGroceryList as (

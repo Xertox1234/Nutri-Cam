@@ -11,6 +11,8 @@
 import * as users from "./users";
 import * as nutrition from "./nutrition";
 import * as mealPlans from "./meal-plans";
+import * as groceryLists from "./grocery-lists";
+import * as pantry from "./pantry";
 import * as chat from "./chat";
 import * as cache from "./cache";
 import * as community from "./community";
@@ -28,6 +30,8 @@ import * as sessions from "./sessions";
 import * as carousel from "./carousel";
 import * as profileHub from "./profile-hub";
 import * as coachNotebook from "./coach-notebook";
+import * as recipeFromChat from "./recipe-from-chat";
+import * as health from "./health";
 
 export { escapeLike, getDayBounds, getMonthBounds } from "./helpers";
 export type { UpdatableUserFields } from "./users";
@@ -75,7 +79,7 @@ export const storage = {
   createSavedItem: nutrition.createSavedItem,
   deleteSavedItem: nutrition.deleteSavedItem,
 
-  // Meal plans (recipes, items, grocery, pantry)
+  // Meal plans (recipes and items)
   findMealPlanRecipeByExternalId: mealPlans.findMealPlanRecipeByExternalId,
   getMealPlanRecipe: mealPlans.getMealPlanRecipe,
   getMealPlanRecipeWithIngredients: mealPlans.getMealPlanRecipeWithIngredients,
@@ -90,27 +94,30 @@ export const storage = {
   addMealPlanItem: mealPlans.addMealPlanItem,
   removeMealPlanItem: mealPlans.removeMealPlanItem,
   reorderMealPlanItems: mealPlans.reorderMealPlanItems,
-  createGroceryList: mealPlans.createGroceryList,
-  getGroceryListCount: mealPlans.getGroceryListCount,
-  getGroceryLists: mealPlans.getGroceryLists,
-  getGroceryListWithItems: mealPlans.getGroceryListWithItems,
-  verifyGroceryListOwnership: mealPlans.verifyGroceryListOwnership,
-  deleteGroceryList: mealPlans.deleteGroceryList,
-  createGroceryListWithLimitCheck: mealPlans.createGroceryListWithLimitCheck,
-  addGroceryListItem: mealPlans.addGroceryListItem,
-  addGroceryListItems: mealPlans.addGroceryListItems,
-  updateGroceryListItemChecked: mealPlans.updateGroceryListItemChecked,
-  deleteGroceryListItem: mealPlans.deleteGroceryListItem,
-  updateGroceryListItemPantryFlag: mealPlans.updateGroceryListItemPantryFlag,
-  getPantryItems: mealPlans.getPantryItems,
-  getPantryItem: mealPlans.getPantryItem,
-  getPantryItemCount: mealPlans.getPantryItemCount,
-  createPantryItem: mealPlans.createPantryItem,
-  createPantryItems: mealPlans.createPantryItems,
-  addGroceryItemToPantryAtomically: mealPlans.addGroceryItemToPantryAtomically,
-  updatePantryItem: mealPlans.updatePantryItem,
-  deletePantryItem: mealPlans.deletePantryItem,
-  getExpiringPantryItems: mealPlans.getExpiringPantryItems,
+  // Grocery lists
+  createGroceryList: groceryLists.createGroceryList,
+  getGroceryListCount: groceryLists.getGroceryListCount,
+  getGroceryLists: groceryLists.getGroceryLists,
+  getGroceryListWithItems: groceryLists.getGroceryListWithItems,
+  verifyGroceryListOwnership: groceryLists.verifyGroceryListOwnership,
+  deleteGroceryList: groceryLists.deleteGroceryList,
+  createGroceryListWithLimitCheck: groceryLists.createGroceryListWithLimitCheck,
+  addGroceryListItem: groceryLists.addGroceryListItem,
+  addGroceryListItems: groceryLists.addGroceryListItems,
+  updateGroceryListItemChecked: groceryLists.updateGroceryListItemChecked,
+  deleteGroceryListItem: groceryLists.deleteGroceryListItem,
+  updateGroceryListItemPantryFlag: groceryLists.updateGroceryListItemPantryFlag,
+
+  // Pantry
+  getPantryItems: pantry.getPantryItems,
+  getPantryItem: pantry.getPantryItem,
+  getPantryItemCount: pantry.getPantryItemCount,
+  createPantryItem: pantry.createPantryItem,
+  createPantryItems: pantry.createPantryItems,
+  addGroceryItemToPantryAtomically: pantry.addGroceryItemToPantryAtomically,
+  updatePantryItem: pantry.updatePantryItem,
+  deletePantryItem: pantry.deletePantryItem,
+  getExpiringPantryItems: pantry.getExpiringPantryItems,
   getConfirmedMealPlanItemIds: mealPlans.getConfirmedMealPlanItemIds,
   getPlannedNutritionSummary: mealPlans.getPlannedNutritionSummary,
   getMealPlanIngredientsForDateRange:
@@ -123,14 +130,14 @@ export const storage = {
   getAllRecipeIngredients: mealPlans.getAllRecipeIngredients,
 
   // Weight & HealthKit
-  getWeightLogs: users.getWeightLogs,
-  createWeightLog: users.createWeightLog,
-  createWeightLogAndUpdateUser: users.createWeightLogAndUpdateUser,
-  deleteWeightLog: users.deleteWeightLog,
-  getLatestWeight: users.getLatestWeight,
-  getHealthKitSyncSettings: users.getHealthKitSyncSettings,
-  upsertHealthKitSyncSetting: users.upsertHealthKitSyncSetting,
-  updateHealthKitLastSync: users.updateHealthKitLastSync,
+  getWeightLogs: health.getWeightLogs,
+  createWeightLog: health.createWeightLog,
+  createWeightLogAndUpdateUser: health.createWeightLogAndUpdateUser,
+  deleteWeightLog: health.deleteWeightLog,
+  getLatestWeight: health.getLatestWeight,
+  getHealthKitSyncSettings: health.getHealthKitSyncSettings,
+  upsertHealthKitSyncSetting: health.upsertHealthKitSyncSetting,
+  updateHealthKitLastSync: health.updateHealthKitLastSync,
 
   // Chat
   getChatConversation: chat.getChatConversation,
@@ -142,7 +149,7 @@ export const storage = {
   updateChatConversationTitle: chat.updateChatConversationTitle,
   getDailyChatMessageCount: chat.getDailyChatMessageCount,
   createChatMessageWithLimitCheck: chat.createChatMessageWithLimitCheck,
-  saveRecipeFromChat: chat.saveRecipeFromChat,
+  saveRecipeFromChat: recipeFromChat.saveRecipeFromChat,
   getCoachCachedResponse: chat.getCoachCachedResponse,
   setCoachCachedResponse: chat.setCoachCachedResponse,
 
