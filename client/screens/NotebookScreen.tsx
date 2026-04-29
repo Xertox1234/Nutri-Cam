@@ -33,7 +33,15 @@ const TYPE_COLORS: Record<string, string> = {
   conversation_summary: "#888888", // hardcoded
 };
 
-const FILTERS = ["all", "commitment", "insight", "goal", "archived"] as const;
+const FILTERS = [
+  "all",
+  "commitment",
+  "insight",
+  "goal",
+  "preference",
+  "coaching_strategy",
+  "archived",
+] as const;
 type Filter = (typeof FILTERS)[number];
 
 function typeColor(type: string): string {
@@ -212,7 +220,11 @@ export default function NotebookScreen() {
                 ? "All"
                 : f === "archived"
                   ? "Archived"
-                  : f.charAt(0).toUpperCase() + f.slice(1)}
+                  : f === "coaching_strategy"
+                    ? "Strategy"
+                    : f === "preference"
+                      ? "Preference"
+                      : f.charAt(0).toUpperCase() + f.slice(1)}
             </Text>
           </Pressable>
         ))}
