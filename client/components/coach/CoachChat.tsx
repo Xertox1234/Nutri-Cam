@@ -357,6 +357,7 @@ export default function CoachChat({
     if (!lastUserMsg) return;
 
     const msgQueryKey = [`/api/chat/conversations/${conversationId}/messages`];
+    const snapshot = queryClient.getQueryData<ChatMessage[]>(msgQueryKey);
     queryClient.setQueryData<ChatMessage[]>(
       msgQueryKey,
       (old) => old?.filter((m) => m.id !== lastMsg.id) ?? [],
@@ -367,7 +368,7 @@ export default function CoachChat({
       await deleteChatMessage.mutateAsync(lastMsg.id);
       await deleteChatMessage.mutateAsync(lastUserMsg.id);
     } catch {
-      queryClient.invalidateQueries({ queryKey: msgQueryKey });
+      queryClient.setQueryData(msgQueryKey, snapshot);
       setStreamingError("Retry failed. Check your connection and try again.");
       return;
     }
@@ -685,7 +686,7 @@ const styles = StyleSheet.create({
   },
   retryButton: {
     alignSelf: "flex-start",
-    paddingVertical: 4,
+    paddingVertical: 12,
     paddingHorizontal: Spacing.sm,
     marginTop: 2,
   },
