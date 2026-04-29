@@ -48,6 +48,8 @@ import PantryScreen from "@/screens/meal-plan/PantryScreen";
 import RecipeBrowserScreen from "@/screens/meal-plan/RecipeBrowserScreen";
 import FastingScreen from "@/screens/FastingScreen";
 import AllConversationsScreen from "@/screens/AllConversationsScreen";
+import NotebookScreen from "@/screens/NotebookScreen";
+import NotebookEntryScreen from "@/screens/NotebookEntryScreen";
 
 export type RootStackParamList = {
   Login: undefined;
@@ -138,6 +140,8 @@ export type RootStackParamList = {
     | undefined;
   FastingModal: undefined;
   AllConversations: { onSelect: (id: number) => void };
+  NotebookScreen: undefined;
+  NotebookEntry: { entryId?: number };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -484,6 +488,24 @@ export default function RootStackNavigator() {
           <Stack.Screen
             name="AllConversations"
             component={AllConversationsScreen}
+            options={{
+              headerShown: false,
+              presentation: "fullScreenModal",
+              animation: reducedMotion ? "none" : "slide_from_bottom",
+            }}
+          />
+          <Stack.Screen
+            name="NotebookScreen"
+            component={NotebookScreen}
+            options={{
+              headerShown: false,
+              presentation: "fullScreenModal",
+              animation: reducedMotion ? "none" : "slide_from_bottom",
+            }}
+          />
+          <Stack.Screen
+            name="NotebookEntry"
+            component={NotebookEntryScreen}
             options={{
               headerShown: false,
               presentation: "fullScreenModal",

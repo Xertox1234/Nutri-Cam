@@ -281,3 +281,21 @@ export type AllConversationsNavigationProp = NativeStackNavigationProp<
   RootStackParamList,
   "AllConversations"
 >;
+
+/**
+ * Navigation prop for NotebookScreen
+ * Can use goBack or navigate within RootStack
+ */
+export type NotebookScreenNavigationProp = NativeStackNavigationProp<
+  RootStackParamList,
+  "NotebookScreen"
+>;
+
+/**
+ * Navigation prop for NotebookEntryScreen
+ * Can use goBack or navigate within RootStack
+ */
+export type NotebookEntryNavigationProp = NativeStackNavigationProp<
+  RootStackParamList,
+  "NotebookEntry"
+>;

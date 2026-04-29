@@ -316,3 +316,90 @@ export function useSaveRecipeFromChat() {
     },
   });
 }
+
+// ---- NOTEBOOK ----
+
+export interface NotebookEntry {
+  id: number;
+  userId: string;
+  type: string;
+  content: string;
+  status: string;
+  followUpDate: string | null;
+  sourceConversationId: number | null;
+  dedupeKey: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export function useNotebookEntries(opts?: { type?: string; status?: string }) {
+  const params = new URLSearchParams();
+  if (opts?.type) params.set("type", opts.type);
+  if (opts?.status) params.set("status", opts.status);
+  const query = params.toString();
+  return useQuery<NotebookEntry[]>({
+    queryKey: ["/api/coach/notebook", opts],
+    queryFn: async () => {
+      const res = await apiRequest(
+        "GET",
+        `/api/coach/notebook${query ? `?${query}` : ""}`,
+      );
+      return res.json();
+    },
+  });
+}
+
+export function useCreateNotebookEntry() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: {
+      type: string;
+      content: string;
+      followUpDate?: string | null;
+    }) => {
+      const res = await apiRequest("POST", "/api/coach/notebook", data);
+      return (await res.json()) as NotebookEntry;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/coach/notebook"] });
+    },
+  });
+}
+
+export function useUpdateNotebookEntry() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      ...updates
+    }: {
+      id: number;
+      content?: string;
+      type?: string;
+      followUpDate?: string | null;
+      status?: string;
+    }) => {
+      const res = await apiRequest(
+        "PATCH",
+        `/api/coach/notebook/${id}`,
+        updates,
+      );
+      return (await res.json()) as NotebookEntry;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/coach/notebook"] });
+    },
+  });
+}
+
+export function useDeleteNotebookEntry() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/coach/notebook/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/coach/notebook"] });
+    },
+  });
+}
