@@ -183,7 +183,10 @@ export async function getNotebookEntries(
     .select()
     .from(coachNotebook)
     .where(and(...conditions))
-    .orderBy(desc(coachNotebook.updatedAt))
+    .orderBy(
+      sql`CASE WHEN ${coachNotebook.status} = 'active' THEN 0 ELSE 1 END`,
+      desc(coachNotebook.updatedAt),
+    )
     .limit(limit)
     .offset(offset);
 }
