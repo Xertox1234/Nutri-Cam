@@ -2,7 +2,7 @@ import React, { useState, useCallback, useMemo } from "react";
 import {
   View,
   Text,
-  FlatList,
+  ScrollView,
   TextInput,
   Pressable,
   Alert,
@@ -10,18 +10,22 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useNavigation } from "@react-navigation/native";
+import {
+  useNavigation,
+  useRoute,
+  type RouteProp,
+} from "@react-navigation/native";
 import { Feather } from "@expo/vector-icons";
 import { useTheme } from "@/hooks/useTheme";
 import {
   useChatConversations,
+  useDeleteConversation,
   usePinConversation,
   type ChatConversation,
 } from "@/hooks/useChat";
-import { useQueryClient, useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/query-client";
 import { Spacing, BorderRadius } from "@/constants/theme";
 import type { AllConversationsNavigationProp } from "@/types/navigation";
+import type { RootStackParamList } from "@/navigation/RootStackNavigator";
 
 const MAX_PINNED = 3;
 
@@ -38,20 +42,12 @@ export default function AllConversationsScreen() {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<AllConversationsNavigationProp>();
-  const queryClient = useQueryClient();
+  const route = useRoute<RouteProp<RootStackParamList, "AllConversations">>();
 
   const [search, setSearch] = useState("");
   const { data: conversations = [], isLoading } = useChatConversations("coach");
   const pinConversation = usePinConversation();
-
-  const deleteConversation = useMutation({
-    mutationFn: async (id: number) => {
-      await apiRequest("DELETE", `/api/chat/conversations/${id}`);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/chat/conversations"] });
-    },
-  });
+  const deleteConversation = useDeleteConversation();
 
   const filtered = useMemo(() => {
     if (!search.trim()) return conversations;
@@ -59,8 +55,13 @@ export default function AllConversationsScreen() {
     return conversations.filter((c) => c.title.toLowerCase().includes(q));
   }, [conversations, search]);
 
-  const pinned = filtered.filter((c) => c.isPinned);
-  const unpinned = filtered.filter((c) => !c.isPinned);
+  const { pinned, unpinned } = useMemo(
+    () => ({
+      pinned: filtered.filter((c) => c.isPinned),
+      unpinned: filtered.filter((c) => !c.isPinned),
+    }),
+    [filtered],
+  );
 
   const handleTogglePin = useCallback(
     async (conv: ChatConversation) => {
@@ -100,8 +101,8 @@ export default function AllConversationsScreen() {
         key={conv.id}
         style={[styles.row, { borderBottomColor: theme.border }]}
         onPress={() => {
+          route.params.onSelect(conv.id);
           navigation.goBack();
-          // Parent screen picks up the selected conversation via query cache
         }}
         accessibilityRole="button"
         accessibilityLabel={`Open conversation: ${conv.title}`}
@@ -144,7 +145,7 @@ export default function AllConversationsScreen() {
         </View>
       </Pressable>
     ),
-    [handleDelete, handleTogglePin, navigation, theme],
+    [handleDelete, handleTogglePin, navigation, route, theme],
   );
 
   return (
@@ -189,41 +190,34 @@ export default function AllConversationsScreen() {
       {isLoading ? (
         <ActivityIndicator style={styles.loading} color={theme.link} />
       ) : (
-        <FlatList
-          data={[]}
-          keyExtractor={() => ""}
-          ListHeaderComponent={
+        <ScrollView
+          contentContainerStyle={styles.listContent}
+          keyboardShouldPersistTaps="handled"
+        >
+          {pinned.length > 0 && (
             <>
-              {pinned.length > 0 && (
-                <>
-                  <Text style={[styles.sectionLabel, { color: theme.link }]}>
-                    PINNED
-                  </Text>
-                  {pinned.map(renderRow)}
-                </>
-              )}
-              {unpinned.length > 0 && (
-                <>
-                  <Text
-                    style={[
-                      styles.sectionLabel,
-                      { color: theme.textSecondary },
-                    ]}
-                  >
-                    CONVERSATIONS
-                  </Text>
-                  {unpinned.map(renderRow)}
-                </>
-              )}
-              {filtered.length === 0 && (
-                <Text style={[styles.empty, { color: theme.textSecondary }]}>
-                  No conversations found
-                </Text>
-              )}
+              <Text style={[styles.sectionLabel, { color: theme.link }]}>
+                PINNED
+              </Text>
+              {pinned.map(renderRow)}
             </>
-          }
-          renderItem={null}
-        />
+          )}
+          {unpinned.length > 0 && (
+            <>
+              <Text
+                style={[styles.sectionLabel, { color: theme.textSecondary }]}
+              >
+                CONVERSATIONS
+              </Text>
+              {unpinned.map(renderRow)}
+            </>
+          )}
+          {filtered.length === 0 && (
+            <Text style={[styles.empty, { color: theme.textSecondary }]}>
+              No conversations found
+            </Text>
+          )}
+        </ScrollView>
       )}
     </View>
   );
@@ -269,6 +263,7 @@ const styles = StyleSheet.create({
   rowTitle: { fontSize: 14, fontWeight: "500" },
   rowMeta: { fontSize: 12, marginTop: 2 },
   rowActions: { flexDirection: "row", alignItems: "center" },
+  listContent: { paddingBottom: Spacing.xl },
   loading: { marginTop: Spacing.xl },
   empty: { textAlign: "center", marginTop: Spacing.xl, fontSize: 14 },
 });
