@@ -3,6 +3,7 @@ import express from "express";
 import request from "supertest";
 
 import { storage } from "../../storage";
+import { sendError } from "../../lib/api-errors";
 import {
   generateCoachResponse,
   generateCoachProResponse,
@@ -67,7 +68,16 @@ vi.mock("../../lib/openai", () => ({
   OPENAI_VISION_TIMEOUT_MS: 60000,
 }));
 
-vi.mock("../../middleware/auth");
+vi.mock("../../middleware/auth", () => ({
+  requireAuth: (req: any, res: any, next: any) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith("Bearer ")) {
+      return sendError(res, 401, "No token provided");
+    }
+    req.userId = "1"; // Mock user ID
+    next();
+  },
+}));
 
 vi.mock("express-rate-limit");
 
@@ -609,6 +619,11 @@ describe("Chat Routes", () => {
         .delete("/api/chat/messages/abc")
         .set("Authorization", "Bearer valid-token");
       expect(res.status).toBe(400);
+    });
+
+    it("returns 401 without auth", async () => {
+      const res = await request(app).delete("/api/chat/messages/5");
+      expect(res.status).toBe(401);
     });
   });
 });
