@@ -137,7 +137,7 @@ export type RootStackParamList = {
       }
     | undefined;
   FastingModal: undefined;
-  AllConversations: undefined;
+  AllConversations: { onSelect: (id: number) => void };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();

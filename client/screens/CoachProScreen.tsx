@@ -182,7 +182,11 @@ export default function CoachProScreen() {
             );
           })}
           <Pressable
-            onPress={() => navigation.navigate("AllConversations")}
+            onPress={() =>
+              navigation.navigate("AllConversations", {
+                onSelect: setConversationId,
+              })
+            }
             style={[
               styles.threadChip,
               styles.seeAllChip,
@@ -252,6 +256,7 @@ const styles = StyleSheet.create({
     paddingRight: Spacing.md,
   },
   threadChip: {
+    flexDirection: "row",
     width: 148,
     minHeight: 36,
     borderRadius: BorderRadius.sm,
