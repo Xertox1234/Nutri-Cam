@@ -65,11 +65,13 @@ export default function CoachProScreen() {
   }, [conversationId, threadBarConversations]);
 
   const { cancelStaleReminders } = useNotebookNotifications();
-  const { data: notebookEntries = [] } = useNotebookEntries({
-    status: "active",
-  });
+  const { data: notebookEntries = [], isLoading: isEntriesLoading } =
+    useNotebookEntries({
+      status: "active",
+    });
 
   useEffect(() => {
+    if (isEntriesLoading) return;
     const activeIds = notebookEntries
       .filter((e) => e.type === "commitment")
       .map((e) => e.id);
@@ -79,7 +81,7 @@ export default function CoachProScreen() {
       if (state === "active") cancelStaleReminders(activeIds);
     });
     return () => sub.remove();
-  }, [notebookEntries, cancelStaleReminders]);
+  }, [notebookEntries, isEntriesLoading, cancelStaleReminders]);
 
   const handleCreateConversation = useCallback(async () => {
     const result = await createConversation.mutateAsync({ type: "coach" });
