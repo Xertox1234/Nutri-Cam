@@ -55,6 +55,23 @@ export function register(app: Express): void {
           typeof req.query.type === "string" ? req.query.type : undefined;
         const status =
           typeof req.query.status === "string" ? req.query.status : undefined;
+        if (type && !(notebookEntryTypes as readonly string[]).includes(type))
+          return sendError(
+            res,
+            400,
+            "Invalid type",
+            ErrorCode.VALIDATION_ERROR,
+          );
+        if (
+          status &&
+          !(notebookEntryStatusValues as readonly string[]).includes(status)
+        )
+          return sendError(
+            res,
+            400,
+            "Invalid status",
+            ErrorCode.VALIDATION_ERROR,
+          );
         const entries = await storage.getNotebookEntries(req.userId, {
           type,
           status,
