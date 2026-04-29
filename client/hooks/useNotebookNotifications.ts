@@ -1,6 +1,8 @@
 import { useCallback } from "react";
+import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { requestNotificationPermission } from "@/lib/notifications";
 
 const STORAGE_KEY = "COACH_NOTIFICATION_IDS";
 
@@ -18,18 +20,13 @@ async function setNotificationMap(map: Record<string, string>): Promise<void> {
 }
 
 export function useNotebookNotifications() {
-  const requestPermission = useCallback(async (): Promise<boolean> => {
-    const { status } = await Notifications.requestPermissionsAsync();
-    return status === "granted";
-  }, []);
-
   const scheduleCommitmentReminder = useCallback(
     async (
       entryId: number,
       content: string,
       followUpDate: string,
     ): Promise<void> => {
-      const granted = await requestPermission();
+      const granted = await requestNotificationPermission();
       if (!granted) return;
 
       const map = await getNotificationMap();
@@ -49,6 +46,9 @@ export function useNotebookNotifications() {
           title: "Coach reminder",
           body: content.slice(0, 100),
           data: { entryId },
+          ...(Platform.OS === "android"
+            ? { channelId: "coach-reminders" }
+            : {}),
         },
         trigger: {
           type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -59,7 +59,7 @@ export function useNotebookNotifications() {
       map[String(entryId)] = id;
       await setNotificationMap(map);
     },
-    [requestPermission],
+    [],
   );
 
   const cancelCommitmentReminder = useCallback(
