@@ -1001,6 +1001,35 @@ vi.mock("../../storage", () => {
 
 **Origin:** Coach Pro test failures (2026-04-10) — 4 test files failed because auto-mock triggered `DATABASE_URL` check
 
+**Gotcha 2 — `vi.hoisted()` for mock handle variables:**
+
+When a test needs a handle on a mock function defined alongside a `vi.mock()` factory, the standard `const mockFn = vi.fn()` pattern breaks if the mocked module is imported statically:
+
+```typescript
+// ❌ BREAKS when the production module uses a static import of "../../storage"
+const mockUpdate = vi.fn().mockResolvedValue(undefined);
+vi.mock("../../storage/index", () => ({
+  storage: { updateCommunityRecipeImageUrl: mockUpdate }, // ReferenceError!
+}));
+
+// ✅ CORRECT — vi.hoisted() runs before the mock factory
+const mockUpdate = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
+vi.mock("../../storage/index", () => ({
+  storage: { updateCommunityRecipeImageUrl: mockUpdate },
+}));
+```
+
+This problem surfaces specifically when converting a `dynamic import()` call to a
+static `import` — the dynamic form deferred evaluation until runtime (after mocks
+were set up), while the static form evaluates at module load time before the
+`const mockUpdate` line runs.
+
+**Rule of thumb:** If you see `ReferenceError: Cannot access 'mockX' before initialization` in a test that uses `vi.mock()`, the mock variable needs `vi.hoisted()`.
+
+**Reference:** `server/services/__tests__/recipe-generation.test.ts` — `mockUpdateCommunityRecipeImageUrl` uses `vi.hoisted()` after `recipe-generation.ts` was changed from dynamic `await import("../storage/index")` to a static import.
+
+**Origin:** 2026-04-28 audit L12 — converting dynamic import to static broke the test.
+
 ### Feature Flag Routing Divergence in Tests
 
 When premium tier checks create routing forks in handlers, tests must mock the function matching the code path their mocked tier triggers. Mocking `tier: "premium"` but only stubbing the free-tier function is a common source of 503/500 errors in tests.
