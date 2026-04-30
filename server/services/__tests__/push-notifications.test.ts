@@ -134,4 +134,17 @@ describe("sendPushToUser", () => {
     expect(messages[0].data).toEqual({ entryId: 42 });
     expect(messages[0].sound).toBe("default");
   });
+
+  it("returns false when all chunk sends throw (network failure)", async () => {
+    vi.mocked(storage.getPushTokensForUser).mockResolvedValue([
+      mockToken(VALID_TOKEN),
+    ]);
+    expoMock.send.mockRejectedValue(new Error("network timeout"));
+
+    // All chunks failed → tickets empty → accepted.length === 0
+    expect(await sendPushToUser("1", "title", "body")).toBe(false);
+  });
 });
+
+// The absent-EXPO_ACCESS_TOKEN path is covered in push-notifications-unconfigured.test.ts
+// (a dedicated file that imports the module without the env var set, giving a fresh singleton).
