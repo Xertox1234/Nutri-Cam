@@ -54,7 +54,10 @@ export async function sendDueCommitmentReminders(): Promise<void> {
   // Fetch each user's profile once (not once per entry) to avoid redundant DB
   // round-trips when a user has multiple due commitments.
   const uniqueUserIds = [...new Set(entries.map((e) => e.userId))];
-  let profileMap: Map<string, Awaited<ReturnType<typeof storage.getUserProfile>>>;
+  let profileMap: Map<
+    string,
+    Awaited<ReturnType<typeof storage.getUserProfile>>
+  >;
   try {
     profileMap = new Map(
       await Promise.all(
