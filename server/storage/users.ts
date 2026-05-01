@@ -16,7 +16,7 @@ import {
   type SubscriptionTier,
 } from "@shared/types/premium";
 import { db } from "../db";
-import { eq, and, inArray, sql, getTableColumns } from "drizzle-orm";
+import { eq, and, inArray, sql, getTableColumns, gt, asc } from "drizzle-orm";
 import { removeFromIndex } from "../lib/search-index";
 
 // ============================================================================
@@ -207,6 +207,24 @@ export async function deleteUser(id: string): Promise<boolean> {
 
 export async function getAllUserIds(): Promise<string[]> {
   const rows = await db.select({ id: users.id }).from(users);
+  return rows.map((r) => r.id);
+}
+
+/**
+ * Fetch a page of user IDs ordered by id for cursor-based iteration.
+ * Pass `afterId: null` to start from the beginning; pass the last ID from the
+ * previous page to advance the cursor. Returns an empty array when exhausted.
+ */
+export async function getUserIdPage( // idor-safe: scheduler-only; iterates all users by design
+  afterId: string | null,
+  limit = 500,
+): Promise<string[]> {
+  const query = db
+    .select({ id: users.id })
+    .from(users)
+    .orderBy(asc(users.id))
+    .limit(limit);
+  const rows = await (afterId ? query.where(gt(users.id, afterId)) : query);
   return rows.map((r) => r.id);
 }
 

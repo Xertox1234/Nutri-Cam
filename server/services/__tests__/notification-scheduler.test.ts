@@ -21,6 +21,7 @@ vi.mock("../../storage", () => ({
     getDueCommitmentsAllUsers: vi.fn(),
     updateNotebookEntryStatus: vi.fn(),
     getAllUserIds: vi.fn(),
+    getUserIdPage: vi.fn(),
     getUserProfile: vi.fn(),
     getDailyLogs: vi.fn(),
     getDailySummary: vi.fn(),
@@ -217,7 +218,10 @@ describe("startNotificationScheduler", () => {
 
 describe("sendDailyCheckinReminders", () => {
   it("creates a daily-checkin reminder for unmuted users", async () => {
-    vi.mocked(storage.getAllUserIds).mockResolvedValue(["user-1"]);
+    // First page returns one user; second page returns empty to end iteration
+    vi.mocked(storage.getUserIdPage)
+      .mockResolvedValueOnce(["user-1"])
+      .mockResolvedValueOnce([]);
     vi.mocked(storage.getUserProfile).mockResolvedValue(
       createMockUserProfile({ userId: "user-1", reminderMutes: {} }),
     );
@@ -243,7 +247,9 @@ describe("sendDailyCheckinReminders", () => {
   });
 
   it("skips users with daily-checkin muted", async () => {
-    vi.mocked(storage.getAllUserIds).mockResolvedValue(["user-1"]);
+    vi.mocked(storage.getUserIdPage)
+      .mockResolvedValueOnce(["user-1"])
+      .mockResolvedValueOnce([]);
     vi.mocked(storage.getUserProfile).mockResolvedValue(
       createMockUserProfile({
         userId: "user-1",
@@ -258,7 +264,9 @@ describe("sendDailyCheckinReminders", () => {
   });
 
   it("skips if daily-checkin reminder already exists today", async () => {
-    vi.mocked(storage.getAllUserIds).mockResolvedValue(["user-1"]);
+    vi.mocked(storage.getUserIdPage)
+      .mockResolvedValueOnce(["user-1"])
+      .mockResolvedValueOnce([]);
     vi.mocked(storage.getUserProfile).mockResolvedValue(
       createMockUserProfile({ userId: "user-1", reminderMutes: {} }),
     );
@@ -269,8 +277,8 @@ describe("sendDailyCheckinReminders", () => {
     expect(storage.createPendingReminder).not.toHaveBeenCalled();
   });
 
-  it("returns gracefully when getAllUserIds throws", async () => {
-    vi.mocked(storage.getAllUserIds).mockRejectedValue(new Error("db error"));
+  it("returns gracefully when getUserIdPage throws", async () => {
+    vi.mocked(storage.getUserIdPage).mockRejectedValue(new Error("db error"));
 
     await expect(sendDailyCheckinReminders()).resolves.toBeUndefined();
     expect(storage.createPendingReminder).not.toHaveBeenCalled();
@@ -279,7 +287,9 @@ describe("sendDailyCheckinReminders", () => {
 
 describe("sendMealLogReminders", () => {
   it("creates a meal-log reminder when no logs exist today", async () => {
-    vi.mocked(storage.getAllUserIds).mockResolvedValue(["user-1"]);
+    vi.mocked(storage.getUserIdPage)
+      .mockResolvedValueOnce(["user-1"])
+      .mockResolvedValueOnce([]);
     vi.mocked(storage.getUserProfile).mockResolvedValue(
       createMockUserProfile({ userId: "user-1", reminderMutes: {} }),
     );
@@ -298,7 +308,9 @@ describe("sendMealLogReminders", () => {
   });
 
   it("skips when logs already exist today", async () => {
-    vi.mocked(storage.getAllUserIds).mockResolvedValue(["user-1"]);
+    vi.mocked(storage.getUserIdPage)
+      .mockResolvedValueOnce(["user-1"])
+      .mockResolvedValueOnce([]);
     vi.mocked(storage.getUserProfile).mockResolvedValue(
       createMockUserProfile({ userId: "user-1", reminderMutes: {} }),
     );
@@ -313,7 +325,9 @@ describe("sendMealLogReminders", () => {
   });
 
   it("skips when meal-log is muted", async () => {
-    vi.mocked(storage.getAllUserIds).mockResolvedValue(["user-1"]);
+    vi.mocked(storage.getUserIdPage)
+      .mockResolvedValueOnce(["user-1"])
+      .mockResolvedValueOnce([]);
     vi.mocked(storage.getUserProfile).mockResolvedValue(
       createMockUserProfile({
         userId: "user-1",
@@ -328,8 +342,8 @@ describe("sendMealLogReminders", () => {
     expect(storage.createPendingReminder).not.toHaveBeenCalled();
   });
 
-  it("returns gracefully when getAllUserIds throws", async () => {
-    vi.mocked(storage.getAllUserIds).mockRejectedValue(new Error("db error"));
+  it("returns gracefully when getUserIdPage throws", async () => {
+    vi.mocked(storage.getUserIdPage).mockRejectedValue(new Error("db error"));
 
     await expect(sendMealLogReminders()).resolves.toBeUndefined();
     expect(storage.createPendingReminder).not.toHaveBeenCalled();

@@ -122,86 +122,104 @@ export async function sendDueCommitmentReminders(): Promise<void> {
   }
 }
 
+/**
+ * Iterate all user IDs in cursor-based pages (500 at a time) and invoke
+ * `processUser` for each one. Keeps the scheduler's heap footprint bounded
+ * regardless of user count by never loading all IDs at once.
+ *
+ * Throws if the initial page fetch fails (callers should catch and return).
+ */
+async function forEachUserPaged(
+  processUser: (userId: string) => Promise<void>,
+): Promise<void> {
+  const PAGE_SIZE = 500;
+  let cursor: string | null = null;
+
+  while (true) {
+    const page = await storage.getUserIdPage(cursor, PAGE_SIZE);
+    if (page.length === 0) break;
+
+    for (const userId of page) {
+      await processUser(userId);
+    }
+
+    cursor = page[page.length - 1];
+    if (page.length < PAGE_SIZE) break;
+  }
+}
+
 /** Create a daily check-in pending reminder for each unmuted user. */
 export async function sendDailyCheckinReminders(): Promise<void> {
-  let userIds: string[];
   try {
-    userIds = await storage.getAllUserIds();
+    await forEachUserPaged(async (userId) => {
+      try {
+        const profile = await storage.getUserProfile(userId);
+        if (isMuted(profile?.reminderMutes, "daily-checkin")) return;
+
+        const alreadyPending = await storage.hasPendingReminderToday(
+          userId,
+          "daily-checkin",
+        );
+        if (alreadyPending) return;
+
+        const summary = await storage.getDailySummary(userId, new Date());
+
+        await storage.createPendingReminder({
+          userId,
+          type: "daily-checkin",
+          context: { calories: Math.round(summary.totalCalories) },
+          scheduledFor: new Date(),
+        });
+      } catch (err) {
+        logger.error(
+          { err, userId },
+          "notification-scheduler: failed daily-checkin reminder for user",
+        );
+      }
+    });
   } catch (err) {
     logger.error(
       { err },
       "notification-scheduler: failed to fetch user IDs for daily checkin",
     );
-    return;
-  }
-
-  for (const userId of userIds) {
-    try {
-      const profile = await storage.getUserProfile(userId);
-      if (isMuted(profile?.reminderMutes, "daily-checkin")) continue;
-
-      const alreadyPending = await storage.hasPendingReminderToday(
-        userId,
-        "daily-checkin",
-      );
-      if (alreadyPending) continue;
-
-      const summary = await storage.getDailySummary(userId, new Date());
-
-      await storage.createPendingReminder({
-        userId,
-        type: "daily-checkin",
-        context: { calories: Math.round(summary.totalCalories) },
-        scheduledFor: new Date(),
-      });
-    } catch (err) {
-      logger.error(
-        { err, userId },
-        "notification-scheduler: failed daily-checkin reminder for user",
-      );
-    }
   }
 }
 
 /** Create a meal-log pending reminder for users who have no logs today. */
 export async function sendMealLogReminders(): Promise<void> {
-  let userIds: string[];
   try {
-    userIds = await storage.getAllUserIds();
+    await forEachUserPaged(async (userId) => {
+      try {
+        const profile = await storage.getUserProfile(userId);
+        if (isMuted(profile?.reminderMutes, "meal-log")) return;
+
+        const logs = await storage.getDailyLogs(userId, new Date());
+        if (logs.length > 0) return;
+
+        const alreadyPending = await storage.hasPendingReminderToday(
+          userId,
+          "meal-log",
+        );
+        if (alreadyPending) return;
+
+        await storage.createPendingReminder({
+          userId,
+          type: "meal-log",
+          context: { lastLoggedAt: null },
+          scheduledFor: new Date(),
+        });
+      } catch (err) {
+        logger.error(
+          { err, userId },
+          "notification-scheduler: failed meal-log reminder for user",
+        );
+      }
+    });
   } catch (err) {
     logger.error(
       { err },
       "notification-scheduler: failed to fetch user IDs for meal-log reminders",
     );
-    return;
-  }
-
-  for (const userId of userIds) {
-    try {
-      const profile = await storage.getUserProfile(userId);
-      if (isMuted(profile?.reminderMutes, "meal-log")) continue;
-
-      const logs = await storage.getDailyLogs(userId, new Date());
-      if (logs.length > 0) continue;
-
-      const alreadyPending = await storage.hasPendingReminderToday(
-        userId,
-        "meal-log",
-      );
-      if (alreadyPending) continue;
-
-      await storage.createPendingReminder({
-        userId,
-        type: "meal-log",
-        context: { lastLoggedAt: null },
-        scheduledFor: new Date(),
-      });
-    } catch (err) {
-      logger.error(
-        { err, userId },
-        "notification-scheduler: failed meal-log reminder for user",
-      );
-    }
   }
 }
 
