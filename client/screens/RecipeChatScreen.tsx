@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef, useMemo } from "react";
 import {
   View,
+  Text,
   FlatList,
   TextInput,
   Pressable,
@@ -39,34 +40,42 @@ type RecipeChatRouteProp = RouteProp<RootStackParamList, "RecipeChat">;
 const SUGGESTION_CHIPS = [
   {
     label: "Quick & Easy",
+    emoji: "⚡",
     prompt: "Give me a quick and easy recipe I can make in under 20 minutes",
   },
   {
     label: "High Protein",
+    emoji: "💪",
     prompt: "Create a high-protein meal for post-workout recovery",
   },
   {
     label: "Italian",
+    emoji: "🍝",
     prompt: "Make me an authentic Italian dinner",
   },
   {
     label: "Comfort Food",
+    emoji: "🍲",
     prompt: "I want something warm and comforting",
   },
   {
     label: "Kid-Friendly",
+    emoji: "⭐",
     prompt: "Create a healthy kid-friendly meal",
   },
   {
     label: "Low Carb",
+    emoji: "🥗",
     prompt: "Give me a delicious low-carb dinner option",
   },
   {
     label: "Budget Friendly",
+    emoji: "💵",
     prompt: "Create a tasty meal using affordable ingredients",
   },
   {
     label: "Date Night",
+    emoji: "🕯",
     prompt: "Create an impressive dinner for two",
   },
 ];
@@ -314,11 +323,18 @@ export default function RecipeChatScreen() {
       {/* Messages or Empty State */}
       {!hasStarted ? (
         <View style={styles.emptyState}>
-          <Feather
-            name={isRemixMode ? "shuffle" : "book-open"}
-            size={48}
-            color={theme.link}
-          />
+          <View
+            style={[
+              styles.iconWrapper,
+              { backgroundColor: withOpacity(theme.link, 0.1) },
+            ]}
+          >
+            <Feather
+              name={isRemixMode ? "shuffle" : "book-open"}
+              size={32}
+              color={theme.link}
+            />
+          </View>
           <ThemedText
             type="h3"
             style={{ textAlign: "center", marginTop: Spacing.md }}
@@ -342,40 +358,79 @@ export default function RecipeChatScreen() {
           </ThemedText>
 
           {/* Suggestion Chips */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.chipsContainer}
-            style={{ marginTop: Spacing.lg }}
-            accessible
-            accessibilityRole="none"
-            accessibilityLabel={
-              isRemixMode ? "Remix suggestions" : "Suggested prompts"
-            }
-          >
-            {(isRemixMode ? remixChips : SUGGESTION_CHIPS).map((chip) => (
-              <Pressable
-                key={chip.label}
-                onPress={() => handleChipPress(chip.prompt)}
-                style={[
-                  styles.chip,
-                  {
-                    backgroundColor: withOpacity(theme.link, 0.08),
-                    borderColor: withOpacity(theme.link, 0.15),
-                  },
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={`Suggested prompt: ${chip.label}`}
-              >
-                <ThemedText
-                  type="caption"
-                  style={{ color: theme.link, fontWeight: "600" }}
+          {isRemixMode ? (
+            /* Remix: horizontal scroll (dynamic chip count) */
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.chipsScrollContent}
+              style={{ marginTop: Spacing.lg, alignSelf: "stretch" }}
+              accessible
+              accessibilityRole="none"
+              accessibilityLabel="Remix suggestions"
+            >
+              {remixChips.map((chip) => (
+                <Pressable
+                  key={chip.label}
+                  onPress={() => handleChipPress(chip.prompt)}
+                  style={[
+                    styles.chip,
+                    {
+                      backgroundColor: withOpacity(theme.link, 0.08),
+                      borderColor: withOpacity(theme.link, 0.2),
+                    },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Suggested prompt: ${chip.label}`}
                 >
-                  {chip.label}
-                </ThemedText>
-              </Pressable>
-            ))}
-          </ScrollView>
+                  <ThemedText
+                    type="caption"
+                    style={{ color: theme.link, fontWeight: "600" }}
+                  >
+                    {chip.label}
+                  </ThemedText>
+                </Pressable>
+              ))}
+            </ScrollView>
+          ) : (
+            /* Default: 2-column wrapping grid — all chips visible, no scroll */
+            <View
+              style={styles.chipsGrid}
+              accessible
+              accessibilityRole="none"
+              accessibilityLabel="Suggested prompts"
+            >
+              {SUGGESTION_CHIPS.map((chip) => (
+                <Pressable
+                  key={chip.label}
+                  onPress={() => handleChipPress(chip.prompt)}
+                  style={[
+                    styles.chip,
+                    styles.chipGridItem,
+                    {
+                      backgroundColor: withOpacity(theme.link, 0.08),
+                      borderColor: withOpacity(theme.link, 0.2),
+                    },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Suggested prompt: ${chip.label}`}
+                >
+                  <Text style={styles.chipEmoji}>{chip.emoji}</Text>
+                  <ThemedText
+                    type="caption"
+                    style={{
+                      color: theme.link,
+                      fontWeight: "600",
+                      flexShrink: 1,
+                    }}
+                    numberOfLines={1}
+                  >
+                    {chip.label}
+                  </ThemedText>
+                </Pressable>
+              ))}
+            </View>
+          )}
         </View>
       ) : (
         <FlatList
@@ -498,15 +553,42 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: Spacing.xl,
   },
-  chipsContainer: {
+  iconWrapper: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: Spacing.sm,
+  },
+  chipsScrollContent: {
     paddingHorizontal: Spacing.md,
     gap: Spacing.sm,
+    alignItems: "flex-start",
+  },
+  chipsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: Spacing.sm,
+    marginTop: Spacing.lg,
+    width: "100%",
   },
   chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.xs,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
     borderRadius: BorderRadius.full,
     borderWidth: 1,
+  },
+  chipGridItem: {
+    flexBasis: "47%",
+    flexGrow: 1,
+    flexShrink: 1,
+  },
+  chipEmoji: {
+    fontSize: 15,
   },
   messageList: {
     paddingHorizontal: Spacing.md,
