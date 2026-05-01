@@ -39,16 +39,18 @@ const REMINDER_TYPES: ReminderToggleConfig[] = [
   },
 ];
 
+const DIETARY_PROFILE_KEY = ["/api/user/dietary-profile"] as const;
+
 function useReminderMutes() {
-  return useQuery<{ reminderMutes: ReminderMutes }>({
-    queryKey: ["/api/reminders/mutes"],
+  return useQuery({
+    queryKey: DIETARY_PROFILE_KEY,
     queryFn: async () => {
       const res = await apiRequest("GET", "/api/user/dietary-profile");
-      const profile = await res.json();
-      return {
-        reminderMutes: (profile.reminderMutes ?? {}) as ReminderMutes,
-      };
+      return res.json();
     },
+    select: (profile: { reminderMutes?: ReminderMutes }) => ({
+      reminderMutes: (profile.reminderMutes ?? {}) as ReminderMutes,
+    }),
   });
 }
 
@@ -60,7 +62,13 @@ function useUpdateReminderMute() {
       return res.json() as Promise<{ reminderMutes: ReminderMutes }>;
     },
     onSuccess: (data) => {
-      queryClient.setQueryData(["/api/reminders/mutes"], data);
+      queryClient.setQueryData(
+        DIETARY_PROFILE_KEY,
+        (old: Record<string, unknown> | undefined) => ({
+          ...old,
+          reminderMutes: data.reminderMutes,
+        }),
+      );
     },
   });
 }
