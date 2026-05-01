@@ -26,8 +26,8 @@ export async function hasPendingReminderToday(
         eq(pendingReminders.userId, userId),
         eq(pendingReminders.type, type),
         isNull(pendingReminders.acknowledgedAt),
-        gte(pendingReminders.createdAt, startOfDay),
-        lt(pendingReminders.createdAt, endOfDay),
+        gte(pendingReminders.scheduledFor, startOfDay),
+        lt(pendingReminders.scheduledFor, endOfDay),
       ),
     )
     .limit(1);
@@ -73,8 +73,10 @@ export async function acknowledgeReminders(
       ),
     );
 
+  // The context shape is guaranteed by createPendingReminder callers
+  // (notification-scheduler.ts) which always pass the correct fields for each type.
   return pending.map((r) => ({
-    type: r.type as CoachContextItem["type"],
+    type: r.type,
     ...r.context,
   })) as CoachContextItem[];
 }
