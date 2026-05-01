@@ -21,7 +21,7 @@ import { z } from "zod";
 import { DEFAULT_NUTRITION_GOALS } from "./constants/nutrition";
 import type { MealSuggestion } from "./types/meal-suggestions";
 import type { CarouselRecipeCard } from "./types/carousel";
-import type { ReminderMutes } from "./types/reminders";
+import type { ReminderMutes, ReminderType } from "./types/reminders";
 
 export const users = pgTable("users", {
   id: varchar("id")
@@ -101,11 +101,11 @@ export const pendingReminders = pgTable(
     userId: varchar("user_id")
       .references(() => users.id, { onDelete: "cascade" })
       .notNull(),
-    type: text("type").notNull(),
+    type: text("type").$type<ReminderType>().notNull(),
     context: jsonb("context")
       .$type<Record<string, unknown>>()
       .notNull()
-      .default({}),
+      .default(sql`'{}'::jsonb`),
     scheduledFor: timestamp("scheduled_for").notNull(),
     acknowledgedAt: timestamp("acknowledged_at"),
     createdAt: timestamp("created_at")

@@ -4,6 +4,8 @@ export type ReminderType =
   | "daily-checkin"
   | "user-set";
 
+// "user-set" is intentionally excluded — user-initiated reminders cannot be muted
+// by category because they are explicitly created by the user.
 export type ReminderMutes = {
   "meal-log"?: boolean;
   commitment?: boolean;
