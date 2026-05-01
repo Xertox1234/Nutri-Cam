@@ -12,7 +12,13 @@ export default defineConfig({
     // @ts-expect-error — environmentMatchGlobs exists at runtime in vitest but is missing from InlineConfig type
     environmentMatchGlobs: [["client/components/**/*.test.tsx", "jsdom"]],
     include: ["**/*.test.ts", "**/*.test.tsx"],
-    exclude: ["node_modules", "server_dist", ".expo", ".claude/worktrees"],
+    exclude: [
+      "node_modules",
+      "server_dist",
+      ".expo",
+      ".claude/worktrees",
+      ".worktrees",
+    ],
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html"],

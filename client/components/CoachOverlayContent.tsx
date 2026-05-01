@@ -80,6 +80,10 @@ export function CoachOverlayContent({
     },
     onError: () => {
       setStreamError(true);
+      // accessibilityLiveRegion is Android-only — announce for iOS VoiceOver
+      AccessibilityInfo.announceForAccessibility(
+        "Response interrupted. Try sending again.",
+      );
     },
   });
 
@@ -113,13 +117,6 @@ export function CoachOverlayContent({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversationId]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      abortStream();
-    };
-  }, [abortStream]);
 
   // Build display messages — show optimistic user bubble before server messages load
   const serverMessages = (messages ?? []).filter((m) => m.role !== "system");
@@ -453,7 +450,7 @@ const styles = StyleSheet.create({
   statusRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 9,
+    gap: 9, // matches ChatBubble avatar dot column (22px dot + 9px gap)
     paddingVertical: Spacing.xs,
     paddingHorizontal: Spacing.lg,
   },

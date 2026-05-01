@@ -40,6 +40,7 @@ import {
   filterValidBlocks,
 } from "@/components/coach/coach-chat-utils";
 import { useCoachStream } from "@/hooks/useCoachStream";
+import { FLATLIST_DEFAULTS } from "@/constants/performance";
 import type { useCoachWarmUp } from "@/hooks/useCoachWarmUp";
 import type {
   CoachChatNavigationProp,
@@ -501,6 +502,7 @@ export default function CoachChat({
       keyboardVerticalOffset={90}
     >
       <FlatList
+        {...FLATLIST_DEFAULTS}
         ref={listRef}
         data={chatItems}
         keyExtractor={(item) => item.id}
@@ -604,7 +606,7 @@ const styles = StyleSheet.create({
   statusRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 9,
+    gap: 9, // matches ChatBubble avatar dot column (22px dot + 9px gap)
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.xs,
   },

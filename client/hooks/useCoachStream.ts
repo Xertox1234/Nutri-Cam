@@ -178,10 +178,14 @@ export function useCoachStream({
               for (const line of newText.split("\n")) {
                 if (!line.startsWith("data: ")) continue;
                 try {
-                  const data = JSON.parse(line.slice(6)) as Record<
-                    string,
-                    unknown
-                  >;
+                  const raw = JSON.parse(line.slice(6));
+                  if (
+                    typeof raw !== "object" ||
+                    raw === null ||
+                    Array.isArray(raw)
+                  )
+                    continue;
+                  const data = raw as Record<string, unknown>;
                   if (data.error) {
                     stopDrain();
                     setIsStreaming(false);

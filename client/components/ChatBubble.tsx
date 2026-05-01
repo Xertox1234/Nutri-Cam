@@ -211,7 +211,7 @@ const styles = StyleSheet.create({
   bubbleRowAssistant: {
     justifyContent: "flex-start",
     alignItems: "flex-start",
-    gap: 9,
+    gap: 9, // avatar dot width 22px; gap keeps text column aligned across layouts
   },
   // User bubble
   userBubble: {

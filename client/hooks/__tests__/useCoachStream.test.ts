@@ -97,6 +97,7 @@ beforeEach(() => {
   vi.stubGlobal(
     "XMLHttpRequest",
 
+    // `this: any` required — jsdom's XHR interface can't be matched structurally
     function (this: any) {
       return instance;
     },
