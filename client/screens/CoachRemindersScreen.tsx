@@ -1,0 +1,188 @@
+import React, { useCallback } from "react";
+import { View, Switch, ScrollView, StyleSheet, Platform } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { ThemedText } from "@/components/ThemedText";
+import { useTheme } from "@/hooks/useTheme";
+import { useHaptics } from "@/hooks/useHaptics";
+import { apiRequest } from "@/lib/query-client";
+import {
+  Spacing,
+  BorderRadius,
+  FontFamily,
+  withOpacity,
+} from "@/constants/theme";
+import type { ReminderMutes } from "@shared/types/reminders";
+
+interface ReminderToggleConfig {
+  key: keyof ReminderMutes;
+  label: string;
+  description: string;
+}
+
+const REMINDER_TYPES: ReminderToggleConfig[] = [
+  {
+    key: "meal-log",
+    label: "Meal logging nudges",
+    description: "Reminder at noon when you haven't logged anything yet today",
+  },
+  {
+    key: "commitment",
+    label: "Commitment follow-ups",
+    description:
+      "Alerts when a goal you told the Coach about is due for review",
+  },
+  {
+    key: "daily-checkin",
+    label: "Daily check-in",
+    description: "Morning briefing with your calorie progress",
+  },
+];
+
+function useReminderMutes() {
+  return useQuery<{ reminderMutes: ReminderMutes }>({
+    queryKey: ["/api/reminders/mutes"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/user/dietary-profile");
+      const profile = await res.json();
+      return {
+        reminderMutes: (profile.reminderMutes ?? {}) as ReminderMutes,
+      };
+    },
+  });
+}
+
+function useUpdateReminderMute() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (mutes: Partial<ReminderMutes>) => {
+      const res = await apiRequest("PATCH", "/api/reminders/mutes", mutes);
+      return res.json() as Promise<{ reminderMutes: ReminderMutes }>;
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData(["/api/reminders/mutes"], data);
+    },
+  });
+}
+
+export default function CoachRemindersScreen() {
+  const { theme } = useTheme();
+  const haptics = useHaptics();
+  const insets = useSafeAreaInsets();
+  const { data, isLoading } = useReminderMutes();
+  const updateMute = useUpdateReminderMute();
+
+  const handleToggle = useCallback(
+    (key: keyof ReminderMutes, currentlyMuted: boolean) => {
+      haptics.selection();
+      updateMute.mutate({ [key]: !currentlyMuted });
+    },
+    [haptics, updateMute],
+  );
+
+  const mutes = data?.reminderMutes ?? {};
+
+  return (
+    <ScrollView
+      style={{ backgroundColor: theme.backgroundDefault }}
+      contentContainerStyle={[
+        styles.container,
+        { paddingBottom: insets.bottom + Spacing.lg },
+      ]}
+    >
+      <ThemedText style={[styles.subtitle, { color: theme.textSecondary }]}>
+        {"Turn off categories you don't want the Coach to remind you about."}
+      </ThemedText>
+
+      <View
+        style={[styles.card, { backgroundColor: theme.backgroundSecondary }]}
+      >
+        {REMINDER_TYPES.map((item, index) => {
+          const isMuted = !!mutes[item.key];
+          const isEnabled = !isMuted;
+          const isLast = index === REMINDER_TYPES.length - 1;
+
+          return (
+            <View key={item.key}>
+              <View
+                style={styles.row}
+                accessible
+                accessibilityRole="switch"
+                accessibilityLabel={item.label}
+                accessibilityValue={{ text: isEnabled ? "on" : "off" }}
+              >
+                <View style={styles.labelContainer}>
+                  <ThemedText style={styles.label}>{item.label}</ThemedText>
+                  <ThemedText
+                    style={[styles.description, { color: theme.textSecondary }]}
+                  >
+                    {item.description}
+                  </ThemedText>
+                </View>
+                <Switch
+                  value={isEnabled}
+                  onValueChange={() => handleToggle(item.key, isMuted)}
+                  trackColor={{
+                    false: withOpacity(theme.textSecondary, 0.3),
+                    true: theme.link,
+                  }}
+                  thumbColor={
+                    Platform.OS === "android" ? "#FFFFFF" : undefined // hardcoded
+                  }
+                  disabled={isLoading || updateMute.isPending}
+                />
+              </View>
+              {!isLast && (
+                <View
+                  style={[
+                    styles.divider,
+                    {
+                      backgroundColor: withOpacity(theme.textSecondary, 0.12),
+                    },
+                  ]}
+                />
+              )}
+            </View>
+          );
+        })}
+      </View>
+    </ScrollView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    padding: Spacing.lg,
+    gap: Spacing.md,
+  },
+  subtitle: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  card: {
+    borderRadius: BorderRadius.lg,
+    overflow: "hidden",
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: Spacing.md,
+    gap: Spacing.md,
+  },
+  labelContainer: {
+    flex: 1,
+    gap: 2,
+  },
+  label: {
+    fontFamily: FontFamily.medium,
+    fontSize: 15,
+  },
+  description: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    marginHorizontal: Spacing.md,
+  },
+});

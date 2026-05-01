@@ -22,6 +22,14 @@ import cron from "node-cron";
 import { logger } from "../lib/logger";
 import { storage } from "../storage";
 import { sendPushToUser } from "./push-notifications";
+import type { ReminderMutes } from "@shared/types/reminders";
+
+function isMuted(
+  mutes: ReminderMutes | null | undefined,
+  type: keyof ReminderMutes,
+): boolean {
+  return !!mutes?.[type];
+}
 
 /** Fire the reminder batch for all due commitments. Exported for testing. */
 export async function sendDueCommitmentReminders(): Promise<void> {
@@ -45,6 +53,26 @@ export async function sendDueCommitmentReminders(): Promise<void> {
 
   for (const entry of entries) {
     try {
+      const profile = await storage.getUserProfile(entry.userId);
+      if (isMuted(profile?.reminderMutes, "commitment")) continue;
+
+      // Write pending reminder (regardless of push success)
+      const alreadyPending = await storage.hasPendingReminderToday(
+        entry.userId,
+        "commitment",
+      );
+      if (!alreadyPending) {
+        await storage.createPendingReminder({
+          userId: entry.userId,
+          type: "commitment",
+          context: {
+            notebookEntryId: entry.id,
+            content: entry.content.slice(0, 200),
+          },
+          scheduledFor: new Date(),
+        });
+      }
+
       const delivered = await sendPushToUser(
         entry.userId,
         "Coach reminder",
@@ -65,32 +93,134 @@ export async function sendDueCommitmentReminders(): Promise<void> {
     } catch (err) {
       logger.error(
         { err, entryId: entry.id },
-        "notification-scheduler: failed to send reminder for entry",
+        "notification-scheduler: failed to process commitment entry",
+      );
+    }
+  }
+}
+
+/** Create a daily check-in pending reminder for each unmuted user. */
+export async function sendDailyCheckinReminders(): Promise<void> {
+  let userIds: string[];
+  try {
+    userIds = await storage.getAllUserIds();
+  } catch (err) {
+    logger.error(
+      { err },
+      "notification-scheduler: failed to fetch user IDs for daily checkin",
+    );
+    return;
+  }
+
+  for (const userId of userIds) {
+    try {
+      const profile = await storage.getUserProfile(userId);
+      if (isMuted(profile?.reminderMutes, "daily-checkin")) continue;
+
+      const alreadyPending = await storage.hasPendingReminderToday(
+        userId,
+        "daily-checkin",
+      );
+      if (alreadyPending) continue;
+
+      const summary = await storage.getDailySummary(userId, new Date());
+
+      await storage.createPendingReminder({
+        userId,
+        type: "daily-checkin",
+        context: { calories: Math.round(summary.totalCalories) },
+        scheduledFor: new Date(),
+      });
+    } catch (err) {
+      logger.error(
+        { err, userId },
+        "notification-scheduler: failed daily-checkin reminder for user",
+      );
+    }
+  }
+}
+
+/** Create a meal-log pending reminder for users who have no logs today. */
+export async function sendMealLogReminders(): Promise<void> {
+  let userIds: string[];
+  try {
+    userIds = await storage.getAllUserIds();
+  } catch (err) {
+    logger.error(
+      { err },
+      "notification-scheduler: failed to fetch user IDs for meal-log reminders",
+    );
+    return;
+  }
+
+  for (const userId of userIds) {
+    try {
+      const profile = await storage.getUserProfile(userId);
+      if (isMuted(profile?.reminderMutes, "meal-log")) continue;
+
+      const logs = await storage.getDailyLogs(userId, new Date());
+      if (logs.length > 0) continue;
+
+      const alreadyPending = await storage.hasPendingReminderToday(
+        userId,
+        "meal-log",
+      );
+      if (alreadyPending) continue;
+
+      await storage.createPendingReminder({
+        userId,
+        type: "meal-log",
+        context: { lastLoggedAt: null },
+        scheduledFor: new Date(),
+      });
+    } catch (err) {
+      logger.error(
+        { err, userId },
+        "notification-scheduler: failed meal-log reminder for user",
       );
     }
   }
 }
 
 let scheduledTask: ReturnType<typeof cron.schedule> | null = null;
+let mealLogTask: ReturnType<typeof cron.schedule> | null = null;
 
 /**
- * Start the daily 09:00 cron job that sends commitment reminders.
- * Safe to call multiple times — only one job instance is created.
+ * Start the daily cron jobs that send reminders.
+ * Safe to call multiple times — only one set of job instances is created.
  */
 export function startNotificationScheduler(): void {
-  if (scheduledTask) return;
+  if (scheduledTask || mealLogTask) return;
 
-  // "0 9 * * *" = every day at 09:00 server time
+  // 09:00 daily — commitments + daily check-in
   scheduledTask = cron.schedule("0 9 * * *", () => {
     sendDueCommitmentReminders().catch((err) => {
       logger.error(
         { err },
-        "notification-scheduler: unhandled error in cron job",
+        "notification-scheduler: unhandled error in commitment cron",
+      );
+    });
+    sendDailyCheckinReminders().catch((err) => {
+      logger.error(
+        { err },
+        "notification-scheduler: unhandled error in daily-checkin cron",
       );
     });
   });
 
-  logger.info("notification-scheduler: started (daily at 09:00)");
+  // 12:00 daily — meal-log nudge for users who haven't logged anything yet today
+  mealLogTask = cron.schedule("0 12 * * *", () => {
+    sendMealLogReminders().catch((err) => {
+      logger.error(
+        { err },
+        "notification-scheduler: unhandled error in meal-log cron",
+      );
+    });
+  });
+
+  logger.info(
+    "notification-scheduler: started (09:00 commitments+checkin, 12:00 meal-log)",
+  );
 }
 
 /** Stop the scheduler (used in tests). */
@@ -98,5 +228,9 @@ export function stopNotificationScheduler(): void {
   if (scheduledTask) {
     scheduledTask.stop();
     scheduledTask = null;
+  }
+  if (mealLogTask) {
+    mealLogTask.stop();
+    mealLogTask = null;
   }
 }

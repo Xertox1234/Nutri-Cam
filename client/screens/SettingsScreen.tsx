@@ -55,6 +55,7 @@ const SETTINGS_ITEMS: SettingsItemConfig[] = [
     label: "Nutrition Goals",
     premiumKey: "adaptiveGoals",
   },
+  { id: "coachReminders", icon: "bell", label: "Coach Reminders" },
   { id: "subscription", icon: "credit-card", label: "Subscription" },
   { id: "signout", icon: "log-out", label: "Sign Out", danger: true },
 ];
@@ -111,6 +112,9 @@ export default function SettingsScreen() {
           } else {
             setShowUpgradeModal(true);
           }
+          break;
+        case "coachReminders":
+          navigation.navigate("CoachReminders");
           break;
         case "subscription":
           if (isPremium) {

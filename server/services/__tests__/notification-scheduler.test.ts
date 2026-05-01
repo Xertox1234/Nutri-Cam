@@ -1,11 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   sendDueCommitmentReminders,
+  sendDailyCheckinReminders,
+  sendMealLogReminders,
   startNotificationScheduler,
   stopNotificationScheduler,
 } from "../notification-scheduler";
 import { storage } from "../../storage";
-import { createMockCoachNotebookEntry } from "../../__tests__/factories";
+import {
+  createMockCoachNotebookEntry,
+  createMockDailyLog,
+  createMockUserProfile,
+} from "../../__tests__/factories";
 
 import { sendPushToUser } from "../push-notifications";
 import cron from "node-cron";
@@ -14,6 +20,12 @@ vi.mock("../../storage", () => ({
   storage: {
     getDueCommitmentsAllUsers: vi.fn(),
     updateNotebookEntryStatus: vi.fn(),
+    getAllUserIds: vi.fn(),
+    getUserProfile: vi.fn(),
+    getDailyLogs: vi.fn(),
+    getDailySummary: vi.fn(),
+    hasPendingReminderToday: vi.fn(),
+    createPendingReminder: vi.fn(),
   },
 }));
 
@@ -50,6 +62,8 @@ describe("sendDueCommitmentReminders", () => {
       type: "commitment",
     });
     vi.mocked(storage.getDueCommitmentsAllUsers).mockResolvedValue([entry]);
+    vi.mocked(storage.hasPendingReminderToday).mockResolvedValue(false);
+    vi.mocked(storage.createPendingReminder).mockResolvedValue(undefined);
     vi.mocked(sendPushToUser).mockResolvedValue(true);
     vi.mocked(storage.updateNotebookEntryStatus).mockResolvedValue(undefined);
 
@@ -71,6 +85,8 @@ describe("sendDueCommitmentReminders", () => {
   it("does NOT mark entry completed when push delivery fails", async () => {
     const entry = createMockCoachNotebookEntry({ id: 2, userId: "7" });
     vi.mocked(storage.getDueCommitmentsAllUsers).mockResolvedValue([entry]);
+    vi.mocked(storage.hasPendingReminderToday).mockResolvedValue(false);
+    vi.mocked(storage.createPendingReminder).mockResolvedValue(undefined);
     vi.mocked(sendPushToUser).mockResolvedValue(false);
 
     await sendDueCommitmentReminders();
@@ -86,6 +102,8 @@ describe("sendDueCommitmentReminders", () => {
       content: longContent,
     });
     vi.mocked(storage.getDueCommitmentsAllUsers).mockResolvedValue([entry]);
+    vi.mocked(storage.hasPendingReminderToday).mockResolvedValue(false);
+    vi.mocked(storage.createPendingReminder).mockResolvedValue(undefined);
     vi.mocked(sendPushToUser).mockResolvedValue(true);
     vi.mocked(storage.updateNotebookEntryStatus).mockResolvedValue(undefined);
 
@@ -102,6 +120,8 @@ describe("sendDueCommitmentReminders", () => {
       entry1,
       entry2,
     ]);
+    vi.mocked(storage.hasPendingReminderToday).mockResolvedValue(false);
+    vi.mocked(storage.createPendingReminder).mockResolvedValue(undefined);
     vi.mocked(sendPushToUser)
       .mockRejectedValueOnce(new Error("network error"))
       .mockResolvedValueOnce(true);
@@ -126,23 +146,64 @@ describe("sendDueCommitmentReminders", () => {
     await expect(sendDueCommitmentReminders()).resolves.toBeUndefined();
     expect(sendPushToUser).not.toHaveBeenCalled();
   });
+
+  it("skips creating pending reminder when commitment is muted", async () => {
+    const entry = createMockCoachNotebookEntry({
+      id: 5,
+      userId: "user-1",
+      content: "Eat more vegetables",
+      type: "commitment",
+    });
+    vi.mocked(storage.getDueCommitmentsAllUsers).mockResolvedValue([entry]);
+    vi.mocked(storage.getUserProfile).mockResolvedValue(
+      createMockUserProfile({
+        userId: "user-1",
+        reminderMutes: { commitment: true },
+      }),
+    );
+    vi.mocked(storage.hasPendingReminderToday).mockResolvedValue(false);
+    vi.mocked(sendPushToUser).mockResolvedValue(true);
+    vi.mocked(storage.updateNotebookEntryStatus).mockResolvedValue(undefined);
+
+    await sendDueCommitmentReminders();
+
+    expect(storage.createPendingReminder).not.toHaveBeenCalled();
+    expect(sendPushToUser).not.toHaveBeenCalled();
+  });
 });
 
 describe("startNotificationScheduler", () => {
-  it("schedules a daily 09:00 cron job", () => {
+  it("schedules daily cron jobs at 09:00 and 12:00", () => {
     startNotificationScheduler();
 
     expect(cron.schedule).toHaveBeenCalledWith(
       "0 9 * * *",
       expect.any(Function),
     );
+    expect(cron.schedule).toHaveBeenCalledWith(
+      "0 12 * * *",
+      expect.any(Function),
+    );
   });
 
-  it("is idempotent — calling twice creates only one job", () => {
+  it("is idempotent — calling twice creates only two jobs total", () => {
     startNotificationScheduler();
     startNotificationScheduler();
 
-    expect(cron.schedule).toHaveBeenCalledTimes(1);
+    expect(cron.schedule).toHaveBeenCalledTimes(2);
+  });
+
+  it("idempotency guard also covers the 12:00 meal-log job", () => {
+    startNotificationScheduler();
+    startNotificationScheduler();
+    startNotificationScheduler();
+
+    // Regardless of how many times start is called, still only two cron jobs
+    expect(cron.schedule).toHaveBeenCalledTimes(2);
+    expect(cron.schedule).toHaveBeenCalledWith(
+      "0 12 * * *",
+      expect.any(Function),
+    );
   });
 
   it("stopNotificationScheduler allows scheduler to be restarted", () => {
@@ -150,6 +211,127 @@ describe("startNotificationScheduler", () => {
     stopNotificationScheduler();
     startNotificationScheduler();
 
-    expect(cron.schedule).toHaveBeenCalledTimes(2);
+    expect(cron.schedule).toHaveBeenCalledTimes(4);
+  });
+});
+
+describe("sendDailyCheckinReminders", () => {
+  it("creates a daily-checkin reminder for unmuted users", async () => {
+    vi.mocked(storage.getAllUserIds).mockResolvedValue(["user-1"]);
+    vi.mocked(storage.getUserProfile).mockResolvedValue(
+      createMockUserProfile({ userId: "user-1", reminderMutes: {} }),
+    );
+    vi.mocked(storage.getDailySummary).mockResolvedValue({
+      totalCalories: 850,
+      totalProtein: 40,
+      totalCarbs: 100,
+      totalFat: 30,
+      itemCount: 3,
+    });
+    vi.mocked(storage.hasPendingReminderToday).mockResolvedValue(false);
+    vi.mocked(storage.createPendingReminder).mockResolvedValue(undefined);
+
+    await sendDailyCheckinReminders();
+
+    expect(storage.createPendingReminder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "user-1",
+        type: "daily-checkin",
+        context: { calories: 850 },
+      }),
+    );
+  });
+
+  it("skips users with daily-checkin muted", async () => {
+    vi.mocked(storage.getAllUserIds).mockResolvedValue(["user-1"]);
+    vi.mocked(storage.getUserProfile).mockResolvedValue(
+      createMockUserProfile({
+        userId: "user-1",
+        reminderMutes: { "daily-checkin": true },
+      }),
+    );
+    vi.mocked(storage.hasPendingReminderToday).mockResolvedValue(false);
+
+    await sendDailyCheckinReminders();
+
+    expect(storage.createPendingReminder).not.toHaveBeenCalled();
+  });
+
+  it("skips if daily-checkin reminder already exists today", async () => {
+    vi.mocked(storage.getAllUserIds).mockResolvedValue(["user-1"]);
+    vi.mocked(storage.getUserProfile).mockResolvedValue(
+      createMockUserProfile({ userId: "user-1", reminderMutes: {} }),
+    );
+    vi.mocked(storage.hasPendingReminderToday).mockResolvedValue(true);
+
+    await sendDailyCheckinReminders();
+
+    expect(storage.createPendingReminder).not.toHaveBeenCalled();
+  });
+
+  it("returns gracefully when getAllUserIds throws", async () => {
+    vi.mocked(storage.getAllUserIds).mockRejectedValue(new Error("db error"));
+
+    await expect(sendDailyCheckinReminders()).resolves.toBeUndefined();
+    expect(storage.createPendingReminder).not.toHaveBeenCalled();
+  });
+});
+
+describe("sendMealLogReminders", () => {
+  it("creates a meal-log reminder when no logs exist today", async () => {
+    vi.mocked(storage.getAllUserIds).mockResolvedValue(["user-1"]);
+    vi.mocked(storage.getUserProfile).mockResolvedValue(
+      createMockUserProfile({ userId: "user-1", reminderMutes: {} }),
+    );
+    vi.mocked(storage.getDailyLogs).mockResolvedValue([]);
+    vi.mocked(storage.hasPendingReminderToday).mockResolvedValue(false);
+    vi.mocked(storage.createPendingReminder).mockResolvedValue(undefined);
+
+    await sendMealLogReminders();
+
+    expect(storage.createPendingReminder).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: "user-1",
+        type: "meal-log",
+      }),
+    );
+  });
+
+  it("skips when logs already exist today", async () => {
+    vi.mocked(storage.getAllUserIds).mockResolvedValue(["user-1"]);
+    vi.mocked(storage.getUserProfile).mockResolvedValue(
+      createMockUserProfile({ userId: "user-1", reminderMutes: {} }),
+    );
+    vi.mocked(storage.getDailyLogs).mockResolvedValue([
+      createMockDailyLog({ id: 1, userId: "user-1" }),
+    ]);
+    vi.mocked(storage.hasPendingReminderToday).mockResolvedValue(false);
+
+    await sendMealLogReminders();
+
+    expect(storage.createPendingReminder).not.toHaveBeenCalled();
+  });
+
+  it("skips when meal-log is muted", async () => {
+    vi.mocked(storage.getAllUserIds).mockResolvedValue(["user-1"]);
+    vi.mocked(storage.getUserProfile).mockResolvedValue(
+      createMockUserProfile({
+        userId: "user-1",
+        reminderMutes: { "meal-log": true },
+      }),
+    );
+    vi.mocked(storage.getDailyLogs).mockResolvedValue([]);
+    vi.mocked(storage.hasPendingReminderToday).mockResolvedValue(false);
+
+    await sendMealLogReminders();
+
+    expect(storage.createPendingReminder).not.toHaveBeenCalled();
+  });
+
+  it("returns gracefully when getAllUserIds throws", async () => {
+    vi.mocked(storage.getAllUserIds).mockRejectedValue(new Error("db error"));
+
+    await expect(sendMealLogReminders()).resolves.toBeUndefined();
+    expect(storage.createPendingReminder).not.toHaveBeenCalled();
   });
 });
