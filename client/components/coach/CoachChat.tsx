@@ -473,6 +473,26 @@ export default function CoachChat({
     }
   }, [isListening, startListening, stopListening]);
 
+  const handleChangeText = useCallback(
+    (text: string) => {
+      setInputText(text);
+      if (isCoachPro) warmUpHook.sendTextWarmUp(text);
+    },
+    [isCoachPro, warmUpHook],
+  );
+
+  const micAdornment = useMemo(
+    () =>
+      hasVoice ? (
+        <CoachMicButton
+          isListening={isListening}
+          volume={volume}
+          onPress={handleMicPress}
+        />
+      ) : null,
+    [hasVoice, isListening, volume, handleMicPress],
+  );
+
   // Auto-scroll when new messages arrive (streaming scroll handled in onChunk callback)
   useEffect(() => {
     listRef.current?.scrollToEnd({ animated: false });
@@ -481,23 +501,10 @@ export default function CoachChat({
   return (
     <CoachChatBase
       inputText={inputText}
-      onChangeText={(text) => {
-        setInputText(text);
-        if (isCoachPro) warmUpHook.sendTextWarmUp(text);
-      }}
+      onChangeText={handleChangeText}
       onSend={handleSend}
       isStreaming={isStreaming}
-      placeholder="Ask your coach..."
-      inputAccessibilityLabel="Message your nutrition coach"
-      inputAdornment={
-        hasVoice ? (
-          <CoachMicButton
-            isListening={isListening}
-            volume={volume}
-            onPress={handleMicPress}
-          />
-        ) : null
-      }
+      inputAdornment={micAdornment}
       keyboardVerticalOffset={90}
       streamingError={streamingError}
     >

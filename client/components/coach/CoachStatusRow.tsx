@@ -1,5 +1,5 @@
-import React from "react";
-import { StyleSheet, View, Text } from "react-native";
+import React, { useEffect, useRef } from "react";
+import { StyleSheet, View, Text, AccessibilityInfo } from "react-native";
 import { FontFamily, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/useTheme";
 
@@ -14,6 +14,23 @@ interface CoachStatusRowProps {
  */
 export function CoachStatusRow({ statusText }: CoachStatusRowProps) {
   const { theme } = useTheme();
+  const prevStatusRef = useRef("");
+
+  // Announce phase changes (e.g. "Searching your data...") to iOS VoiceOver.
+  // Skip the first value — the parent already announces "Coach is thinking..."
+  // at stream start via announceForAccessibility.
+  // accessibilityLiveRegion is Android-only, so we bridge manually here.
+  useEffect(() => {
+    if (
+      statusText &&
+      prevStatusRef.current !== "" &&
+      statusText !== prevStatusRef.current
+    ) {
+      AccessibilityInfo.announceForAccessibility(statusText);
+    }
+    prevStatusRef.current = statusText;
+  }, [statusText]);
+
   return (
     <View style={styles.row}>
       <View style={[styles.dot, { backgroundColor: theme.link }]} />

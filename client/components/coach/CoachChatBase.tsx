@@ -9,7 +9,7 @@ import {
   type StyleProp,
   type ViewStyle,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { Feather } from "@expo/vector-icons";
 import {
   BorderRadius,
   FontFamily,
@@ -159,7 +159,7 @@ export function CoachChatBase({
               accessibilityLabel="Send message"
               accessibilityState={{ disabled: !canSend }}
             >
-              <Ionicons name="send" size={16} color={theme.buttonText} />
+              <Feather name="send" size={16} color={theme.buttonText} />
             </Pressable>
           ) : (
             (inputAdornment ?? null)

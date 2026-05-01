@@ -3636,3 +3636,48 @@ export function useTTS() {
 **Accessibility:** The speaker `Pressable` button should use `accessibilityRole="button"` and a dynamic `accessibilityLabel` (`"Read aloud"` / `"Stop reading aloud"`). `expo-speech` respects system silent/vibrate mode on both iOS and Android automatically.
 
 **References:** `client/hooks/useTTS.ts`, `client/components/ChatBubble.tsx` (speaker button), `client/components/coach/CoachChat.tsx` (integration).
+
+---
+
+### Skip-First-Render Guard for Accessibility Announcements in Conditionally-Rendered Components
+
+When a component is conditionally rendered (e.g. shown only while a stream is active) and needs to announce its own internal state changes via `AccessibilityInfo.announceForAccessibility`, it must skip the **initial mount announcement** to avoid double-firing with the parent's broader announcement.
+
+**The problem:** A parent announces "Coach is thinking..." at stream start. The child `CoachStatusRow` mounts at the same time with an initial `statusText` value. Without a guard, its `useEffect` fires immediately and a second announcement fires before the first has finished — producing garbled or duplicate VoiceOver output.
+
+```typescript
+// ❌ BAD — announces immediately on mount, double-fires with parent
+export function CoachStatusRow({ statusText }: { statusText: string }) {
+  useEffect(() => {
+    if (statusText) {
+      AccessibilityInfo.announceForAccessibility(statusText);
+    }
+  }, [statusText]);
+  // ...
+}
+```
+
+```typescript
+// ✅ GOOD — skips first value; only announces changes that happen after mount
+export function CoachStatusRow({ statusText }: { statusText: string }) {
+  const prevStatusRef = useRef("");
+
+  useEffect(() => {
+    if (
+      statusText &&
+      prevStatusRef.current !== "" &&
+      statusText !== prevStatusRef.current
+    ) {
+      AccessibilityInfo.announceForAccessibility(statusText);
+    }
+    prevStatusRef.current = statusText;
+  }, [statusText]);
+  // ...
+}
+```
+
+**Why the guard works for conditionally-rendered components:** Because the component unmounts between streaming sessions, `prevStatusRef.current` resets to `""` on each mount. The first value is therefore always skipped — the parent covers the initial announcement. Subsequent phase changes (e.g. `"Thinking..."` → `"Searching your data..."`) are announced when they arrive.
+
+**Rule:** Apply this guard whenever a conditionally-rendered child needs to announce state changes but a parent already announces the transition that causes the child to appear.
+
+**References:** `client/components/coach/CoachStatusRow.tsx`, `client/components/coach/CoachChat.tsx` (parent announces `"Coach is thinking..."` at stream start).

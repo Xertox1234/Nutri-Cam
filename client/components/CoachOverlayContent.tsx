@@ -293,6 +293,9 @@ export function CoachOverlayContent({
           {isStreaming && !streamingContent && statusText ? (
             <CoachStatusRow statusText={statusText} />
           ) : null}
+          {/* Error banner is intentionally placed inside the scroll area (adjacent
+              to the failed message) rather than using CoachChatBase's streamingError
+              prop, which anchors InlineError below the input bar. */}
           {streamError && (
             <View
               style={styles.errorBanner}

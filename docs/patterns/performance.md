@@ -875,3 +875,54 @@ if (cuisine) {
 **Origin:** 2026-04-17 audit M22 — `searchRecipes` chained 9 sequential
 `candidates = candidates.filter(...)` calls, allocating 8 throwaway arrays
 per request. Predicate composition reduced this to a single O(N) pass.
+
+---
+
+### Memoize Input Props Passed Into Streaming FlatList Consumers
+
+When a component renders a `FlatList` that updates on every streamed token (i.e. dozens of re-renders per second), any prop passed to a child that is constructed inline creates a new reference on each render. React treats new references as changed props — causing `TextInput`, mic buttons, and similar children to re-render at character rate even though nothing about them actually changed.
+
+The standard `useCallback`/`useMemo` advice applies here, but **streaming amplifies the cost** to a degree that makes normally-tolerable inline props a real performance concern.
+
+**Specific cases that commonly arise in streaming chat screens:**
+
+**1. `onChangeText` handlers that do extra work (warm-up calls, debouncing)**
+
+```typescript
+// ❌ BAD — new function reference on every streamed token
+onChangeText={(text) => {
+  setInputText(text);
+  if (isCoachPro) warmUpHook.sendTextWarmUp(text);
+}}
+
+// ✅ GOOD
+const handleChangeText = useCallback(
+  (text: string) => {
+    setInputText(text);
+    if (isCoachPro) warmUpHook.sendTextWarmUp(text);
+  },
+  [isCoachPro, warmUpHook],
+);
+```
+
+**2. JSX slot props (icon buttons, adornments) passed as children to input shell components**
+
+```typescript
+// ❌ BAD — new JSX element object on every render
+inputAdornment={
+  hasVoice ? <CoachMicButton isListening={isListening} volume={volume} onPress={handleMicPress} /> : null
+}
+
+// ✅ GOOD
+const micAdornment = useMemo(
+  () =>
+    hasVoice ? (
+      <CoachMicButton isListening={isListening} volume={volume} onPress={handleMicPress} />
+    ) : null,
+  [hasVoice, isListening, volume, handleMicPress],
+);
+```
+
+**Rule:** In any component that re-renders on streaming content (i.e. subscribes to a `streamingContent` value from `useCoachStream`), treat all props passed to non-streaming children as performance-critical and wrap them in `useCallback`/`useMemo`.
+
+**References:** `client/components/coach/CoachChat.tsx` (`handleChangeText`, `micAdornment`), `client/hooks/useCoachStream.ts`.
