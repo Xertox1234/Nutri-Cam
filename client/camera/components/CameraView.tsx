@@ -2,6 +2,7 @@ import React, {
   forwardRef,
   useImperativeHandle,
   useRef,
+  useEffect,
   useCallback,
 } from "react";
 import { StyleSheet, View } from "react-native";
@@ -10,10 +11,13 @@ import { ThemedText } from "@/components/ThemedText";
 import { useTheme } from "@/hooks/useTheme";
 import {
   Camera,
-  useCameraDevice,
-  useCodeScanner,
-  type Code,
+  usePhotoOutput,
+  type CameraRef as VisionCameraRef,
 } from "react-native-vision-camera";
+import {
+  useBarcodeScannerOutput,
+  type Barcode,
+} from "react-native-vision-camera-barcode-scanner";
 import {
   BARCODE_TYPE_MAP,
   BARCODE_TYPE_REVERSE_MAP,
@@ -29,62 +33,46 @@ import type {
   BarcodeResult,
   ExpoBarcodeType,
 } from "../types";
-import { useOCRDetection } from "../hooks/useOCRDetection";
 
 /**
- * Maps a 0-1 quality value to vision-camera's qualityPrioritization format.
- * - quality > 0.7 -> "quality" (prioritizes image quality)
- * - quality > 0.3 -> "balanced" (balanced speed/quality)
- * - otherwise -> "speed" (prioritizes capture speed)
- * - If undefined, defaults to "balanced"
+ * Maps a 0-1 quality value to V5's qualityPrioritization option.
  */
-function mapQualityToPhotoQualityBalance(
+function mapQualityPrioritization(
   quality: number | undefined,
 ): "speed" | "balanced" | "quality" {
-  if (quality === undefined) {
-    return "balanced";
-  }
-  if (quality > 0.7) {
-    return "quality";
-  }
-  if (quality > 0.3) {
-    return "balanced";
-  }
+  if (quality === undefined) return "balanced";
+  if (quality > 0.7) return "quality";
+  if (quality > 0.3) return "balanced";
   return "speed";
 }
 
-// Map expo barcode types to vision camera types
 function mapBarcodeTypes(
   expoTypes: ExpoBarcodeType[],
 ): VisionCameraBarcodeType[] {
   return expoTypes.map((type) => BARCODE_TYPE_MAP[type]);
 }
 
-// Map vision camera code to our barcode result
-function mapCodeToResult(code: Code): BarcodeResult | null {
-  // Use type guard instead of type assertion for safety
-  if (!isVisionCameraBarcodeType(code.type)) return null;
-
-  const expoType = BARCODE_TYPE_REVERSE_MAP[code.type];
+function mapBarcodeToResult(barcode: Barcode): BarcodeResult | null {
+  if (!isVisionCameraBarcodeType(barcode.format)) return null;
+  const expoType = BARCODE_TYPE_REVERSE_MAP[barcode.format];
   if (!expoType) return null;
-
   return {
-    data: code.value ?? "",
+    data: barcode.rawValue ?? "",
     type: expoType,
-    bounds: code.frame
+    bounds: barcode.boundingBox
       ? {
-          x: code.frame.x,
-          y: code.frame.y,
-          width: code.frame.width,
-          height: code.frame.height,
+          x: barcode.boundingBox.left,
+          y: barcode.boundingBox.top,
+          width: barcode.boundingBox.right - barcode.boundingBox.left,
+          height: barcode.boundingBox.bottom - barcode.boundingBox.top,
         }
       : undefined,
   };
 }
 
 /**
- * Camera component using react-native-vision-camera.
- * Provides barcode scanning and photo capture capabilities.
+ * Camera component using react-native-vision-camera V5.
+ * Provides barcode scanning (via useBarcodeScannerOutput) and photo capture.
  */
 export const CameraView = forwardRef<CameraRef, CameraViewProps>(
   (
@@ -96,110 +84,105 @@ export const CameraView = forwardRef<CameraRef, CameraViewProps>(
       isActive = true,
       photoQuality,
       style,
-      enableOCR = false,
-      onTextDetected,
-      onOCRResult,
     },
     ref,
   ) => {
-    const cameraRef = useRef<Camera>(null);
-    const device = useCameraDevice(facing);
-    const { theme } = useTheme();
+    const cameraRef = useRef<VisionCameraRef>(null);
 
-    const codeScanner = useCodeScanner({
-      codeTypes: mapBarcodeTypes(barcodeTypes),
-      onCodeScanned: useCallback(
-        (codes: Code[]) => {
-          if (!onBarcodeScanned || codes.length === 0) return;
-
-          const result = mapCodeToResult(codes[0]);
-          if (result) {
-            onBarcodeScanned(result);
-          }
-        },
-        [onBarcodeScanned],
-      ),
+    const photoOutput = usePhotoOutput({
+      qualityPrioritization: mapQualityPrioritization(photoQuality),
+      quality: photoQuality ?? 0.85,
     });
 
-    const { frameProcessor, latestOCRResult } = useOCRDetection({
-      enabled: enableOCR && barcodeTypes.length === 0,
-      onTextDetected,
-      onOCRResult,
+    const handleBarcodeScanned = useCallback(
+      (barcodes: Barcode[]) => {
+        if (!onBarcodeScanned || barcodes.length === 0) return;
+        const result = mapBarcodeToResult(barcodes[0]);
+        if (result) onBarcodeScanned(result);
+      },
+      [onBarcodeScanned],
+    );
+
+    const barcodeScannerOutput = useBarcodeScannerOutput({
+      barcodeFormats: mapBarcodeTypes(barcodeTypes),
+      onBarcodeScanned: handleBarcodeScanned,
+      onError: (error) => {
+        console.warn("[CameraView] Barcode scanner error:", error.message);
+      },
     });
+
+    // Torch is imperative in V5 — drive it via controller ref
+    useEffect(() => {
+      cameraRef.current?.controller
+        ?.setTorchMode(enableTorch ? "on" : "off")
+        .catch(() => {
+          // Device may not have a torch; ignore
+        });
+    }, [enableTorch]);
 
     useImperativeHandle(ref, () => ({
       takePicture: async (
-        options?: PhotoOptions,
+        _options?: PhotoOptions,
       ): Promise<PhotoResult | null> => {
-        if (!cameraRef.current) return null;
-
         try {
-          // Note: In vision-camera v4, quality is set at the Camera component level
-          // via photoQualityBalance prop, not per-photo. The options.quality parameter
-          // is accepted for API compatibility but the actual quality is determined
-          // by the photoQuality prop passed to CameraView.
-          const photo = await cameraRef.current.takePhoto({
-            flash: "off",
-          });
-
-          return {
-            uri: `file://${photo.path}`,
-            width: photo.width,
-            height: photo.height,
-          };
+          const photoFile = await photoOutput.capturePhotoToFile(
+            { flashMode: "off" },
+            {},
+          );
+          return { uri: `file://${photoFile.filePath}` };
         } catch {
-          // Photo capture failed - return null to let caller handle gracefully
           return null;
         }
       },
-      getLatestOCRResult: () => latestOCRResult.current,
     }));
 
-    if (!device) {
-      return (
-        <View
-          style={[
-            styles.unavailable,
-            { backgroundColor: theme.backgroundDefault },
-          ]}
-        >
-          <Feather
-            name="camera-off"
-            size={48}
-            color={theme.textSecondary}
-            accessible={false}
-          />
-          <ThemedText type="h4" style={styles.unavailableTitle}>
-            Camera unavailable
-          </ThemedText>
-          <ThemedText
-            type="body"
-            style={[styles.unavailableSubtitle, { color: theme.textSecondary }]}
-          >
-            Try using the gallery to upload a photo
-          </ThemedText>
-        </View>
-      );
-    }
+    const outputs =
+      barcodeTypes.length > 0
+        ? [photoOutput, barcodeScannerOutput]
+        : [photoOutput];
 
     return (
       <Camera
         ref={cameraRef}
         style={[StyleSheet.absoluteFill, style]}
-        device={device}
+        device={facing}
         isActive={isActive}
-        photo
-        photoQualityBalance={mapQualityToPhotoQualityBalance(photoQuality)}
-        {...(enableOCR && barcodeTypes.length === 0
-          ? { frameProcessor }
-          : { codeScanner })}
-        torch={enableTorch ? "on" : "off"}
+        outputs={outputs}
+        onError={(error) => {
+          console.warn("[CameraView] Camera error:", error.message);
+        }}
       />
     );
   },
 );
 
 CameraView.displayName = "CameraView";
+
+// Kept for edge cases where the camera hardware is unavailable
+export function CameraUnavailable() {
+  const { theme } = useTheme();
+  return (
+    <View
+      style={[styles.unavailable, { backgroundColor: theme.backgroundDefault }]}
+    >
+      <Feather
+        name="camera-off"
+        size={48}
+        color={theme.textSecondary}
+        accessible={false}
+      />
+      <ThemedText type="h4" style={styles.unavailableTitle}>
+        Camera unavailable
+      </ThemedText>
+      <ThemedText
+        type="body"
+        style={[styles.unavailableSubtitle, { color: theme.textSecondary }]}
+      >
+        Try using the gallery to upload a photo
+      </ThemedText>
+    </View>
+  );
+}
 
 const styles = StyleSheet.create({
   unavailable: {

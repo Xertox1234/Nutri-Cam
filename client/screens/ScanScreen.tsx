@@ -48,6 +48,7 @@ import {
   CameraView,
   useCameraPermissions,
   useCamera,
+  recognizeTextFromPhoto,
   type BarcodeResult,
 } from "@/camera";
 import { usePremiumCamera } from "@/hooks/usePremiumFeatures";
@@ -138,7 +139,6 @@ export default function ScanScreen() {
   const pulseScale = useSharedValue(1);
   const cornerOpacity = useSharedValue(0.6);
   const scanSuccessScale = useSharedValue(0);
-  const cornerGlow = useSharedValue(0);
 
   // Green flash overlay on barcode scan success
   const { trigger: triggerScanFlash, animatedStyle: scanFlashStyle } =
@@ -216,29 +216,12 @@ export default function ScanScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- cornerOpacity is a stable useSharedValue ref that never changes identity
   }, [reducedMotion]);
 
-  const handleTextDetected = useCallback(
-    (detected: boolean) => {
-      if (reducedMotion) {
-        cornerGlow.value = detected ? 1 : 0;
-      } else {
-        cornerGlow.value = detected
-          ? withTiming(1, { duration: 300 })
-          : withTiming(0, { duration: 500 });
-      }
-    },
-    [cornerGlow, reducedMotion],
-  );
-
   const pulseStyle = useAnimatedStyle(() => ({
     transform: [{ scale: pulseScale.value }],
   }));
 
   const glowCornerStyle = useAnimatedStyle(() => ({
     opacity: cornerOpacity.value,
-  }));
-
-  const connectingLineStyle = useAnimatedStyle(() => ({
-    opacity: cornerGlow.value,
   }));
 
   const successStyle = useAnimatedStyle(() => ({
@@ -286,8 +269,8 @@ export default function ScanScreen() {
 
         if (photo?.uri) {
           if (isFrontLabelMode && verifyBarcode) {
-            const ocrResult = cameraRef.current?.getLatestOCRResult?.();
-            const localOCRText = ocrResult?.resultText ?? undefined;
+            const ocrResult = await recognizeTextFromPhoto(photo.uri);
+            const localOCRText = ocrResult.text || undefined;
             const localData = localOCRText
               ? parseFrontLabelFromOCR(localOCRText)
               : null;
@@ -325,19 +308,17 @@ export default function ScanScreen() {
               }
             }
           } else if (isLabelMode) {
-            // Get cached OCR result from the frame processor
-            const ocrResult = cameraRef.current?.getLatestOCRResult?.();
+            const ocrResult = await recognizeTextFromPhoto(photo.uri);
             navigation.navigate("LabelAnalysis", {
               imageUri: photo.uri,
               barcode: verifyBarcode,
               verificationMode: !!verifyBarcode,
               verifyBarcode,
-              localOCRText: ocrResult?.resultText ?? undefined,
+              localOCRText: ocrResult.text || undefined,
             });
             if (!verifyBarcode) refreshScanCount();
           } else {
-            const ocrResult = cameraRef.current?.getLatestOCRResult?.();
-            handleSmartScan(photo.uri, ocrResult?.resultText ?? undefined);
+            handleSmartScan(photo.uri, undefined);
           }
         }
       } catch {
@@ -470,8 +451,6 @@ export default function ScanScreen() {
         enableTorch={torch}
         facing="back"
         isActive={isFocused}
-        enableOCR={isLabelMode || isFrontLabelMode}
-        onTextDetected={isLabelMode ? handleTextDetected : undefined}
         photoQuality={
           isLabelMode || isFrontLabelMode
             ? 0.85
@@ -575,20 +554,6 @@ export default function ScanScreen() {
               ]}
             />
           </AnimatedView>
-
-          {/* Glow border — independent of pulse, fades in when text detected */}
-          <Animated.View
-            style={[
-              styles.glowBorder,
-              {
-                width: frame.WIDTH,
-                height: frame.HEIGHT,
-                borderColor: theme.success,
-                borderRadius: frame.CORNER_RADIUS,
-              },
-              connectingLineStyle,
-            ]}
-          />
 
           {/* Green flash overlay on successful barcode scan */}
           <Animated.View
@@ -772,10 +737,6 @@ const styles = StyleSheet.create({
     right: 0,
     borderTopWidth: 0,
     borderLeftWidth: 0,
-  },
-  glowBorder: {
-    position: "absolute",
-    borderWidth: 2,
   },
   scanFlashOverlay: {
     position: "absolute",

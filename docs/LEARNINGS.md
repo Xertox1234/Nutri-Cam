@@ -4,6 +4,7 @@ This document captures key learnings, gotchas, and architectural decisions disco
 
 ## Table of Contents
 
+- [react-native-vision-camera v4→v5 + Capture-then-OCR Migration (2026-05-01)](#react-native-vision-camera-v4v5--capture-then-ocr-migration-2026-05-01)
 - [Expo Push Ticket-to-Token Index Misalignment (2026-04-29)](#expo-push-ticket-to-token-index-misalignment-2026-04-29)
 - [parseInt on req.userId Returns NaN (2026-04-28)](#parseint-on-requserid-returns-nan-2026-04-28)
 - [onConflictDoNothing on Cache Tables Causes expired-entry Skip + ! Crash (2026-04-28)](#onconflictdonothing-on-cache-tables-causes-expired-entry-skip---crash-2026-04-28)
@@ -64,6 +65,26 @@ This document captures key learnings, gotchas, and architectural decisions disco
 - [Testing & Tooling Learnings](#testing--tooling-learnings)
 - [Database Migration Gotchas](#database-migration-gotchas)
 - [TypeScript Safety Learnings](#typescript-safety-learnings)
+
+## 2026-05-01 — react-native-vision-camera v4→v5 + Capture-then-OCR Migration
+
+**Decision:** Migrated from `react-native-vision-camera` v4.7.3 to v5.0.8 (Nitro Modules rewrite). Simultaneously dropped `react-native-vision-camera-ocr-plus` (live frame-processor OCR) in favour of **capture-then-OCR**: take a still with V5's `capturePhotoToFile`, then run `@react-native-ml-kit/text-recognition` on the full-resolution image.
+
+**Why the OCR pivot:** The OCR-plus plugin has no V5 peer-dep compatibility and no migration path. Full-resolution still OCR is more accurate than motion-blurred 10th-frame OCR anyway, and eliminates the frame-processor overhead (better battery, lower thermals).
+
+**Key V5 API changes to remember:**
+
+- Photo capture moves to `usePhotoOutput()` → `photoOutput.capturePhotoToFile()`; the camera ref no longer has a `takePhoto` method.
+- Barcode scanning uses `react-native-vision-camera-barcode-scanner`'s `useBarcodeScannerOutput()` — it returns a `CameraOutput` you pass into `<Camera outputs={[...]} />`.
+- `<Camera outputs={[photoOutput, barcodeScannerOutput]}>` replaces `photo={true}` and `useCodeScanner`.
+- `device` prop now accepts `"back"` | `"front"` directly — no `useCameraDevice()` needed.
+- Torch is imperative: `cameraRef.current?.controller?.setTorchMode("on" | "off")`.
+- `Rect` bounding boxes use `left/right/top/bottom`, not `x/y/width/height` — convert with `width = right - left`.
+- `useBarcodeScannerOutput` requires `onError` (not optional).
+- `useCameraPermission()` returns `{ hasPermission: boolean, requestPermission }` — synthesise `canAskAgain` with a `hasRequestedRef`.
+- QR format renamed: `"qr"` → `"qr-code"` in `BarcodeFormat`.
+
+**MLKit simulator patch:** The Podfile post-install hook (`scripts/patch-mlkit-simulator.py`) still required — both `react-native-vision-camera-barcode-scanner` and `@react-native-ml-kit/text-recognition` pull in MLKit fat binaries that need re-tagging for arm64 simulators. Never run `expo prebuild --clean` or it will wipe the Podfile patch.
 
 ## 2026-04-29 — Expo Push Ticket-to-Token Index Misalignment
 
