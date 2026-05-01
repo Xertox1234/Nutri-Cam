@@ -17,4 +17,29 @@ describe("discovery-cards-config", () => {
     const ids = DISCOVERY_CARDS.map((c) => c.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
+
+  it("every card has non-empty required fields", () => {
+    for (const card of DISCOVERY_CARDS) {
+      expect(
+        card.eyebrow.length,
+        `eyebrow empty for card "${card.id}"`,
+      ).toBeGreaterThan(0);
+      expect(
+        card.headline.length,
+        `headline empty for card "${card.id}"`,
+      ).toBeGreaterThan(0);
+      expect(
+        card.subtitle.length,
+        `subtitle empty for card "${card.id}"`,
+      ).toBeGreaterThan(0);
+      expect(
+        card.emoji.length,
+        `emoji empty for card "${card.id}"`,
+      ).toBeGreaterThan(0);
+      expect(
+        card.ctaLabel.length,
+        `ctaLabel empty for card "${card.id}"`,
+      ).toBeGreaterThan(0);
+    }
+  });
 });

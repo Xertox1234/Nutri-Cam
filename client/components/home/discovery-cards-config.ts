@@ -1,9 +1,9 @@
 export interface DiscoveryCard {
-  id: string; // matches HomeAction.id — drives visibility check and navigation
+  id: string;
   eyebrow: string;
   headline: string;
   subtitle: string;
-  emoji: string; // decorative watermark emoji rendered at large size
+  emoji: string;
   ctaLabel: string;
 }
 
