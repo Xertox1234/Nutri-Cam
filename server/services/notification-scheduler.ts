@@ -124,13 +124,13 @@ export async function sendDueCommitmentReminders(): Promise<void> {
 
 /**
  * Iterate all user IDs in cursor-based pages (500 at a time) and invoke
- * `processUser` for each one. Keeps the scheduler's heap footprint bounded
- * regardless of user count by never loading all IDs at once.
+ * `processPage` with each full page. Keeps the scheduler's heap footprint
+ * bounded regardless of user count by never loading all IDs at once.
  *
- * Throws if the initial page fetch fails (callers should catch and return).
+ * Throws on any page fetch failure; callers should catch and return.
  */
 async function forEachUserPaged(
-  processUser: (userId: string) => Promise<void>,
+  processPage: (userIds: string[]) => Promise<void>,
 ): Promise<void> {
   const PAGE_SIZE = 500;
   let cursor: string | null = null;
@@ -139,9 +139,7 @@ async function forEachUserPaged(
     const page = await storage.getUserIdPage(cursor, PAGE_SIZE);
     if (page.length === 0) break;
 
-    for (const userId of page) {
-      await processUser(userId);
-    }
+    await processPage(page);
 
     cursor = page[page.length - 1];
     if (page.length < PAGE_SIZE) break;
@@ -151,30 +149,53 @@ async function forEachUserPaged(
 /** Create a daily check-in pending reminder for each unmuted user. */
 export async function sendDailyCheckinReminders(): Promise<void> {
   try {
-    await forEachUserPaged(async (userId) => {
+    await forEachUserPaged(async (userIds) => {
+      // Batch-fetch profiles for the whole page to avoid N sequential queries.
+      let profileMap: Map<
+        string,
+        Awaited<ReturnType<typeof storage.getUserProfile>>
+      >;
       try {
-        const profile = await storage.getUserProfile(userId);
-        if (isMuted(profile?.reminderMutes, "daily-checkin")) return;
-
-        const alreadyPending = await storage.hasPendingReminderToday(
-          userId,
-          "daily-checkin",
+        profileMap = new Map(
+          await Promise.all(
+            userIds.map(
+              async (id) => [id, await storage.getUserProfile(id)] as const,
+            ),
+          ),
         );
-        if (alreadyPending) return;
-
-        const summary = await storage.getDailySummary(userId, new Date());
-
-        await storage.createPendingReminder({
-          userId,
-          type: "daily-checkin",
-          context: { calories: Math.round(summary.totalCalories) },
-          scheduledFor: new Date(),
-        });
       } catch (err) {
         logger.error(
-          { err, userId },
-          "notification-scheduler: failed daily-checkin reminder for user",
+          { err },
+          "notification-scheduler: failed to batch-fetch profiles for daily-checkin page",
         );
+        return;
+      }
+
+      for (const userId of userIds) {
+        try {
+          const profile = profileMap.get(userId);
+          if (isMuted(profile?.reminderMutes, "daily-checkin")) continue;
+
+          const alreadyPending = await storage.hasPendingReminderToday(
+            userId,
+            "daily-checkin",
+          );
+          if (alreadyPending) continue;
+
+          const summary = await storage.getDailySummary(userId, new Date());
+
+          await storage.createPendingReminder({
+            userId,
+            type: "daily-checkin",
+            context: { calories: Math.round(summary.totalCalories) },
+            scheduledFor: new Date(),
+          });
+        } catch (err) {
+          logger.error(
+            { err, userId },
+            "notification-scheduler: failed daily-checkin reminder for user",
+          );
+        }
       }
     });
   } catch (err) {
@@ -188,31 +209,54 @@ export async function sendDailyCheckinReminders(): Promise<void> {
 /** Create a meal-log pending reminder for users who have no logs today. */
 export async function sendMealLogReminders(): Promise<void> {
   try {
-    await forEachUserPaged(async (userId) => {
+    await forEachUserPaged(async (userIds) => {
+      // Batch-fetch profiles for the whole page to avoid N sequential queries.
+      let profileMap: Map<
+        string,
+        Awaited<ReturnType<typeof storage.getUserProfile>>
+      >;
       try {
-        const profile = await storage.getUserProfile(userId);
-        if (isMuted(profile?.reminderMutes, "meal-log")) return;
-
-        const logs = await storage.getDailyLogs(userId, new Date());
-        if (logs.length > 0) return;
-
-        const alreadyPending = await storage.hasPendingReminderToday(
-          userId,
-          "meal-log",
+        profileMap = new Map(
+          await Promise.all(
+            userIds.map(
+              async (id) => [id, await storage.getUserProfile(id)] as const,
+            ),
+          ),
         );
-        if (alreadyPending) return;
-
-        await storage.createPendingReminder({
-          userId,
-          type: "meal-log",
-          context: { lastLoggedAt: null },
-          scheduledFor: new Date(),
-        });
       } catch (err) {
         logger.error(
-          { err, userId },
-          "notification-scheduler: failed meal-log reminder for user",
+          { err },
+          "notification-scheduler: failed to batch-fetch profiles for meal-log page",
         );
+        return;
+      }
+
+      for (const userId of userIds) {
+        try {
+          const profile = profileMap.get(userId);
+          if (isMuted(profile?.reminderMutes, "meal-log")) continue;
+
+          const logs = await storage.getDailyLogs(userId, new Date());
+          if (logs.length > 0) continue;
+
+          const alreadyPending = await storage.hasPendingReminderToday(
+            userId,
+            "meal-log",
+          );
+          if (alreadyPending) continue;
+
+          await storage.createPendingReminder({
+            userId,
+            type: "meal-log",
+            context: { lastLoggedAt: null },
+            scheduledFor: new Date(),
+          });
+        } catch (err) {
+          logger.error(
+            { err, userId },
+            "notification-scheduler: failed meal-log reminder for user",
+          );
+        }
       }
     });
   } catch (err) {

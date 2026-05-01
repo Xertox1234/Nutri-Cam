@@ -61,14 +61,11 @@ function useUpdateReminderMute() {
       const res = await apiRequest("PATCH", "/api/reminders/mutes", mutes);
       return res.json() as Promise<{ reminderMutes: ReminderMutes }>;
     },
-    onSuccess: (data) => {
-      queryClient.setQueryData(
-        DIETARY_PROFILE_KEY,
-        (old: Record<string, unknown> | undefined) => ({
-          ...old,
-          reminderMutes: data.reminderMutes,
-        }),
-      );
+    onSuccess: () => {
+      // Invalidate rather than setQueryData — avoids corrupting the full profile
+      // cache when it is cold (old === undefined), which would drop non-mutes
+      // fields read by other hooks on the same key.
+      queryClient.invalidateQueries({ queryKey: DIETARY_PROFILE_KEY });
     },
   });
 }
