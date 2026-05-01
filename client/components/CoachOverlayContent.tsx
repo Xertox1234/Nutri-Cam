@@ -185,6 +185,7 @@ export function CoachOverlayContent({
     if (!inputText.trim() || isStreaming || !conversationId) return;
     const text = inputText.trim();
     setInputText("");
+    setStreamError(false);
     startStream(conversationId, text);
   }, [inputText, isStreaming, conversationId, startStream]);
 
