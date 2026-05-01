@@ -85,7 +85,9 @@ export default function ChatListScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      acknowledge().catch(() => {});
+      acknowledge().catch((err) => {
+        if (__DEV__) console.warn("[ChatListScreen] acknowledge failed", err);
+      });
     }, [acknowledge]),
   );
 

@@ -51,7 +51,9 @@ export default function CoachProScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      acknowledge().catch(() => {});
+      acknowledge().catch((err) => {
+        if (__DEV__) console.warn("[CoachProScreen] acknowledge failed", err);
+      });
     }, [acknowledge]),
   );
 
