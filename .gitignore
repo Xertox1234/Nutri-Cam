@@ -82,6 +82,7 @@ docs/brainstorms/
 docs/plans/
 todos/
 .claude/worktrees/
+.claude/scheduled_tasks.lock
 .ui-design/
 
 # Dev workaround: symlink for Metro entry resolution
