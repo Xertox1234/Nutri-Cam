@@ -86,6 +86,23 @@ This document captures key learnings, gotchas, and architectural decisions disco
 
 **MLKit simulator patch:** The Podfile post-install hook (`scripts/patch-mlkit-simulator.py`) still required — both `react-native-vision-camera-barcode-scanner` and `@react-native-ml-kit/text-recognition` pull in MLKit fat binaries that need re-tagging for arm64 simulators. Never run `expo prebuild --clean` or it will wipe the Podfile patch.
 
+**Swift 6.2 ICE on Xcode 26 + nitrogen-generated interop:** `react-native-vision-camera-barcode-scanner` uses nitrogen's C++/Swift interop generator, which produces a `typealias bridge = margelo.nitro.camera.barcodescanner.bridge.swift` that crashes `swift-frontend` 6.2 with an ICE (Internal Compiler Error). Neither `SWIFT_VERSION = '5'` nor `SWIFT_COMPILATION_MODE = 'singlefile'` avoids the crash.
+
+**Fix — platform split via Metro file extensions:**
+
+- `CameraView.tsx` = Android (uses `useBarcodeScannerOutput` from the barcode scanner pod)
+- `CameraView.ios.tsx` = iOS (uses `useObjectOutput` from VisionCamera core — AVFoundation metadata, no external pod needed)
+- `react-native.config.js` at project root excludes `react-native-vision-camera-barcode-scanner` from iOS autolinking (`platforms: { ios: null }`), so CocoaPods never installs the crashing pod on iOS.
+- The pod is still autolinking normally on Android.
+
+**`useObjectOutput` type differences vs barcode scanner:**
+
+- Uses `ScannedObjectType` strings: `'qr'` (not `'qr-code'`), `'code-128'`, `'ean-13'`, `'ean-8'`, `'code-39'`, `'code-93'`, `'upc-e'`, `'data-matrix'`
+- `ScannedObject.boundingBox` uses `{ x, y, width, height }` (already in correct format — no conversion needed)
+- Narrow `ScannedObject` to `ScannedCode` using `isScannedCode(obj)` to access `obj.value`
+- `upc_a` maps to `'ean-13'` — AVFoundation always reports UPC-A barcodes as EAN-13 with a leading zero
+- `useObjectOutput` is iOS-only and will throw on Android — only ever import it in `.ios.tsx` files
+
 ## 2026-04-29 — Expo Push Ticket-to-Token Index Misalignment
 
 **Category:** Gotcha
