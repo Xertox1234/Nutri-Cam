@@ -193,6 +193,19 @@ describe("startNotificationScheduler", () => {
     expect(cron.schedule).toHaveBeenCalledTimes(2);
   });
 
+  it("idempotency guard also covers the 12:00 meal-log job", () => {
+    startNotificationScheduler();
+    startNotificationScheduler();
+    startNotificationScheduler();
+
+    // Regardless of how many times start is called, still only two cron jobs
+    expect(cron.schedule).toHaveBeenCalledTimes(2);
+    expect(cron.schedule).toHaveBeenCalledWith(
+      "0 12 * * *",
+      expect.any(Function),
+    );
+  });
+
   it("stopNotificationScheduler allows scheduler to be restarted", () => {
     startNotificationScheduler();
     stopNotificationScheduler();

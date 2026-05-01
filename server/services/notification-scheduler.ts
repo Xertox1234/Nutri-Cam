@@ -190,7 +190,7 @@ let mealLogTask: ReturnType<typeof cron.schedule> | null = null;
  * Safe to call multiple times — only one set of job instances is created.
  */
 export function startNotificationScheduler(): void {
-  if (scheduledTask) return;
+  if (scheduledTask || mealLogTask) return;
 
   // 09:00 daily — commitments + daily check-in
   scheduledTask = cron.schedule("0 9 * * *", () => {
