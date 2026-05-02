@@ -39,6 +39,12 @@ vi.mock("@/hooks/useHaptics", () => ({
 beforeEach(() => {
   vi.clearAllMocks();
   mockTokenStorage.get.mockResolvedValue("test-token");
+  // Consume the frequent-items useQuery that fires on mount so it does not
+  // interfere with the mock responses queued by individual tests.
+  mockApiRequest.mockResolvedValueOnce({
+    ok: true,
+    json: () => Promise.resolve({ items: [] }),
+  });
 });
 
 describe("useQuickLogSession", () => {

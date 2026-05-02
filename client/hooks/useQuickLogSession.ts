@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { useHaptics } from "@/hooks/useHaptics";
 import { useSpeechToText } from "@/hooks/useSpeechToText";
@@ -147,6 +147,20 @@ export function useQuickLogSession({
     },
   });
 
+  const { data: frequentItems } = useQuery({
+    queryKey: QUERY_KEYS.frequentItems,
+    queryFn: async () => {
+      const res = await apiRequest(
+        "GET",
+        "/api/scanned-items/frequent?limit=5",
+      );
+      if (!res) return [];
+      const data = (await res.json()) as { items: { productName: string }[] };
+      return data.items ?? [];
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+
   const submitLog = useCallback(() => {
     if (parsedItems.length === 0) return;
     haptics.impact(Haptics.ImpactFeedbackStyle.Medium);
@@ -177,5 +191,6 @@ export function useQuickLogSession({
     handleChipPress,
     submitLog,
     reset,
+    frequentItems,
   };
 }
