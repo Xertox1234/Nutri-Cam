@@ -1,12 +1,12 @@
-import React, { useEffect } from 'react';
-import { StyleSheet } from 'react-native';
-import Svg, { Circle } from 'react-native-svg';
+import React, { useEffect } from "react";
+import { StyleSheet } from "react-native";
+import Svg, { Circle } from "react-native-svg";
 import Animated, {
   useSharedValue,
   withTiming,
   useAnimatedProps,
   runOnJS,
-} from 'react-native-reanimated';
+} from "react-native-reanimated";
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
@@ -18,7 +18,13 @@ interface Props {
   onComplete: () => void;
 }
 
-export function ScanSonarRing({ cx, cy, screenWidth, screenHeight, onComplete }: Props) {
+export function ScanSonarRing({
+  cx,
+  cy,
+  screenWidth,
+  screenHeight,
+  onComplete,
+}: Props) {
   const r = useSharedValue(1);
   const opacity = useSharedValue(1);
 
@@ -36,7 +42,10 @@ export function ScanSonarRing({ cx, cy, screenWidth, screenHeight, onComplete }:
 
   return (
     <Svg
-      style={[StyleSheet.absoluteFill, { width: screenWidth, height: screenHeight }]}
+      style={[
+        StyleSheet.absoluteFill,
+        { width: screenWidth, height: screenHeight },
+      ]}
       pointerEvents="none"
     >
       <AnimatedCircle

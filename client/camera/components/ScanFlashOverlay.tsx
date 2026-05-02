@@ -1,11 +1,11 @@
-import React, { useEffect } from 'react';
-import { StyleSheet } from 'react-native';
+import React, { useEffect } from "react";
+import { StyleSheet } from "react-native";
 import Animated, {
   useSharedValue,
   withSequence,
   withTiming,
   useAnimatedStyle,
-} from 'react-native-reanimated';
+} from "react-native-reanimated";
 
 interface Props {
   /** Increment this value to trigger a flash. Starting at 0 means no flash on mount. */
@@ -34,5 +34,5 @@ export function ScanFlashOverlay({ triggerCount }: Props) {
 }
 
 const styles = StyleSheet.create({
-  overlay: { backgroundColor: '#FFFFFF' },
+  overlay: { backgroundColor: "#FFFFFF" }, // hardcoded — shutter flash must be pure white regardless of theme
 });
