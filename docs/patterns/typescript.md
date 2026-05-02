@@ -611,3 +611,61 @@ directly without casting.
 **Origin:** 2026-04-28 code review — the initial implementation used a
 double `.map()` to satisfy the `HistoryMessage` type, which would have
 silently corrupted `"tool"` roles if message storage were ever extended.
+
+### `satisfies z.ZodType<T>` for Schema/Type Drift Prevention
+
+When creating a Zod schema that mirrors a TypeScript type (especially a discriminated union), add `satisfies z.ZodType<T>` to the schema definition. This makes TypeScript verify at compile time that the schema fully covers the type — if a new variant is added to the TypeScript union but not to the Zod schema, the file fails to compile.
+
+```typescript
+// shared/types/reminders.ts — the source of truth
+export type CoachContextItem =
+  | { type: "meal-log"; lastLoggedAt: string | null }
+  | { type: "commitment"; notebookEntryId: number; content: string }
+  | { type: "daily-checkin"; calories: number }
+  | { type: "user-set"; message: string };
+
+// shared/schemas/reminders.ts — Zod schema with compile-time drift guard
+export const coachContextItemSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("meal-log"),
+    lastLoggedAt: z.string().nullable(),
+  }),
+  z.object({
+    type: z.literal("commitment"),
+    notebookEntryId: z.number(),
+    content: z.string(),
+  }),
+  z.object({ type: z.literal("daily-checkin"), calories: z.number() }),
+  z.object({ type: z.literal("user-set"), message: z.string() }),
+]) satisfies z.ZodType<CoachContextItem>;
+//  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+//  TypeScript error here if schema doesn't cover every variant of CoachContextItem
+```
+
+```typescript
+// Bad: Schema can silently diverge from the TypeScript type
+export const coachContextItemSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("meal-log"),
+    lastLoggedAt: z.string().nullable(),
+  }),
+  // forgot "commitment", "daily-checkin", "user-set" — no compile error
+]);
+```
+
+**Why:** Zod schemas for JSONB/storage validation are easy to forget when a type evolves. The `satisfies` constraint turns a runtime surprise into a compile-time error at the schema definition site — not at the call site hours later.
+
+**When to use:**
+
+- Any Zod schema that mirrors a TypeScript type in `shared/types/`
+- Especially discriminated unions where missing a variant is a common mistake
+- Schemas co-located with (or referencing) a TypeScript type that will grow over time
+
+**When NOT to use:**
+
+- Schemas that intentionally accept a _subset_ of a type (e.g., partial validation for user input)
+- Schemas that are a superset of a type (they already satisfy it)
+
+**Pairing:** Always use `z.discriminatedUnion()` (not `z.union()`) for discriminated types — it validates the `type` key first and gives cleaner error messages.
+
+**Reference:** `shared/schemas/reminders.ts` — `coachContextItemSchema satisfies z.ZodType<CoachContextItem>`
