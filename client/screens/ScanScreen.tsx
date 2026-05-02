@@ -244,6 +244,7 @@ export default function ScanScreen() {
         const result = await uploadPhotoForAnalysis(photo.uri, "auto");
         dispatch({ type: "CLASSIFICATION_SUCCEEDED", classification: result });
       } catch (err) {
+        // Stale dispatch is safe — reducer no-ops CLASSIFICATION_FAILED when state !== CLASSIFYING
         dispatch({
           type: "CLASSIFICATION_FAILED",
           error: err instanceof Error ? err.message : "Unknown error",
@@ -488,7 +489,18 @@ export default function ScanScreen() {
             null,
           );
           if (route) {
-            navigation.navigate(route.screen as any, route.params as any);
+            // navigate accepts a variable screen name from a discriminated union;
+            // cast the whole function signature to avoid React Navigation's strict
+            // per-screen overloads while keeping params typed via ClassificationRoute.
+            (
+              navigation.navigate as (
+                screen: string,
+                params?: Record<string, unknown>,
+              ) => void
+            )(
+              route.screen,
+              route.params as Record<string, unknown> | undefined,
+            );
           } else {
             dispatch({ type: "RESET" });
           }
