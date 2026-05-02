@@ -1,7 +1,8 @@
-import React, { useEffect } from "react";
-import { StyleSheet, useWindowDimensions } from "react-native";
+import React, { useEffect, useRef } from "react";
+import { StyleSheet } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 import Animated, {
+  cancelAnimation,
   useSharedValue,
   withTiming,
   useAnimatedProps,
@@ -17,16 +18,22 @@ interface Props {
 }
 
 export function ScanSonarRing({ cx, cy, onComplete }: Props) {
-  const { width, height } = useWindowDimensions();
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
+
   const r = useSharedValue(1);
   const opacity = useSharedValue(1);
 
   useEffect(() => {
     r.value = withTiming(80, { duration: 400 });
     opacity.value = withTiming(0, { duration: 400 }, (finished) => {
-      if (finished) runOnJS(onComplete)();
+      if (finished) runOnJS(onCompleteRef.current)();
     });
-  }, [r, opacity, onComplete]);
+    return () => {
+      cancelAnimation(r);
+      cancelAnimation(opacity);
+    };
+  }, [r, opacity]); // onComplete intentionally excluded — latest value accessed via ref
 
   const animatedProps = useAnimatedProps(() => ({
     r: r.value,
@@ -34,10 +41,7 @@ export function ScanSonarRing({ cx, cy, onComplete }: Props) {
   }));
 
   return (
-    <Svg
-      style={[StyleSheet.absoluteFill, { width, height }]}
-      pointerEvents="none"
-    >
+    <Svg style={StyleSheet.absoluteFill} pointerEvents="none">
       <AnimatedCircle
         cx={cx}
         cy={cy}
