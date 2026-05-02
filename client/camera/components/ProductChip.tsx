@@ -1,0 +1,278 @@
+// client/camera/components/ProductChip.tsx
+import React, { useEffect } from "react";
+import { StyleSheet, View, Text, TouchableOpacity, Image } from "react-native";
+import Animated, {
+  useSharedValue,
+  withSpring,
+  useAnimatedStyle,
+} from "react-native-reanimated";
+import type { ScanPhase } from "../types/scan-phase";
+import { getProductChipVariant } from "./ProductChip-utils";
+
+const CHIP_SPRING = { damping: 18, stiffness: 280 };
+
+interface Props {
+  phase: ScanPhase;
+  onConfirm: () => void;
+  onAddNutritionPhoto: () => void;
+  onAddFrontPhoto: () => void;
+  onStepConfirmed: () => void;
+  onEditStep2: () => void;
+  onEditStep3: () => void;
+  onSmartPhotoConfirm: () => void;
+  onRetry: () => void;
+}
+
+export function ProductChip({
+  phase,
+  onConfirm,
+  onAddNutritionPhoto,
+  onAddFrontPhoto,
+  onStepConfirmed,
+  onEditStep2,
+  onEditStep3,
+  onSmartPhotoConfirm,
+  onRetry,
+}: Props) {
+  const translateY = useSharedValue(200);
+  const variant = getProductChipVariant(phase);
+
+  useEffect(() => {
+    if (variant !== null) {
+      translateY.value = withSpring(0, CHIP_SPRING);
+    } else {
+      translateY.value = withSpring(200, CHIP_SPRING);
+    }
+  }, [variant, translateY]);
+
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
+
+  if (variant === null) return null;
+
+  const product = "product" in phase ? phase.product : undefined;
+
+  return (
+    <Animated.View style={[styles.chip, animStyle]} accessibilityViewIsModal>
+      {/* Product info row */}
+      <View style={styles.productRow}>
+        {product?.imageUri ? (
+          <Image source={{ uri: product.imageUri }} style={styles.thumb} />
+        ) : (
+          <View style={[styles.thumb, styles.thumbPlaceholder]} />
+        )}
+        <View style={styles.productText}>
+          {product?.brand ? (
+            <Text style={styles.brand}>{product.brand}</Text>
+          ) : null}
+          <Text style={styles.name} numberOfLines={2}>
+            {product?.name ?? "Product"}
+          </Text>
+        </View>
+      </View>
+
+      {/* Actions by variant */}
+      {variant === "barcode_lock" && (
+        <>
+          <TouchableOpacity
+            style={styles.btnPrimary}
+            onPress={onConfirm}
+            accessibilityLabel="Confirm product"
+            accessibilityRole="button"
+          >
+            <Text style={styles.btnPrimaryText}>Looks right →</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.btnSecondary}
+            onPress={onAddNutritionPhoto}
+            accessibilityLabel="Add nutrition photo"
+            accessibilityRole="button"
+          >
+            <Text style={styles.btnSecondaryText}>Add nutrition photo</Text>
+            <Text style={styles.optionalBadge}>Optional</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.btnLink}
+            onPress={onAddFrontPhoto}
+            accessibilityLabel="Add front photo"
+            accessibilityRole="button"
+          >
+            <Text style={styles.btnLinkText}>+ Add front photo</Text>
+          </TouchableOpacity>
+        </>
+      )}
+
+      {(variant === "step2_review" || variant === "step2_confirmed") && (
+        <>
+          <TouchableOpacity
+            style={styles.btnPrimary}
+            onPress={onStepConfirmed}
+            accessibilityLabel="Confirm nutrition values"
+            accessibilityRole="button"
+          >
+            <Text style={styles.btnPrimaryText}>Looks right →</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.btnSecondary}
+            onPress={onEditStep2}
+            accessibilityLabel="Edit nutrition values"
+            accessibilityRole="button"
+          >
+            <Text style={styles.btnSecondaryText}>Edit values</Text>
+          </TouchableOpacity>
+        </>
+      )}
+
+      {variant === "step3_review" && (
+        <>
+          <TouchableOpacity
+            style={styles.btnPrimary}
+            onPress={onConfirm}
+            accessibilityLabel="Confirm product complete"
+            accessibilityRole="button"
+          >
+            <Text style={styles.btnPrimaryText}>Looks right →</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.btnSecondary}
+            onPress={onEditStep3}
+            accessibilityLabel="Edit front label values"
+            accessibilityRole="button"
+          >
+            <Text style={styles.btnSecondaryText}>Edit values</Text>
+          </TouchableOpacity>
+        </>
+      )}
+
+      {variant === "session_complete" && (
+        <TouchableOpacity
+          style={styles.btnPrimary}
+          onPress={onConfirm}
+          accessibilityLabel="Complete scan session"
+          accessibilityRole="button"
+        >
+          <Text style={styles.btnPrimaryText}>Done →</Text>
+        </TouchableOpacity>
+      )}
+
+      {variant === "smart_photo" && (
+        <>
+          <TouchableOpacity
+            style={styles.btnPrimary}
+            onPress={onSmartPhotoConfirm}
+            accessibilityLabel="Confirm smart photo analysis"
+            accessibilityRole="button"
+          >
+            <Text style={styles.btnPrimaryText}>Looks right →</Text>
+          </TouchableOpacity>
+        </>
+      )}
+
+      {variant === "smart_error" && (
+        <>
+          <Text style={styles.errorText}>
+            Couldn&apos;t identify this. Try again?
+          </Text>
+          <TouchableOpacity
+            style={styles.btnPrimary}
+            onPress={onRetry}
+            accessibilityLabel="Retry smart photo analysis"
+            accessibilityRole="button"
+          >
+            <Text style={styles.btnPrimaryText}>Try again</Text>
+          </TouchableOpacity>
+        </>
+      )}
+    </Animated.View>
+  );
+}
+
+const styles = StyleSheet.create({
+  chip: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "rgba(12,12,12,0.94)", // hardcoded — camera overlay
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.1)",
+    borderRadius: 18,
+    padding: 20,
+    paddingBottom: 32,
+    gap: 10,
+  },
+  productRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 4,
+  },
+  thumb: {
+    width: 48,
+    height: 48,
+    borderRadius: 10,
+  },
+  thumbPlaceholder: {
+    backgroundColor: "rgba(255,255,255,0.08)",
+  },
+  productText: { flex: 1 },
+  brand: {
+    color: "rgba(255,255,255,0.5)",
+    fontSize: 12,
+    marginBottom: 2,
+  },
+  name: {
+    color: "#FFF", // hardcoded — camera overlay
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  btnPrimary: {
+    backgroundColor: "#FFF", // hardcoded — camera overlay
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: "center",
+  },
+  btnPrimaryText: {
+    color: "#000", // hardcoded — camera overlay
+    fontWeight: "700",
+    fontSize: 15,
+  },
+  btnSecondary: {
+    backgroundColor: "rgba(255,255,255,0.1)",
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 8,
+  },
+  btnSecondaryText: {
+    color: "rgba(255,255,255,0.8)",
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  optionalBadge: {
+    color: "rgba(255,255,255,0.4)",
+    fontSize: 11,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+  },
+  btnLink: {
+    alignItems: "center",
+    paddingVertical: 8,
+  },
+  btnLinkText: {
+    color: "rgba(255,255,255,0.5)",
+    fontSize: 13,
+  },
+  errorText: {
+    color: "rgba(255,255,255,0.7)",
+    fontSize: 14,
+    textAlign: "center",
+    marginBottom: 4,
+  },
+});
