@@ -48,7 +48,7 @@ export function QuickLogDrawer({ action }: QuickLogDrawerProps) {
   const { reducedMotion } = useAccessibility();
 
   const [isOpen, setIsOpen] = useState(false);
-  const chevronRotation = useSharedValue(-90);
+  const chevronRotation = useSharedValue(0);
   const { animatedStyle, onContentLayout } = useCollapsibleHeight(
     isOpen,
     reducedMotion,
@@ -69,10 +69,10 @@ export function QuickLogDrawer({ action }: QuickLogDrawerProps) {
     setIsOpen(next);
     haptics.impact(Haptics.ImpactFeedbackStyle.Light);
     if (reducedMotion) {
-      chevronRotation.value = next ? 0 : -90;
+      chevronRotation.value = next ? 90 : 0;
     } else {
       chevronRotation.value = withTiming(
-        next ? 0 : -90,
+        next ? 90 : 0,
         next ? expandTimingConfig : collapseTimingConfig,
       );
     }
@@ -86,7 +86,7 @@ export function QuickLogDrawer({ action }: QuickLogDrawerProps) {
   // Keep chevron in sync if reducedMotion changes while open
   useEffect(() => {
     if (reducedMotion) {
-      chevronRotation.value = isOpen ? 0 : -90;
+      chevronRotation.value = isOpen ? 90 : 0;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- shared value is stable ref
   }, [reducedMotion]);
@@ -130,7 +130,7 @@ export function QuickLogDrawer({ action }: QuickLogDrawerProps) {
         </ThemedText>
         <Animated.View style={chevronStyle}>
           <Feather
-            name="chevron-down"
+            name="chevron-right"
             size={16}
             color={theme.textSecondary}
             accessible={false}
