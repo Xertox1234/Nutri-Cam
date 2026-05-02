@@ -11,6 +11,12 @@ import { getProductChipVariant } from "./ProductChip-utils";
 
 const CHIP_SPRING = { damping: 18, stiffness: 280 };
 
+function confidenceLabel(score: number): string {
+  if (score >= 0.8) return "High confidence";
+  if (score >= 0.5) return "Good match";
+  return "Possible match";
+}
+
 interface Props {
   phase: ScanPhase;
   onConfirm: () => void;
@@ -156,8 +162,16 @@ export function ProductChip({
         </TouchableOpacity>
       )}
 
-      {variant === "smart_photo" && (
+      {variant === "smart_photo" && phase.type === "SMART_CONFIRMED" && (
         <>
+          <View style={styles.classificationRow}>
+            <Text style={styles.classificationName}>
+              {phase.classification.foods[0]?.name ?? "Food detected"}
+            </Text>
+            <Text style={styles.classificationConfidence}>
+              {confidenceLabel(phase.classification.overallConfidence)}
+            </Text>
+          </View>
           <TouchableOpacity
             style={styles.btnPrimary}
             onPress={onSmartPhotoConfirm}
@@ -274,5 +288,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: "center",
     marginBottom: 4,
+  },
+  classificationRow: {
+    marginBottom: 4,
+  },
+  classificationName: {
+    color: "#FFF", // hardcoded — camera overlay
+    fontSize: 18,
+    fontWeight: "600",
+    marginBottom: 2,
+  },
+  classificationConfidence: {
+    color: "rgba(255,255,255,0.5)",
+    fontSize: 13,
   },
 });
