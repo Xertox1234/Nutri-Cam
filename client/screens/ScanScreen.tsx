@@ -645,9 +645,13 @@ export default function ScanScreen() {
               <View style={styles.confirmButtons}>
                 <Pressable
                   onPress={handleConfirmDismiss}
+                  disabled={confirmCard.isLogging}
                   style={({ pressed }) => [
                     styles.confirmDismissButton,
-                    { borderColor: theme.border, opacity: pressed ? 0.7 : 1 },
+                    {
+                      borderColor: theme.border,
+                      opacity: pressed || confirmCard.isLogging ? 0.5 : 1,
+                    },
                   ]}
                   accessibilityLabel="Dismiss"
                   accessibilityRole="button"
