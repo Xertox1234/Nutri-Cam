@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback } from "react";
 import {
   StyleSheet,
   View,
@@ -17,7 +17,6 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "@/navigation/RootStackNavigator";
 import { Feather } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { ThemedText } from "@/components/ThemedText";
 import { Card } from "@/components/Card";
@@ -28,12 +27,9 @@ import { AnimatedCheckmark } from "@/components/AnimatedCheckmark";
 import { useTheme } from "@/hooks/useTheme";
 import { useHaptics } from "@/hooks/useHaptics";
 import { useToast } from "@/context/ToastContext";
-import { useSpeechToText } from "@/hooks/useSpeechToText";
-import { useParseFoodText, type ParsedFoodItem } from "@/hooks/useFoodParse";
+import { useQuickLogSession } from "@/hooks/useQuickLogSession";
 import { usePremiumContext } from "@/context/PremiumContext";
 import { useAdaptiveGoals } from "@/hooks/useAdaptiveGoals";
-import { apiRequest } from "@/lib/query-client";
-import { QUERY_KEYS } from "@/lib/query-keys";
 import {
   Spacing,
   BorderRadius,
@@ -41,24 +37,17 @@ import {
   withOpacity,
 } from "@/constants/theme";
 
-// ── Tip Card ──────────────────────────────────────────────────────────────────
-
 const QUICK_LOG_TIPS = [
   { text: "Did you have a beverage with your meal?", icon: "coffee" as const },
   { text: "Snap a pic to log it!", icon: "camera" as const },
-  {
-    text: "Try voice input \u2014 tap the mic and speak",
-    icon: "mic" as const,
-  },
-  { text: "Don\u2019t forget condiments and sauces", icon: "droplet" as const },
+  { text: "Try voice input — tap the mic and speak", icon: "mic" as const },
+  { text: "Don't forget condiments and sauces", icon: "droplet" as const },
   { text: "You can log multiple items at once", icon: "list" as const },
 ];
 
 function randomTip() {
   return QUICK_LOG_TIPS[Math.floor(Math.random() * QUICK_LOG_TIPS.length)];
 }
-
-// ── Examples ──────────────────────────────────────────────────────────────────
 
 const EXAMPLE_ITEMS = [
   "2 eggs and toast with butter",
@@ -67,8 +56,6 @@ const EXAMPLE_ITEMS = [
   "grande latte and a banana",
 ];
 
-// ── Component ─────────────────────────────────────────────────────────────────
-
 export default function QuickLogScreen() {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
@@ -76,110 +63,32 @@ export default function QuickLogScreen() {
   const toast = useToast();
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const queryClient = useQueryClient();
   const { isPremium } = usePremiumContext();
   const { data: adaptiveGoalData } = useAdaptiveGoals(isPremium);
-
-  const [textInput, setTextInput] = useState("");
-  const [parsedItems, setParsedItems] = useState<ParsedFoodItem[]>([]);
   const [tip] = useState(randomTip);
   const [showCheckmark, setShowCheckmark] = useState(false);
 
-  const {
-    isListening,
-    transcript,
-    isFinal,
-    volume,
-    error: speechError,
-    startListening,
-    stopListening,
-  } = useSpeechToText();
-  const { mutate: parseFoodTextMutate, isPending: isParsing } =
-    useParseFoodText();
-
-  // Fetch frequent items (inline query — no separate hook)
-  const { data: frequentItems } = useQuery({
-    queryKey: QUERY_KEYS.frequentItems,
-    queryFn: async () => {
-      const res = await apiRequest(
-        "GET",
-        "/api/scanned-items/frequent?limit=5",
-      );
-      const data = (await res.json()) as {
-        items: { productName: string }[];
-      };
-      return data.items;
+  const session = useQuickLogSession({
+    onLogSuccess: () => {
+      AccessibilityInfo.announceForAccessibility("Food items logged");
+      setShowCheckmark(true);
     },
-    staleTime: 5 * 60 * 1000,
   });
 
-  // Stream transcript into text input while listening
-  useEffect(() => {
-    if (isListening && transcript) {
-      setTextInput(transcript);
-    }
-  }, [isListening, transcript]);
-
-  // Auto-trigger parse when recognition produces a final result
-  useEffect(() => {
-    if (isFinal && transcript && !isParsing) {
-      setTextInput(transcript);
-      parseFoodTextMutate(transcript, {
-        onSuccess: (data) => {
-          setParsedItems(data.items);
-          haptics.notification(Haptics.NotificationFeedbackType.Success);
-        },
-        onError: () => {
-          haptics.notification(Haptics.NotificationFeedbackType.Error);
-          toast.error("Failed to parse food text. Please try again.");
-        },
-      });
-    }
-  }, [isFinal, transcript, isParsing, parseFoodTextMutate, haptics, toast]);
-
-  // Show speech errors
-  useEffect(() => {
-    if (speechError) {
+  React.useEffect(() => {
+    if (session.speechError) {
       haptics.notification(Haptics.NotificationFeedbackType.Error);
-      toast.error(speechError);
+      toast.error(session.speechError);
     }
-  }, [speechError, toast, haptics]);
+  }, [session.speechError, toast, haptics]);
 
-  const handleTextSubmit = useCallback(() => {
-    if (!textInput.trim()) return;
-    haptics.impact(Haptics.ImpactFeedbackStyle.Medium);
-    parseFoodTextMutate(textInput.trim(), {
-      onSuccess: (data) => {
-        setParsedItems(data.items);
-        haptics.notification(Haptics.NotificationFeedbackType.Success);
-      },
-      onError: () => {
-        haptics.notification(Haptics.NotificationFeedbackType.Error);
-        toast.error("Failed to parse food text. Please try again.");
-      },
-    });
-  }, [textInput, haptics, parseFoodTextMutate, toast]);
+  React.useEffect(() => {
+    if (session.parseError) toast.error(session.parseError);
+  }, [session.parseError, toast]);
 
-  const handleVoicePress = useCallback(() => {
-    haptics.impact(Haptics.ImpactFeedbackStyle.Medium);
-    if (isListening) {
-      stopListening();
-    } else {
-      startListening();
-    }
-  }, [isListening, startListening, stopListening, haptics]);
-
-  const handleRemoveItem = useCallback((index: number) => {
-    setParsedItems((prev) => prev.filter((_, i) => i !== index));
-  }, []);
-
-  const handleChipPress = useCallback(
-    (text: string) => {
-      setTextInput(text);
-      haptics.impact(Haptics.ImpactFeedbackStyle.Light);
-    },
-    [haptics],
-  );
+  React.useEffect(() => {
+    if (session.submitError) toast.error(session.submitError);
+  }, [session.submitError, toast]);
 
   const handleCameraPress = useCallback(() => {
     haptics.impact(Haptics.ImpactFeedbackStyle.Light);
@@ -189,55 +98,13 @@ export default function QuickLogScreen() {
     });
   }, [haptics, navigation]);
 
-  const logAllItems = useMutation({
-    mutationFn: async (items: ParsedFoodItem[]) => {
-      const results = [];
-      for (const item of items) {
-        // POST /api/scanned-items creates both the scanned item
-        // AND a daily log entry in a single transaction
-        const res = await apiRequest("POST", "/api/scanned-items", {
-          productName: `${item.quantity} ${item.unit} ${item.name}`,
-          sourceType: "voice",
-          calories: item.calories?.toString(),
-          protein: item.protein?.toString(),
-          carbs: item.carbs?.toString(),
-          fat: item.fat?.toString(),
-          servingSize: item.servingSize,
-        });
-        results.push(await res.json());
-      }
-      return results;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.dailySummary });
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.scannedItems });
-      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.frequentItems });
-      haptics.notification(Haptics.NotificationFeedbackType.Success);
-      AccessibilityInfo.announceForAccessibility("Food items logged");
-      toast.success("Food items logged");
-      setParsedItems([]);
-      setTextInput("");
-      setShowCheckmark(true);
-    },
-    onError: () => {
-      haptics.notification(Haptics.NotificationFeedbackType.Error);
-      toast.error("Failed to log some items. Please try again.");
-    },
-  });
-
   const handleCheckmarkComplete = useCallback(() => {
     setShowCheckmark(false);
     navigation.goBack();
   }, [navigation]);
 
-  const handleLogAll = useCallback(() => {
-    if (parsedItems.length === 0) return;
-    haptics.impact(Haptics.ImpactFeedbackStyle.Medium);
-    logAllItems.mutate(parsedItems);
-  }, [parsedItems, haptics, logAllItems]);
-
   const hasPreviousItems =
-    frequentItems !== undefined && frequentItems.length > 0;
+    session.frequentItems !== undefined && session.frequentItems.length > 0;
 
   return (
     <KeyboardAvoidingView
@@ -246,13 +113,10 @@ export default function QuickLogScreen() {
     >
       <ScrollView
         style={[styles.container, { backgroundColor: theme.backgroundRoot }]}
-        contentContainerStyle={{
-          paddingBottom: insets.bottom + Spacing.xl,
-        }}
+        contentContainerStyle={{ paddingBottom: insets.bottom + Spacing.xl }}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
       >
-        {/* Text Input */}
         <Card elevation={1} style={styles.inputCard}>
           <ThemedText
             type="caption"
@@ -271,14 +135,14 @@ export default function QuickLogScreen() {
                 },
               ]}
               placeholder={
-                isListening
+                session.isListening
                   ? "Listening..."
                   : "e.g., 2 eggs and toast with butter"
               }
               placeholderTextColor={theme.textSecondary}
-              value={textInput}
-              onChangeText={setTextInput}
-              onSubmitEditing={handleTextSubmit}
+              value={session.inputText}
+              onChangeText={session.setInputText}
+              onSubmitEditing={session.handleTextSubmit}
               returnKeyType="search"
               multiline
               accessibilityLabel="Food description"
@@ -303,23 +167,26 @@ export default function QuickLogScreen() {
               <Feather name="camera" size={22} color={theme.textSecondary} />
             </Pressable>
             <Pressable
-              onPress={handleTextSubmit}
-              disabled={isParsing || !textInput.trim()}
+              onPress={session.handleTextSubmit}
+              disabled={session.isParsing || !session.inputText.trim()}
               accessibilityLabel="Parse food text"
               accessibilityRole="button"
               accessibilityState={{
-                disabled: isParsing || !textInput.trim(),
-                busy: isParsing,
+                disabled: session.isParsing || !session.inputText.trim(),
+                busy: session.isParsing,
               }}
               style={({ pressed }) => [
                 styles.parseButton,
                 {
                   backgroundColor: theme.link,
-                  opacity: pressed || isParsing || !textInput.trim() ? 0.6 : 1,
+                  opacity:
+                    pressed || session.isParsing || !session.inputText.trim()
+                      ? 0.6
+                      : 1,
                 },
               ]}
             >
-              {isParsing ? (
+              {session.isParsing ? (
                 <ActivityIndicator size="small" color={theme.buttonText} />
               ) : (
                 <>
@@ -337,10 +204,10 @@ export default function QuickLogScreen() {
             </Pressable>
             {isPremium && (
               <VoiceLogButton
-                isListening={isListening}
-                volume={volume}
-                onPress={handleVoicePress}
-                disabled={isParsing}
+                isListening={session.isListening}
+                volume={session.volume}
+                onPress={session.handleVoicePress}
+                disabled={session.isParsing}
               />
             )}
           </View>
@@ -353,18 +220,15 @@ export default function QuickLogScreen() {
             />
           )}
 
-        {/* Parsed items preview */}
         <ParsedFoodPreview
-          items={parsedItems}
-          onRemoveItem={handleRemoveItem}
-          onLogAll={handleLogAll}
-          isLogging={logAllItems.isPending}
+          items={session.parsedItems}
+          onRemoveItem={session.removeItem}
+          onLogAll={session.submitLog}
+          isLogging={session.isSubmitting}
         />
 
-        {/* Tip card + suggestions (when no parsed items) */}
-        {parsedItems.length === 0 && !isParsing && (
+        {session.parsedItems.length === 0 && !session.isParsing && (
           <View style={styles.helpSection}>
-            {/* Previous Items or Examples */}
             <ThemedText
               type="caption"
               accessibilityRole="header"
@@ -373,7 +237,7 @@ export default function QuickLogScreen() {
               {hasPreviousItems ? "Previous Items:" : "Examples:"}
             </ThemedText>
             {(hasPreviousItems
-              ? (frequentItems ?? []).map((item) => ({
+              ? (session.frequentItems ?? []).map((item) => ({
                   key: item.productName,
                   label: item.productName,
                   a11yPrefix: "Use previous item",
@@ -386,7 +250,7 @@ export default function QuickLogScreen() {
             ).map(({ key, label, a11yPrefix }) => (
               <Pressable
                 key={key}
-                onPress={() => handleChipPress(label)}
+                onPress={() => session.handleChipPress(label)}
                 accessibilityLabel={`${a11yPrefix}: ${label}`}
                 accessibilityRole="button"
                 style={({ pressed }) => [
@@ -405,7 +269,6 @@ export default function QuickLogScreen() {
               </Pressable>
             ))}
 
-            {/* Instructional tip */}
             <View
               style={[
                 styles.tipCard,
@@ -447,20 +310,10 @@ export default function QuickLogScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  inputCard: {
-    margin: Spacing.lg,
-    marginTop: 80,
-    marginBottom: Spacing.sm,
-  },
-  hint: {
-    marginBottom: Spacing.md,
-  },
-  inputRow: {
-    marginBottom: Spacing.md,
-  },
+  container: { flex: 1 },
+  inputCard: { margin: Spacing.lg, marginTop: 80, marginBottom: Spacing.sm },
+  hint: { marginBottom: Spacing.md },
+  inputRow: { marginBottom: Spacing.md },
   textInput: {
     minHeight: 60,
     borderRadius: BorderRadius.xs,
@@ -498,10 +351,7 @@ const styles = StyleSheet.create({
     fontFamily: FontFamily.medium,
     fontWeight: "500",
   },
-  helpSection: {
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.xl,
-  },
+  helpSection: { paddingHorizontal: Spacing.lg, paddingTop: Spacing.xl },
   tipCard: {
     flexDirection: "row",
     alignItems: "center",
@@ -511,27 +361,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     marginTop: Spacing.lg,
   },
-  tipIcon: {
-    marginRight: Spacing.md,
-  },
-  tipText: {
-    flex: 1,
-    fontSize: 14,
-    fontFamily: FontFamily.medium,
-  },
-  helpText: {
-    marginBottom: Spacing.sm,
-  },
+  tipIcon: { marginRight: Spacing.md },
+  tipText: { flex: 1, fontSize: 14, fontFamily: FontFamily.medium },
+  helpText: { marginBottom: Spacing.sm },
   exampleChip: {
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.md,
     borderRadius: BorderRadius.xs,
     marginBottom: Spacing.sm,
   },
-  exampleText: {
-    fontSize: 14,
-    fontFamily: FontFamily.regular,
-  },
+  exampleText: { fontSize: 14, fontFamily: FontFamily.regular },
   checkmarkOverlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: "center",
