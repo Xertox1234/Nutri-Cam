@@ -1,6 +1,7 @@
 // client/camera/components/ProductChip.tsx
 import React, { useEffect, useState } from "react";
 import { StyleSheet, View, Text, TouchableOpacity, Image } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, {
   useSharedValue,
   withSpring,
@@ -41,6 +42,7 @@ export function ProductChip({
   onSmartPhotoConfirm,
   onRetry,
 }: Props) {
+  const insets = useSafeAreaInsets();
   const translateY = useSharedValue(200);
   const variant = getProductChipVariant(phase);
   const [shouldRender, setShouldRender] = useState(variant !== null);
@@ -65,7 +67,10 @@ export function ProductChip({
   const product = "product" in phase ? phase.product : undefined;
 
   return (
-    <Animated.View style={[styles.chip, animStyle]} accessibilityViewIsModal>
+    <Animated.View
+      style={[styles.chip, { paddingBottom: 20 + insets.bottom }, animStyle]}
+      accessibilityViewIsModal
+    >
       {/* Product info row */}
       <View style={styles.productRow}>
         {product?.imageUri ? (
@@ -103,18 +108,10 @@ export function ProductChip({
             <Text style={styles.btnSecondaryText}>Add nutrition photo</Text>
             <Text style={styles.optionalBadge}>Optional</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.btnLink}
-            onPress={onAddFrontPhoto}
-            accessibilityLabel="Add front photo"
-            accessibilityRole="button"
-          >
-            <Text style={styles.btnLinkText}>+ Add front photo</Text>
-          </TouchableOpacity>
         </>
       )}
 
-      {(variant === "step2_review" || variant === "step2_confirmed") && (
+      {variant === "step2_review" && (
         <>
           <TouchableOpacity
             style={styles.btnPrimary}
@@ -131,6 +128,28 @@ export function ProductChip({
             accessibilityRole="button"
           >
             <Text style={styles.btnSecondaryText}>Edit values</Text>
+          </TouchableOpacity>
+        </>
+      )}
+
+      {variant === "step2_confirmed" && (
+        <>
+          <TouchableOpacity
+            style={styles.btnPrimary}
+            onPress={onConfirm}
+            accessibilityLabel="Finish scan"
+            accessibilityRole="button"
+          >
+            <Text style={styles.btnPrimaryText}>Looks right →</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.btnSecondary}
+            onPress={onAddFrontPhoto}
+            accessibilityLabel="Add front label photo"
+            accessibilityRole="button"
+          >
+            <Text style={styles.btnSecondaryText}>Add front label photo</Text>
+            <Text style={styles.optionalBadge}>Optional</Text>
           </TouchableOpacity>
         </>
       )}
@@ -218,7 +237,6 @@ const styles = StyleSheet.create({
     borderTopColor: "rgba(255,255,255,0.1)",
     borderRadius: 18,
     padding: 20,
-    paddingBottom: 32,
     gap: 10,
   },
   productRow: {

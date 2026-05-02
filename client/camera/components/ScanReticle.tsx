@@ -124,7 +124,7 @@ export function ScanReticle({ phase, reducedMotion }: Props) {
         -1,
         true,
       );
-    } else if (phase.type !== "HUNTING") {
+    } else {
       cancelAnimation(rw);
     }
   }, [phase.type, rw, reducedMotion]);

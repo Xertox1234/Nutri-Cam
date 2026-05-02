@@ -80,8 +80,14 @@ export default function ScanScreen() {
   const hasLockedRef = useRef(false);
   const sessionNavigatedRef = useRef(false);
   const scanPhaseRef = useRef(scanPhase);
+  const reducedMotionRef = useRef(reducedMotion);
 
   const { permission, requestPermission } = useCameraPermissions();
+
+  // Keep reducedMotionRef current so onBarcodeScanned can read it without being in deps
+  useEffect(() => {
+    reducedMotionRef.current = reducedMotion;
+  }, [reducedMotion]);
 
   // Dispatch CAMERA_READY when screen gains focus
   useEffect(() => {
@@ -208,12 +214,14 @@ export default function ScanScreen() {
         if (confidence >= LOCK_THRESHOLD) {
           hasLockedRef.current = true;
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          setFlashCount((c) => c + 1);
-          setSonarPos({
-            cx: (bounds.x + bounds.width / 2) * screenWidth,
-            cy: (bounds.y + bounds.height / 2) * screenHeight,
-          });
-          setSonarVisible(true);
+          if (!reducedMotionRef.current) {
+            setFlashCount((c) => c + 1);
+            setSonarPos({
+              cx: (bounds.x + bounds.width / 2) * screenWidth,
+              cy: (bounds.y + bounds.height / 2) * screenHeight,
+            });
+            setSonarVisible(true);
+          }
           dispatch({ type: "BARCODE_LOCKED" });
           fetchProductInfo(barcode);
         } else {
