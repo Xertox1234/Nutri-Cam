@@ -1,10 +1,11 @@
 // client/camera/components/ProductChip.tsx
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { StyleSheet, View, Text, TouchableOpacity, Image } from "react-native";
 import Animated, {
   useSharedValue,
   withSpring,
   useAnimatedStyle,
+  runOnJS,
 } from "react-native-reanimated";
 import type { ScanPhase } from "../types/scan-phase";
 import { getProductChipVariant } from "./ProductChip-utils";
@@ -42,20 +43,24 @@ export function ProductChip({
 }: Props) {
   const translateY = useSharedValue(200);
   const variant = getProductChipVariant(phase);
+  const [shouldRender, setShouldRender] = useState(variant !== null);
 
   useEffect(() => {
     if (variant !== null) {
+      setShouldRender(true);
       translateY.value = withSpring(0, CHIP_SPRING);
     } else {
-      translateY.value = withSpring(200, CHIP_SPRING);
+      translateY.value = withSpring(200, CHIP_SPRING, () => {
+        runOnJS(setShouldRender)(false);
+      });
     }
-  }, [variant, translateY]);
+  }, [variant]);
 
   const animStyle = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
   }));
 
-  if (variant === null) return null;
+  if (!shouldRender) return null;
 
   const product = "product" in phase ? phase.product : undefined;
 
