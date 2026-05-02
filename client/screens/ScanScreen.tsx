@@ -1,801 +1,380 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import {
   StyleSheet,
   View,
+  TouchableOpacity,
+  Text,
   Pressable,
-  Platform,
   Linking,
-  ActivityIndicator,
-  AccessibilityInfo,
-  Alert,
 } from "react-native";
+import { useNavigation, useIsFocused } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Feather } from "@expo/vector-icons";
-import * as Haptics from "expo-haptics";
-import * as ImagePicker from "expo-image-picker";
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  withRepeat,
-  withTiming,
-  withSequence,
-  cancelAnimation,
-} from "react-native-reanimated";
-import { useSuccessFlash } from "@/hooks/useSuccessAnimation";
-import {
-  useNavigation,
-  useIsFocused,
-  useRoute,
-  RouteProp,
-} from "@react-navigation/native";
-
-import { ThemedText } from "@/components/ThemedText";
-import { ClassificationOverlay } from "@/components/ClassificationOverlay";
-import { useTheme } from "@/hooks/useTheme";
-import { useHaptics } from "@/hooks/useHaptics";
 import { useAccessibility } from "@/hooks/useAccessibility";
-import { useScanClassification } from "@/hooks/useScanClassification";
-import { Spacing, BorderRadius, CameraColors } from "@/constants/theme";
-import { UpgradeModal } from "@/components/UpgradeModal";
-import type { ScanScreenNavigationProp } from "@/types/navigation";
-import type { RootStackParamList } from "@/navigation/RootStackNavigator";
-import { uploadFrontLabelPhoto } from "@/lib/photo-upload";
-import { parseFrontLabelFromOCR } from "@/lib/front-label-ocr-parser";
-
-// Camera abstraction imports
-import {
-  CameraView,
-  useCameraPermissions,
-  useCamera,
-  recognizeTextFromPhoto,
-  type BarcodeResult,
-} from "@/camera";
+import { useTheme } from "@/hooks/useTheme";
 import { usePremiumCamera } from "@/hooks/usePremiumFeatures";
 import { usePremiumContext } from "@/context/PremiumContext";
+import {
+  useCameraPermissions,
+  CameraView,
+  type BarcodeResult,
+  type CameraRef,
+} from "@/camera";
 
-const AnimatedView = Animated.createAnimatedComponent(View);
-
-/** Timing constants for scan operations */
-const SCAN_TIMING = {
-  /** Debounce between barcode scans to prevent duplicates */
-  SCAN_DEBOUNCE_MS: 2000,
-  /** Delay before navigation to allow success animation */
-  NAVIGATION_DELAY_MS: 300,
-  /** Delay before resetting scan state after navigation */
-  RESET_DELAY_MS: 500,
-} as const;
-
-/** Reticle dimensions for barcode scanning viewfinder */
-const RETICLE = {
-  WIDTH: 280,
-  HEIGHT: 180,
-  CORNER_SIZE: 40,
-  CORNER_BORDER_WIDTH: 4,
-  CORNER_RADIUS: 16,
-} as const;
-
-/** Larger frame for nutrition label scanning */
-const LABEL_FRAME = {
-  WIDTH: 300,
-  HEIGHT: 400,
-  CORNER_SIZE: 40,
-  CORNER_BORDER_WIDTH: 4,
-  CORNER_RADIUS: 16,
-} as const;
+import { scanPhaseReducer } from "@/camera/reducers/scan-phase-reducer";
+import { CoachHint } from "@/camera/components/CoachHint";
+import { ScanReticle } from "@/camera/components/ScanReticle";
+import { StepPill } from "@/camera/components/StepPill";
+import { ProductChip } from "@/camera/components/ProductChip";
+import { ScanFlashOverlay } from "@/camera/components/ScanFlashOverlay";
+import { ScanSonarRing } from "@/camera/components/ScanSonarRing";
+import { getCoachMessage } from "@/camera/components/CoachHint-utils";
+import type { ScanScreenNavigationProp } from "@/types/navigation";
+import type { FrontLabelExtractionResult } from "@shared/types/front-label";
 
 export default function ScanScreen() {
+  const navigation = useNavigation<ScanScreenNavigationProp>();
+  const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const { reducedMotion } = useAccessibility();
-  const navigation = useNavigation<ScanScreenNavigationProp>();
-  const route = useRoute<RouteProp<RootStackParamList, "Scan">>();
-  const isFocused = useIsFocused();
-
-  const isLabelMode = route.params?.mode === "label";
-  const isFrontLabelMode = route.params?.mode === "front-label";
-  const verifyBarcode = route.params?.verifyBarcode;
-  const frame = isLabelMode || isFrontLabelMode ? LABEL_FRAME : RETICLE;
-  const {
-    permission,
-    isLoading: permissionLoading,
-    requestPermission,
-  } = useCameraPermissions();
-  const [torch, setTorch] = useState(false);
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
-  const haptics = useHaptics();
-
-  // Premium features
-  const {
-    availableBarcodeTypes,
-    canScan,
-    remainingScans,
-    isPremium,
-    highQualityCapture,
-  } = usePremiumCamera();
+  const { isPremium, remainingScans } = usePremiumCamera();
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- wired in Task 9
   const { refreshScanCount } = usePremiumContext();
 
-  // Smart scan classification state
-  const onUpgradeNeeded = useCallback(() => {
-    setShowUpgradeModal(true);
-  }, []);
+  const [scanPhase, dispatch] = useReducer(scanPhaseReducer, { type: "IDLE" });
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- wired in Task 8
+  const [flashCount, setFlashCount] = useState(0);
+  const [sonarVisible, setSonarVisible] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- wired in Task 8
+  const [sonarPos, setSonarPos] = useState({ cx: 195, cy: 422 });
+  const [torchEnabled, setTorchEnabled] = useState(false);
 
-  const {
-    classifyState,
-    classifyResult,
-    navigationTimeoutRef,
-    resetTimeoutRef,
-    handleSmartScan,
-    handleConfirm,
-    handleDismiss,
-    handleRetake,
-  } = useScanClassification({
-    isPremium,
-    refreshScanCount,
-    onUpgradeNeeded,
-    isFocused,
-  });
+  const cameraRef = useRef<CameraRef>(null);
+  const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const pulseScale = useSharedValue(1);
-  const cornerOpacity = useSharedValue(0.6);
-  const scanSuccessScale = useSharedValue(0);
+  const { permission, requestPermission } = useCameraPermissions();
 
-  // Green flash overlay on barcode scan success
-  const { trigger: triggerScanFlash, animatedStyle: scanFlashStyle } =
-    useSuccessFlash(0.15);
+  // Dispatch CAMERA_READY when screen gains focus
+  useEffect(() => {
+    if (isFocused) dispatch({ type: "CAMERA_READY" });
+  }, [isFocused]);
 
-  // Ref used to call resetScanning inside onBarcodeScanSuccess without creating
-  // a circular dependency (onBarcodeScanSuccess → useCamera → resetScanning).
-  const resetScanningRef = useRef<() => void>(() => {});
+  // Reset when screen loses focus
+  useEffect(() => {
+    if (!isFocused) dispatch({ type: "RESET" });
+  }, [isFocused]);
 
-  // Memoized callback prevents re-registration of the native scanner on every render.
-  // triggerScanFlash owns the haptic (Success) — do not add a separate haptics call here.
-  const onBarcodeScanSuccess = useCallback(
-    async (result: BarcodeResult) => {
-      scanSuccessScale.value = withSequence(
-        withSpring(1.2, { damping: 10 }),
-        withSpring(1, { damping: 15 }),
+  // Coach hint escalation timer
+  useEffect(() => {
+    if (scanPhase.type === "HUNTING") {
+      setElapsedSeconds(0);
+      elapsedTimerRef.current = setInterval(
+        () => setElapsedSeconds((s) => s + 1),
+        1000,
       );
-      triggerScanFlash();
+    } else {
+      if (elapsedTimerRef.current) {
+        clearInterval(elapsedTimerRef.current);
+        elapsedTimerRef.current = null;
+      }
+      setElapsedSeconds(0);
+    }
+    return () => {
+      if (elapsedTimerRef.current) clearInterval(elapsedTimerRef.current);
+    };
+  }, [scanPhase.type]);
 
-      // Navigate after brief delay for animation (with cleanup tracking)
-      navigationTimeoutRef.current = setTimeout(() => {
-        navigation.navigate("NutritionDetail", { barcode: result.data });
-        // Refresh scan count after navigation
-        refreshScanCount();
-        resetTimeoutRef.current = setTimeout(() => {
-          resetScanningRef.current();
-          scanSuccessScale.value = 0;
-        }, SCAN_TIMING.RESET_DELAY_MS);
-      }, SCAN_TIMING.NAVIGATION_DELAY_MS);
+  // Barcode callback — stub, will be wired in Task 8
+  const onBarcodeScanned = useCallback(
+    (_result: BarcodeResult) => {
+      if (!isFocused) return;
+      // Task 8: dispatch FIRST_BARCODE_DETECTED / BARCODE_UPDATED / BARCODE_LOCKED
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- scanSuccessScale is a stable useSharedValue ref that never changes identity
-    [
-      triggerScanFlash,
-      navigationTimeoutRef,
-      navigation,
-      refreshScanCount,
-      resetTimeoutRef,
-    ],
+    [isFocused],
   );
 
-  // Camera hook with debouncing
-  const { cameraRef, isScanning, handleBarcodeScanned, resetScanning } =
-    useCamera({
-      onBarcodeScanned: onBarcodeScanSuccess,
-      debounceMs: SCAN_TIMING.SCAN_DEBOUNCE_MS,
-    });
+  // Shutter tap — stub, will be wired in Task 10
+  const onShutterPress = useCallback(async () => {}, []);
 
-  // Keep the ref in sync so the memoized callback always calls the latest resetScanning
-  resetScanningRef.current = resetScanning;
-
-  // Announce scanning state changes for iOS (accessibilityLiveRegion is Android-only)
-  useEffect(() => {
-    if (isScanning) {
-      AccessibilityInfo.announceForAccessibility("Scanning");
-    }
-  }, [isScanning]);
-
-  // Start corner pulse animation on mount (respects reduced motion preference)
-  useEffect(() => {
-    if (reducedMotion) {
-      cancelAnimation(cornerOpacity);
-      cornerOpacity.value = 0.8; // Static value for reduced motion
-      return;
-    }
-
-    cornerOpacity.value = withRepeat(
-      withSequence(
-        withTiming(1, { duration: 1000 }),
-        withTiming(0.6, { duration: 1000 }),
-      ),
-      -1,
-      true,
-    );
-    return () => cancelAnimation(cornerOpacity);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- cornerOpacity is a stable useSharedValue ref that never changes identity
-  }, [reducedMotion]);
-
-  const pulseStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: pulseScale.value }],
-  }));
-
-  const glowCornerStyle = useAnimatedStyle(() => ({
-    opacity: cornerOpacity.value,
-  }));
-
-  const successStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scanSuccessScale.value }],
-    opacity: scanSuccessScale.value,
-  }));
-
-  const handlePickImage = async () => {
-    // Check if user can scan today (daily limit)
-    if (!canScan) {
-      haptics.notification(Haptics.NotificationFeedbackType.Warning);
-      setShowUpgradeModal(true);
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 1,
-    });
-
-    if (!result.canceled && result.assets[0]) {
-      handleSmartScan(result.assets[0].uri);
-    }
-  };
-
-  const handleShutterPress = async () => {
-    // Check if user can scan today (daily limit)
-    if (!canScan) {
-      haptics.notification(Haptics.NotificationFeedbackType.Warning);
-      setShowUpgradeModal(true);
-      return;
-    }
-
-    pulseScale.value = withSequence(
-      withSpring(0.9, { damping: 15 }),
-      withSpring(1, { damping: 15 }),
-    );
-    haptics.impact(Haptics.ImpactFeedbackStyle.Medium);
-
-    // Take a photo using the camera ref
-    if (cameraRef.current) {
-      try {
-        // Quality is controlled by the photoQuality prop on <CameraView>
-        const photo = await cameraRef.current.takePicture();
-
-        if (photo?.uri) {
-          if (isFrontLabelMode && verifyBarcode) {
-            const ocrResult = await recognizeTextFromPhoto(photo.uri);
-            const localOCRText = ocrResult.text || undefined;
-            const localData = localOCRText
-              ? parseFrontLabelFromOCR(localOCRText)
-              : null;
-
-            if (localData && localData.confidence >= 0.5) {
-              // Fast path: local OCR confident enough — navigate immediately,
-              // AI upload runs inside FrontLabelConfirmScreen
-              navigation.navigate("FrontLabelConfirm", {
-                imageUri: photo.uri,
-                barcode: verifyBarcode,
-                sessionId: null,
-                data: localData,
-              });
-            } else {
-              // Fallback: OCR confidence too low — upload first, then navigate
-              try {
-                const result = await uploadFrontLabelPhoto(
-                  photo.uri,
-                  verifyBarcode,
-                );
-                navigation.navigate("FrontLabelConfirm", {
-                  imageUri: photo.uri,
-                  barcode: verifyBarcode,
-                  sessionId: result.sessionId,
-                  data: result.data,
-                });
-              } catch (err) {
-                haptics.notification(Haptics.NotificationFeedbackType.Error);
-                Alert.alert(
-                  "Upload Failed",
-                  err instanceof Error
-                    ? err.message
-                    : "Could not analyze front label. Please try again.",
-                );
-              }
-            }
-          } else if (isLabelMode) {
-            const ocrResult = await recognizeTextFromPhoto(photo.uri);
-            navigation.navigate("LabelAnalysis", {
-              imageUri: photo.uri,
-              barcode: verifyBarcode,
-              verificationMode: !!verifyBarcode,
-              verifyBarcode,
-              localOCRText: ocrResult.text || undefined,
-            });
-            if (!verifyBarcode) refreshScanCount();
-          } else {
-            handleSmartScan(photo.uri, undefined);
-          }
-        }
-      } catch {
-        // Photo capture failed - provide haptic feedback to indicate failure
-        haptics.notification(Haptics.NotificationFeedbackType.Error);
-      }
-    }
-  };
-
-  // Handle barcode scan with premium check
-  const onBarcodeScanned = (result: BarcodeResult) => {
-    // Check if user can scan today (daily limit)
-    if (!canScan) {
-      haptics.notification(Haptics.NotificationFeedbackType.Warning);
-      setShowUpgradeModal(true);
-      return;
-    }
-
-    handleBarcodeScanned(result);
-  };
-
-  if (permissionLoading) {
-    return (
-      <View
-        style={[styles.container, { backgroundColor: theme.backgroundRoot }]}
-      >
-        <ActivityIndicator
-          size="large"
-          color={theme.success}
-          accessibilityLabel="Loading camera"
-        />
-        <Pressable
-          onPress={() => navigation.goBack()}
-          style={styles.closeLink}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-        >
-          <ThemedText style={{ color: theme.link }}>Go Back</ThemedText>
-        </Pressable>
-      </View>
-    );
-  }
-
-  if (!permission || permission.status !== "granted") {
+  // Permission screens
+  if (!permission || permission.status === "undetermined") {
     return (
       <View
         style={[
-          styles.container,
           styles.permissionContainer,
-          { backgroundColor: theme.backgroundRoot },
+          { backgroundColor: theme.backgroundDefault },
         ]}
       >
-        <Feather
-          name="camera-off"
-          size={64}
-          color={theme.textSecondary}
-          style={styles.permissionIcon}
-        />
-        <ThemedText type="h3" style={styles.permissionTitle}>
-          Camera Access Required
-        </ThemedText>
-        <ThemedText
-          type="body"
-          style={[styles.permissionText, { color: theme.textSecondary }]}
-        >
-          OCRecipes needs camera access to scan barcodes and nutrition labels
-        </ThemedText>
-
-        {permission?.status === "denied" && !permission.canAskAgain ? (
-          Platform.OS !== "web" ? (
-            <Pressable
-              onPress={async () => {
-                try {
-                  await Linking.openSettings();
-                } catch {
-                  // Settings couldn't be opened - user can manually navigate
-                  haptics.notification(Haptics.NotificationFeedbackType.Error);
-                }
-              }}
-              accessibilityLabel="Open device settings to enable camera"
-              accessibilityRole="button"
-              style={[styles.permissionButton, { backgroundColor: theme.link }]}
-            >
-              <ThemedText type="body" style={styles.permissionButtonText}>
-                Open Settings
-              </ThemedText>
-            </Pressable>
-          ) : (
-            <ThemedText
-              type="small"
-              style={[styles.webNote, { color: theme.textSecondary }]}
-            >
-              Run in Expo Go to use this feature
-            </ThemedText>
-          )
-        ) : (
-          <Pressable
-            onPress={requestPermission}
-            accessibilityLabel="Enable camera access"
-            accessibilityRole="button"
-            style={[styles.permissionButton, { backgroundColor: theme.link }]}
-          >
-            <ThemedText type="body" style={styles.permissionButtonText}>
-              Enable Camera
-            </ThemedText>
-          </Pressable>
-        )}
-        <Pressable
-          onPress={() => navigation.goBack()}
-          style={styles.closeLink}
+        <Text style={[styles.permissionTitle, { color: theme.text }]}>
+          Camera Access
+        </Text>
+        <Text style={[styles.permissionBody, { color: theme.textSecondary }]}>
+          OCRecipes needs your camera to scan barcodes and food labels.
+        </Text>
+        <TouchableOpacity
+          style={styles.permissionBtn}
+          onPress={requestPermission}
+          accessibilityLabel="Allow camera access"
           accessibilityRole="button"
-          accessibilityLabel="Go back"
         >
-          <ThemedText style={{ color: theme.link }}>Go Back</ThemedText>
-        </Pressable>
+          <Text style={styles.permissionBtnText}>Allow Camera</Text>
+        </TouchableOpacity>
       </View>
     );
   }
 
+  if (permission.status === "denied") {
+    return (
+      <View
+        style={[
+          styles.permissionContainer,
+          { backgroundColor: theme.backgroundDefault },
+        ]}
+      >
+        <Text style={[styles.permissionTitle, { color: theme.text }]}>
+          Camera Blocked
+        </Text>
+        <Text style={[styles.permissionBody, { color: theme.textSecondary }]}>
+          Enable camera access in Settings to scan products.
+        </Text>
+        <TouchableOpacity
+          style={styles.permissionBtn}
+          onPress={() => Linking.openSettings()}
+          accessibilityLabel="Open Settings to enable camera"
+          accessibilityRole="button"
+        >
+          <Text style={styles.permissionBtnText}>Open Settings</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.permissionCancel}
+          onPress={() => navigation.goBack()}
+          accessibilityLabel="Cancel and go back"
+          accessibilityRole="button"
+        >
+          <Text
+            style={[
+              styles.permissionCancelText,
+              { color: theme.textSecondary },
+            ]}
+          >
+            Cancel
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  const coachMessage = getCoachMessage(scanPhase, elapsedSeconds);
+
   return (
-    <View style={styles.container}>
+    <View style={styles.root}>
       <CameraView
         ref={cameraRef}
-        barcodeTypes={
-          isLabelMode || isFrontLabelMode ? [] : availableBarcodeTypes
-        }
-        onBarcodeScanned={
-          isLabelMode || isFrontLabelMode ? undefined : onBarcodeScanned
-        }
-        enableTorch={torch}
-        facing="back"
+        barcodeTypes={["ean13", "ean8", "upc_e", "code128", "code39", "qr"]}
+        onBarcodeScanned={onBarcodeScanned}
+        enableTorch={torchEnabled}
         isActive={isFocused}
-        photoQuality={
-          isLabelMode || isFrontLabelMode
-            ? 0.85
-            : highQualityCapture
-              ? 0.9
-              : 0.5
-        }
       />
 
-      <View style={[styles.overlay, { paddingTop: insets.top + Spacing.md }]}>
-        <View style={styles.topControls}>
-          <Pressable
-            onPress={() => setTorch(!torch)}
-            accessibilityLabel={
-              torch ? "Turn off flashlight" : "Turn on flashlight"
-            }
-            accessibilityRole="button"
-            accessibilityState={{ checked: torch }}
-            style={[
-              styles.controlButton,
-              {
-                backgroundColor: torch
-                  ? theme.success
-                  : CameraColors.overlayLight,
-              },
-            ]}
-          >
-            <Feather
-              name={torch ? "zap" : "zap-off"}
-              size={24}
-              color={theme.buttonText}
-            />
-          </Pressable>
-          <Pressable
-            onPress={() => navigation.goBack()}
-            accessibilityLabel="Close camera"
-            accessibilityRole="button"
-            style={[
-              styles.controlButton,
-              { backgroundColor: CameraColors.overlayLight },
-            ]}
-          >
-            <Feather name="x" size={24} color={theme.buttonText} />
-          </Pressable>
-        </View>
+      <ScanReticle phase={scanPhase} reducedMotion={reducedMotion} />
 
-        <View style={styles.reticleContainer}>
-          <AnimatedView
-            style={[
-              styles.reticle,
-              glowCornerStyle,
-              { width: frame.WIDTH, height: frame.HEIGHT },
-            ]}
-          >
-            <View
-              style={[
-                styles.corner,
-                styles.cornerTL,
-                {
-                  borderColor: theme.success,
-                  width: frame.CORNER_SIZE,
-                  height: frame.CORNER_SIZE,
-                  borderTopLeftRadius: frame.CORNER_RADIUS,
-                },
-              ]}
-            />
-            <View
-              style={[
-                styles.corner,
-                styles.cornerTR,
-                {
-                  borderColor: theme.success,
-                  width: frame.CORNER_SIZE,
-                  height: frame.CORNER_SIZE,
-                  borderTopRightRadius: frame.CORNER_RADIUS,
-                },
-              ]}
-            />
-            <View
-              style={[
-                styles.corner,
-                styles.cornerBL,
-                {
-                  borderColor: theme.success,
-                  width: frame.CORNER_SIZE,
-                  height: frame.CORNER_SIZE,
-                  borderBottomLeftRadius: frame.CORNER_RADIUS,
-                },
-              ]}
-            />
-            <View
-              style={[
-                styles.corner,
-                styles.cornerBR,
-                {
-                  borderColor: theme.success,
-                  width: frame.CORNER_SIZE,
-                  height: frame.CORNER_SIZE,
-                  borderBottomRightRadius: frame.CORNER_RADIUS,
-                },
-              ]}
-            />
-          </AnimatedView>
+      {sonarVisible && (
+        <ScanSonarRing
+          cx={sonarPos.cx}
+          cy={sonarPos.cy}
+          onComplete={() => setSonarVisible(false)}
+        />
+      )}
 
-          {/* Green flash overlay on successful barcode scan */}
-          <Animated.View
-            style={[
-              styles.scanFlashOverlay,
-              {
-                width: frame.WIDTH,
-                height: frame.HEIGHT,
-                backgroundColor: theme.success,
-                borderRadius: frame.CORNER_RADIUS,
-              },
-              scanFlashStyle,
-            ]}
-            pointerEvents="none"
-          />
+      <ScanFlashOverlay triggerCount={flashCount} />
 
-          <AnimatedView
-            style={[
-              styles.successPulse,
-              successStyle,
-              { backgroundColor: theme.success },
-            ]}
-          />
-
-          <View accessibilityLiveRegion="polite">
-            <ThemedText type="body" style={styles.reticleText} maxScale={1.3}>
-              {isScanning
-                ? "Scanning..."
-                : isFrontLabelMode
-                  ? "Position the front of the package in the frame"
-                  : isLabelMode
-                    ? "Align nutrition label within the frame"
-                    : "Scan barcode or tap shutter for food photo"}
-            </ThemedText>
-          </View>
-
-          {/* Show remaining scans for free users */}
-          {!isPremium && remainingScans !== null && (
-            <ThemedText type="small" style={styles.scanLimitText}>
-              {remainingScans > 0
-                ? `${remainingScans} scans remaining today`
-                : "Daily scan limit reached"}
-            </ThemedText>
-          )}
-        </View>
-
-        <View
-          style={[
-            styles.bottomControls,
-            { paddingBottom: insets.bottom + Spacing.xl },
-          ]}
+      {/* Top overlay */}
+      <View style={[styles.topOverlay, { paddingTop: insets.top + 8 }]}>
+        <TouchableOpacity
+          style={styles.closeBtn}
+          onPress={() => navigation.goBack()}
+          accessibilityLabel="Close camera"
+          accessibilityRole="button"
         >
-          <Pressable
-            onPress={handlePickImage}
-            accessibilityLabel="Choose photo from gallery"
-            accessibilityRole="button"
-            style={styles.galleryButton}
-          >
-            <Feather name="image" size={28} color={theme.buttonText} />
-          </Pressable>
-
-          <AnimatedView style={pulseStyle}>
-            <Pressable
-              onPress={handleShutterPress}
-              accessibilityLabel="Take photo of food"
-              accessibilityRole="button"
-              style={[styles.shutterButton, { backgroundColor: theme.success }]}
-            >
-              <View style={styles.shutterInner} />
-            </Pressable>
-          </AnimatedView>
-
-          <View style={styles.spacer} />
-        </View>
+          <Text style={styles.closeBtnText}>✕</Text>
+        </TouchableOpacity>
+        <StepPill phase={scanPhase} />
       </View>
 
-      <UpgradeModal
-        visible={showUpgradeModal}
-        onClose={() => setShowUpgradeModal(false)}
-      />
+      {/* Coach hint */}
+      <View style={styles.coachContainer}>
+        <CoachHint message={coachMessage} />
+      </View>
 
-      {/* Smart Scan Classification Overlay */}
-      <ClassificationOverlay
-        classifyState={classifyState}
-        classifyResult={classifyResult}
-        onConfirm={handleConfirm}
-        onDismiss={handleDismiss}
-        onRetake={handleRetake}
+      {/* Bottom controls */}
+      <View style={[styles.controls, { paddingBottom: insets.bottom + 16 }]}>
+        <TouchableOpacity
+          style={styles.iconBtn}
+          onPress={() => setTorchEnabled((t) => !t)}
+          accessibilityLabel={
+            torchEnabled ? "Turn off flashlight" : "Turn on flashlight"
+          }
+          accessibilityRole="button"
+          accessibilityState={{ checked: torchEnabled }}
+        >
+          <Text style={styles.iconBtnText}>{torchEnabled ? "⚡" : "🔦"}</Text>
+        </TouchableOpacity>
+        <Pressable
+          style={styles.shutter}
+          onPress={onShutterPress}
+          accessibilityLabel="Take photo"
+          accessibilityRole="button"
+        />
+        <View style={styles.iconBtn} />
+      </View>
+
+      {/* Scan count badge (free tier) */}
+      {!isPremium && remainingScans !== null && (
+        <View style={styles.scanCount}>
+          <Text style={styles.scanCountText}>
+            {remainingScans > 0
+              ? `${remainingScans} scans remaining`
+              : "Daily limit reached"}
+          </Text>
+        </View>
+      )}
+
+      {/* Product chip */}
+      <ProductChip
+        phase={scanPhase}
+        onConfirm={() => dispatch({ type: "CONFIRM_PRODUCT" })}
+        onAddNutritionPhoto={() => dispatch({ type: "ADD_NUTRITION_PHOTO" })}
+        onAddFrontPhoto={() => dispatch({ type: "ADD_FRONT_PHOTO" })}
+        onStepConfirmed={() => dispatch({ type: "STEP_CONFIRMED" })}
+        onEditStep2={() => {
+          if (
+            scanPhase.type === "STEP2_REVIEWING" ||
+            scanPhase.type === "STEP2_CONFIRMED"
+          ) {
+            const imageUri =
+              scanPhase.type === "STEP2_REVIEWING"
+                ? scanPhase.imageUri
+                : scanPhase.nutritionImageUri;
+            navigation.navigate("LabelAnalysis", { imageUri });
+          }
+        }}
+        onEditStep3={() => {
+          if (scanPhase.type === "STEP3_REVIEWING") {
+            const emptyFrontLabel: FrontLabelExtractionResult = {
+              brand: null,
+              productName: null,
+              netWeight: null,
+              claims: [],
+              confidence: 0,
+            };
+            navigation.navigate("FrontLabelConfirm", {
+              imageUri: scanPhase.frontImageUri,
+              barcode: scanPhase.barcode,
+              sessionId: null,
+              data: emptyFrontLabel,
+            });
+          }
+        }}
+        onSmartPhotoConfirm={() => {
+          // Task 10: route to PhotoAnalysis or MenuScanResult
+        }}
+        onRetry={() => dispatch({ type: "RESET" })}
       />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: CameraColors.background, // camera token
+  root: { flex: 1, backgroundColor: "#000" }, // hardcoded — camera background must always be black
+  topOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    zIndex: 10,
+    gap: 12,
+  },
+  closeBtn: {
+    alignSelf: "flex-end",
+    marginRight: 16,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  closeBtnText: { color: "#FFF", fontSize: 14, fontWeight: "600" }, // hardcoded — camera overlay
+  coachContainer: {
+    position: "absolute",
+    bottom: 120,
+    left: 0,
+    right: 0,
+    alignItems: "center",
+    zIndex: 10,
+  },
+  controls: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-around",
+    zIndex: 10,
+  },
+  iconBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  iconBtnText: { fontSize: 18 },
+  shutter: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: "#FFF", // hardcoded — camera overlay
+    borderWidth: 4,
+    borderColor: "rgba(255,255,255,0.4)",
   },
   permissionContainer: {
-    justifyContent: "center",
-    alignItems: "center",
-    padding: Spacing["2xl"],
-  },
-  permissionIcon: {
-    marginBottom: Spacing["2xl"],
-  },
-  permissionTitle: {
-    textAlign: "center",
-    marginBottom: Spacing.md,
-  },
-  permissionText: {
-    textAlign: "center",
-    marginBottom: Spacing["2xl"],
-  },
-  permissionButton: {
-    height: Spacing.buttonHeight,
-    paddingHorizontal: Spacing["3xl"],
-    borderRadius: BorderRadius.full,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  permissionButtonText: {
-    color: CameraColors.text, // camera token
-    fontWeight: "600",
-  },
-  closeLink: {
-    marginTop: Spacing.lg,
-    padding: Spacing.sm,
-  },
-  webNote: {
-    textAlign: "center",
-    fontStyle: "italic",
-  },
-  overlay: {
     flex: 1,
-    justifyContent: "space-between",
-  },
-  topControls: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingHorizontal: Spacing.lg,
-  },
-  controlButton: {
-    width: 48,
-    height: 48,
-    borderRadius: BorderRadius.full,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  reticleContainer: {
     alignItems: "center",
     justifyContent: "center",
+    padding: 32,
+    gap: 16,
   },
-  reticle: {
-    position: "relative",
+  permissionTitle: { fontSize: 22, fontWeight: "700", textAlign: "center" },
+  permissionBody: { fontSize: 15, textAlign: "center", lineHeight: 22 },
+  permissionBtn: {
+    backgroundColor: "#007AFF", // hardcoded — iOS system blue, intentional
+    borderRadius: 12,
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    marginTop: 8,
   },
-  corner: {
+  permissionBtnText: { color: "#FFF", fontWeight: "700", fontSize: 16 }, // hardcoded — camera overlay
+  permissionCancel: { paddingVertical: 12 },
+  permissionCancelText: { fontSize: 15 },
+  scanCount: {
     position: "absolute",
-    borderWidth: RETICLE.CORNER_BORDER_WIDTH,
+    top: 120,
+    alignSelf: "center",
+    backgroundColor: "rgba(0,0,0,0.5)",
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
   },
-  cornerTL: {
-    top: 0,
-    left: 0,
-    borderBottomWidth: 0,
-    borderRightWidth: 0,
-  },
-  cornerTR: {
-    top: 0,
-    right: 0,
-    borderBottomWidth: 0,
-    borderLeftWidth: 0,
-  },
-  cornerBL: {
-    bottom: 0,
-    left: 0,
-    borderTopWidth: 0,
-    borderRightWidth: 0,
-  },
-  cornerBR: {
-    bottom: 0,
-    right: 0,
-    borderTopWidth: 0,
-    borderLeftWidth: 0,
-  },
-  scanFlashOverlay: {
-    position: "absolute",
-  },
-  successPulse: {
-    position: "absolute",
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-  },
-  reticleText: {
-    color: CameraColors.text, // camera token
-    marginTop: Spacing["2xl"],
-    textShadowColor: CameraColors.textShadow, // camera token
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
-  },
-  scanLimitText: {
-    color: CameraColors.text, // camera token
-    marginTop: Spacing.sm,
-    opacity: 0.8,
-    textShadowColor: CameraColors.textShadow, // camera token
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
-  },
-  bottomControls: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: Spacing["3xl"],
-  },
-  galleryButton: {
-    width: 56,
-    height: 56,
-    borderRadius: BorderRadius.full,
-    backgroundColor: CameraColors.overlayLight, // camera token
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  shutterButton: {
-    width: Spacing.shutterButtonSize,
-    height: Spacing.shutterButtonSize,
-    borderRadius: Spacing.shutterButtonSize / 2,
-    justifyContent: "center",
-    alignItems: "center",
-    shadowColor: "#000", // hardcoded — shadow color is always black
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  shutterInner: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: CameraColors.shutterButton, // camera token
-  },
-  spacer: {
-    width: 56,
-    height: 56,
-  },
+  scanCountText: { color: "rgba(255,255,255,0.7)", fontSize: 12 },
 });
