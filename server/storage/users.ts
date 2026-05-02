@@ -205,17 +205,16 @@ export async function deleteUser(id: string): Promise<boolean> {
   return deleted;
 }
 
-export async function getAllUserIds(): Promise<string[]> {
-  const rows = await db.select({ id: users.id }).from(users);
-  return rows.map((r) => r.id);
-}
-
 /**
  * Fetch a page of user IDs ordered by id for cursor-based iteration.
  * Pass `afterId: null` to start from the beginning; pass the last ID from the
  * previous page to advance the cursor. Returns an empty array when exhausted.
+ *
+ * idor-safe: This function intentionally iterates all users — it is only
+ * called by the notification scheduler (server-side cron job) and is never
+ * exposed per-user via a route handler.
  */
-export async function getUserIdPage( // idor-safe: scheduler-only; iterates all users by design
+export async function getUserIdPage( // idor-safe
   afterId: string | null,
   limit = 500,
 ): Promise<string[]> {
