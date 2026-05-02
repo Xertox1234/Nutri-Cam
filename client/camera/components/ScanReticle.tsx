@@ -151,7 +151,10 @@ export function ScanReticle({ phase, reducedMotion }: Props) {
       cy.value = withSpring(target.cy, SPRING_MORPH);
     }
 
-    rw.value = withSpring(target.width / 2, SPRING_MORPH);
+    // HUNTING breathing (effect above) owns rw — don't overwrite it here
+    if (phase.type !== "HUNTING") {
+      rw.value = withSpring(target.width / 2, SPRING_MORPH);
+    }
     rh.value = withSpring(target.height / 2, SPRING_MORPH);
     confidence.value = withTiming(conf, { duration: 80 });
 
