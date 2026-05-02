@@ -5,6 +5,7 @@ import * as Haptics from "expo-haptics";
 
 import { useHaptics } from "@/hooks/useHaptics";
 import { apiRequest } from "@/lib/query-client";
+import { QUERY_KEYS } from "@/lib/query-keys";
 
 interface Allergy {
   name: string;
@@ -48,7 +49,7 @@ export function useDietaryProfileForm() {
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const { data: profile, isLoading } = useQuery<DietaryProfile>({
-    queryKey: ["/api/user/dietary-profile"],
+    queryKey: QUERY_KEYS.dietaryProfile,
   });
 
   // Initialize form state from fetched profile
@@ -130,7 +131,7 @@ export function useDietaryProfileForm() {
 
       // Invalidate the dietary profile query to refresh data
       queryClient.invalidateQueries({
-        queryKey: ["/api/user/dietary-profile"],
+        queryKey: QUERY_KEYS.dietaryProfile,
       });
 
       haptics.notification(Haptics.NotificationFeedbackType.Success);

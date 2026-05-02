@@ -40,6 +40,7 @@ import { FLATLIST_DEFAULTS } from "@/constants/performance";
 import { RecipeCard } from "@/components/recipe-chat/RecipeCard";
 import { generateRemixChips, type RemixChip } from "@/lib/remix-chips";
 import { apiRequest } from "@/lib/query-client";
+import { QUERY_KEYS } from "@/lib/query-keys";
 
 type RecipeChatRouteProp = RouteProp<RootStackParamList, "RecipeChat">;
 
@@ -114,7 +115,7 @@ export default function RecipeChatScreen() {
     allergies?: { name: string; severity: "mild" | "moderate" | "severe" }[];
     dietType?: string | null;
   }>({
-    queryKey: ["/api/user/dietary-profile"],
+    queryKey: QUERY_KEYS.dietaryProfile,
     queryFn: async () => {
       const res = await apiRequest("GET", "/api/user/dietary-profile");
       return res.json();

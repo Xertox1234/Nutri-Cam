@@ -1,6 +1,8 @@
 import { pendingReminders } from "@shared/schema";
 import type { CoachContextItem, ReminderType } from "@shared/types/reminders";
+import { coachContextItemSchema } from "@shared/schemas/reminders";
 import { db } from "../db";
+import { logger } from "../lib/logger";
 import { and, eq, isNull, gte, lt } from "drizzle-orm";
 import { getDayBounds } from "./helpers";
 
@@ -65,10 +67,21 @@ export async function acknowledgeReminders(
     )
     .returning();
 
-  // The context shape is guaranteed by createPendingReminder callers
-  // (notification-scheduler.ts) which always pass the correct fields for each type.
-  return acknowledged.map((r) => ({
-    type: r.type,
-    ...r.context,
-  })) as CoachContextItem[];
+  return acknowledged
+    .map((r) => {
+      // Explicit type last so r.type always wins over any stray "type" key in context
+      const result = coachContextItemSchema.safeParse({
+        ...r.context,
+        type: r.type,
+      });
+      if (!result.success) {
+        logger.warn(
+          { rowId: r.id },
+          "reminders: malformed context JSONB — skipping",
+        );
+        return null;
+      }
+      return result.data;
+    })
+    .filter((item): item is CoachContextItem => item !== null);
 }

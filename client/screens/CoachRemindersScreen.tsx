@@ -13,6 +13,7 @@ import {
   withOpacity,
 } from "@/constants/theme";
 import type { ReminderMutes } from "@shared/types/reminders";
+import { QUERY_KEYS } from "@/lib/query-keys";
 
 interface ReminderToggleConfig {
   key: keyof ReminderMutes;
@@ -39,11 +40,9 @@ const REMINDER_TYPES: ReminderToggleConfig[] = [
   },
 ];
 
-const DIETARY_PROFILE_KEY = ["/api/user/dietary-profile"] as const;
-
 function useReminderMutes() {
   return useQuery({
-    queryKey: DIETARY_PROFILE_KEY,
+    queryKey: QUERY_KEYS.dietaryProfile,
     queryFn: async () => {
       const res = await apiRequest("GET", "/api/user/dietary-profile");
       return res.json();
@@ -65,7 +64,7 @@ function useUpdateReminderMute() {
       // Invalidate rather than setQueryData — avoids corrupting the full profile
       // cache when it is cold (old === undefined), which would drop non-mutes
       // fields read by other hooks on the same key.
-      queryClient.invalidateQueries({ queryKey: DIETARY_PROFILE_KEY });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.dietaryProfile });
     },
   });
 }
