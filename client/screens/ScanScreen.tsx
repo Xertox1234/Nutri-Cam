@@ -24,6 +24,7 @@ import { usePremiumContext } from "@/context/PremiumContext";
 import {
   useCameraPermissions,
   CameraView,
+  recognizeTextFromPhoto,
   type BarcodeResult,
   type CameraRef,
 } from "@/camera";
@@ -49,7 +50,6 @@ export default function ScanScreen() {
   const { theme } = useTheme();
   const { reducedMotion } = useAccessibility();
   const { isPremium, remainingScans } = usePremiumCamera();
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- wired in Task 9
   const { refreshScanCount } = usePremiumContext();
 
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -113,6 +113,19 @@ export default function ScanScreen() {
         clearTimeout(barcodeAbsentTimerRef.current);
     };
   }, []);
+
+  // Navigate to NutritionDetail when session is complete
+  useEffect(() => {
+    if (scanPhase.type !== "SESSION_COMPLETE") return;
+    const { barcode, nutritionImageUri, frontImageUri, ocrText } = scanPhase;
+    refreshScanCount();
+    navigation.navigate("NutritionDetail", {
+      barcode,
+      nutritionImageUri,
+      frontLabelImageUri: frontImageUri,
+      localOCRText: ocrText,
+    });
+  }, [scanPhase.type, navigation, refreshScanCount]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchProductInfo = useCallback(async (barcode: string) => {
     try {
@@ -185,8 +198,38 @@ export default function ScanScreen() {
     [isFocused, scanPhase, screenWidth, screenHeight, fetchProductInfo],
   );
 
-  // Shutter tap — stub, will be wired in Task 10
-  const onShutterPress = useCallback(async () => {}, []);
+  const onShutterPress = useCallback(async () => {
+    if (
+      scanPhase.type !== "STEP2_CAPTURING" &&
+      scanPhase.type !== "STEP3_CAPTURING" &&
+      scanPhase.type !== "HUNTING"
+    )
+      return;
+
+    if (scanPhase.type === "HUNTING") {
+      // Smart photo path — handled in Task 10
+      return;
+    }
+
+    const photo = await cameraRef.current?.takePicture();
+    if (!photo) return;
+
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+
+    if (scanPhase.type === "STEP2_CAPTURING") {
+      let ocrText = "";
+      try {
+        const ocrResult = await recognizeTextFromPhoto(photo.uri);
+        ocrText = ocrResult.text ?? "";
+      } catch (err) {
+        if (__DEV__) console.warn("[onShutterPress OCR]", err);
+      }
+      dispatch({ type: "STEP_PHOTO_CAPTURED", imageUri: photo.uri, ocrText });
+    } else {
+      // STEP3_CAPTURING — no OCR needed
+      dispatch({ type: "STEP_PHOTO_CAPTURED", imageUri: photo.uri });
+    }
+  }, [scanPhase]);
 
   // Permission screens
   if (!permission || permission.status === "undetermined") {
