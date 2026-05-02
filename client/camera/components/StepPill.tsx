@@ -10,18 +10,20 @@ import Animated, {
   useSharedValue,
   withSpring,
   withRepeat,
-  withSequence,
   withTiming,
   useAnimatedStyle,
   cancelAnimation,
   interpolateColor,
 } from "react-native-reanimated";
+import { useAccessibility } from "@/hooks/useAccessibility";
 import type { ScanPhase } from "../types/scan-phase";
 import {
   getStepDotState,
   shouldShowStepPill,
   type StepDotState,
 } from "./StepPill-utils";
+
+const DONE_COLOR = "#22c55e"; // hardcoded — camera overlay, cannot use theme
 
 const STEP_LABELS = ["Barcode", "Nutrition", "Front"];
 
@@ -31,6 +33,7 @@ interface DotProps {
 }
 
 function StepDot({ label, state }: DotProps) {
+  const { reducedMotion } = useAccessibility();
   const scale = useSharedValue(1);
   const ringScale = useSharedValue(1);
   const ringOpacity = useSharedValue(0);
@@ -38,35 +41,40 @@ function StepDot({ label, state }: DotProps) {
 
   useEffect(() => {
     if (prevState.current !== "done" && state === "done") {
-      scale.value = withSequence(
-        withSpring(1.25, { damping: 10 }),
-        withSpring(1, { damping: 10 }),
-      );
+      if (!reducedMotion) {
+        scale.value = withSpring(1.25, { damping: 10 }, () => {
+          scale.value = withSpring(1, { damping: 10 });
+        });
+      }
       if (Platform.OS === "ios") {
         AccessibilityInfo.announceForAccessibility(`${label} step complete`);
       }
     }
     prevState.current = state;
-  }, [state, scale, label]);
+  }, [state, scale, label, reducedMotion]);
 
   useEffect(() => {
     if (state === "active") {
-      ringOpacity.value = withTiming(1, { duration: 200 });
-      ringScale.value = withRepeat(
-        withSequence(
+      if (Platform.OS === "ios") {
+        AccessibilityInfo.announceForAccessibility(`${label} step in progress`);
+      }
+      if (reducedMotion) {
+        ringOpacity.value = 0;
+      } else {
+        ringOpacity.value = withTiming(1, { duration: 200 });
+        ringScale.value = withRepeat(
           withTiming(1.5, { duration: 700 }),
-          withTiming(1, { duration: 0 }),
-        ),
-        -1,
-        false,
-      );
+          -1,
+          true,
+        );
+      }
     } else {
       cancelAnimation(ringScale);
       cancelAnimation(ringOpacity);
       ringOpacity.value = withTiming(0, { duration: 200 });
-      ringScale.value = 1;
+      ringScale.value = withTiming(1, { duration: 200 });
     }
-  }, [state, ringScale, ringOpacity]);
+  }, [state, ringScale, ringOpacity, reducedMotion, label]);
 
   const dotAnimStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
@@ -110,19 +118,19 @@ interface ConnectorProps {
 }
 
 function Connector({ precedingDotState }: ConnectorProps) {
+  const { reducedMotion } = useAccessibility();
   const progress = useSharedValue(0);
 
   useEffect(() => {
-    progress.value = withTiming(precedingDotState === "done" ? 1 : 0, {
-      duration: 300,
-    });
-  }, [precedingDotState, progress]);
+    const target = precedingDotState === "done" ? 1 : 0;
+    progress.value = withTiming(target, { duration: reducedMotion ? 0 : 300 });
+  }, [precedingDotState, progress, reducedMotion]);
 
   const animStyle = useAnimatedStyle(() => ({
     backgroundColor: interpolateColor(
       progress.value,
       [0, 1],
-      ["rgba(255,255,255,0.2)", "#22c55e"], // hardcoded
+      ["rgba(255,255,255,0.2)", DONE_COLOR],
     ),
   }));
 
@@ -193,8 +201,8 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.1)",
   },
   dotDone: {
-    backgroundColor: "#22c55e", // hardcoded
-    borderColor: "#22c55e", // hardcoded
+    backgroundColor: DONE_COLOR,
+    borderColor: DONE_COLOR,
   },
   checkmark: {
     color: "#fff", // hardcoded
