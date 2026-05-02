@@ -12,7 +12,9 @@ import {
   Text,
   Pressable,
   Linking,
+  useWindowDimensions,
 } from "react-native";
+import * as Haptics from "expo-haptics";
 import { useNavigation, useIsFocused } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAccessibility } from "@/hooks/useAccessibility";
@@ -34,8 +36,11 @@ import { ProductChip } from "@/camera/components/ProductChip";
 import { ScanFlashOverlay } from "@/camera/components/ScanFlashOverlay";
 import { ScanSonarRing } from "@/camera/components/ScanSonarRing";
 import { getCoachMessage } from "@/camera/components/CoachHint-utils";
+import { apiRequest } from "@/lib/query-client";
 import type { ScanScreenNavigationProp } from "@/types/navigation";
 import type { FrontLabelExtractionResult } from "@shared/types/front-label";
+
+const LOCK_THRESHOLD = 0.85; // confidence ≥ 0.85 ≈ 6+ stable frames (frameCount/7)
 
 export default function ScanScreen() {
   const navigation = useNavigation<ScanScreenNavigationProp>();
@@ -47,23 +52,31 @@ export default function ScanScreen() {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars -- wired in Task 9
   const { refreshScanCount } = usePremiumContext();
 
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
+
   const [scanPhase, dispatch] = useReducer(scanPhaseReducer, { type: "IDLE" });
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- wired in Task 8
   const [flashCount, setFlashCount] = useState(0);
   const [sonarVisible, setSonarVisible] = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- wired in Task 8
   const [sonarPos, setSonarPos] = useState({ cx: 195, cy: 422 });
   const [torchEnabled, setTorchEnabled] = useState(false);
 
   const cameraRef = useRef<CameraRef>(null);
   const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastBarcodeRef = useRef<string | null>(null);
+  const barcodeAbsentTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const hasLockedRef = useRef(false);
 
   const { permission, requestPermission } = useCameraPermissions();
 
   // Dispatch CAMERA_READY when screen gains focus
   useEffect(() => {
-    if (isFocused) dispatch({ type: "CAMERA_READY" });
+    if (isFocused) {
+      hasLockedRef.current = false;
+      dispatch({ type: "CAMERA_READY" });
+    }
   }, [isFocused]);
 
   // Reset when screen loses focus
@@ -91,13 +104,87 @@ export default function ScanScreen() {
     };
   }, [scanPhase.type]);
 
-  // Barcode callback — stub, will be wired in Task 8
+  // Cleanup barcodeAbsentTimerRef on unmount
+  useEffect(() => {
+    return () => {
+      if (barcodeAbsentTimerRef.current)
+        clearTimeout(barcodeAbsentTimerRef.current);
+    };
+  }, []);
+
+  const fetchProductInfo = useCallback(async (barcode: string) => {
+    try {
+      const res = await apiRequest("GET", `/api/nutrition/barcode/${barcode}`);
+      const data = await res.json();
+      dispatch({
+        type: "PRODUCT_LOADED",
+        product: {
+          name: data.productName ?? "Unknown product",
+          brand: data.brandName ?? undefined,
+          imageUri: data.imageUrl ?? undefined,
+        },
+      });
+    } catch {
+      // Non-critical — ProductChip works with null product
+    }
+  }, []);
+
   const onBarcodeScanned = useCallback(
-    (_result: BarcodeResult) => {
-      if (!isFocused) return;
-      // Task 8: dispatch FIRST_BARCODE_DETECTED / BARCODE_UPDATED / BARCODE_LOCKED
+    (result: BarcodeResult) => {
+      if (!isFocused || hasLockedRef.current) return;
+
+      if (barcodeAbsentTimerRef.current) {
+        clearTimeout(barcodeAbsentTimerRef.current);
+        barcodeAbsentTimerRef.current = null;
+      }
+
+      const barcode = result.data;
+      const bounds = result.bounds ?? {
+        x: 0.3,
+        y: 0.4,
+        width: 0.4,
+        height: 0.2,
+      };
+
+      if (scanPhase.type === "HUNTING") {
+        lastBarcodeRef.current = barcode;
+        dispatch({ type: "FIRST_BARCODE_DETECTED", barcode, bounds });
+        return;
+      }
+
+      if (scanPhase.type === "BARCODE_TRACKING") {
+        if (barcode !== scanPhase.barcode) {
+          lastBarcodeRef.current = barcode;
+          dispatch({ type: "FIRST_BARCODE_DETECTED", barcode, bounds });
+          return;
+        }
+        dispatch({ type: "BARCODE_UPDATED", bounds });
+
+        const newFrameCount = scanPhase.frameCount + 1;
+        const confidence = Math.min(newFrameCount / 7, 1.0);
+
+        if (confidence >= LOCK_THRESHOLD) {
+          hasLockedRef.current = true;
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          setFlashCount((c) => c + 1);
+          setSonarPos({
+            cx: (bounds.x + bounds.width / 2) * screenWidth,
+            cy: (bounds.y + bounds.height / 2) * screenHeight,
+          });
+          setSonarVisible(true);
+          dispatch({ type: "BARCODE_LOCKED" });
+          fetchProductInfo(barcode);
+        }
+
+        barcodeAbsentTimerRef.current = setTimeout(() => {
+          if (!hasLockedRef.current) {
+            dispatch({ type: "BARCODE_LOST" });
+            lastBarcodeRef.current = null;
+          }
+        }, 800);
+      }
     },
-    [isFocused],
+    [isFocused, scanPhase, screenWidth, screenHeight, fetchProductInfo],
   );
 
   // Shutter tap — stub, will be wired in Task 10
