@@ -7,6 +7,7 @@ export interface HomeAction {
   label: string;
   subtitle?: string;
   premium?: boolean;
+  renderInline?: boolean;
 }
 
 /** Navigation handler for each action. Separated from config for testability. */
@@ -37,9 +38,6 @@ export function navigateAction(
 
     // Nutrition & Health
     case "quick-log":
-      navigation.navigate("QuickLog");
-      break;
-    case "voice-log":
       navigation.navigate("QuickLog");
       break;
     case "fasting-timer":
@@ -138,12 +136,7 @@ export const HOME_ACTIONS: HomeAction[] = [
     group: "nutrition",
     icon: "edit-3",
     label: "Quick Log",
-  },
-  {
-    id: "voice-log",
-    group: "nutrition",
-    icon: "mic",
-    label: "Voice Log",
+    renderInline: true,
   },
   {
     id: "fasting-timer",
