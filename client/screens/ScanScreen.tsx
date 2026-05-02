@@ -5,6 +5,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import ConfettiCannon from "react-native-confetti-cannon";
 import {
   StyleSheet,
   View,
@@ -38,8 +39,14 @@ import { ScanFlashOverlay } from "@/camera/components/ScanFlashOverlay";
 import { ScanSonarRing } from "@/camera/components/ScanSonarRing";
 import { getCoachMessage } from "@/camera/components/CoachHint-utils";
 import { apiRequest } from "@/lib/query-client";
+import { uploadPhotoForAnalysis } from "@/lib/photo-upload";
+import {
+  getPremiumGate,
+  getRouteForContentType,
+} from "@/screens/scan-screen-utils";
 import type { ScanScreenNavigationProp } from "@/types/navigation";
 import type { FrontLabelExtractionResult } from "@shared/types/front-label";
+import type { ContentType } from "@shared/constants/classification";
 
 const LOCK_THRESHOLD = 0.85; // confidence ≥ 0.85 ≈ 6+ stable frames (frameCount/7)
 
@@ -63,6 +70,7 @@ export default function ScanScreen() {
     cy: screenHeight / 2,
   }));
   const [torchEnabled, setTorchEnabled] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
 
   const cameraRef = useRef<CameraRef>(null);
   const elapsedTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -130,15 +138,22 @@ export default function ScanScreen() {
     if (sessionNavigatedRef.current) return;
     sessionNavigatedRef.current = true;
 
+    if (!reducedMotion) {
+      setShowConfetti(true);
+    }
+
     const { barcode, nutritionImageUri, frontImageUri, ocrText } = scanPhase;
-    refreshScanCount();
-    navigation.navigate("NutritionDetail", {
-      barcode,
-      nutritionImageUri,
-      frontLabelImageUri: frontImageUri,
-      localOCRText: ocrText,
-    });
-  }, [scanPhase, navigation, refreshScanCount]);
+    const timer = setTimeout(() => {
+      refreshScanCount();
+      navigation.navigate("NutritionDetail", {
+        barcode,
+        nutritionImageUri,
+        frontLabelImageUri: frontImageUri,
+        localOCRText: ocrText,
+      });
+    }, 700);
+    return () => clearTimeout(timer);
+  }, [scanPhase, navigation, refreshScanCount, reducedMotion]);
 
   const fetchProductInfo = useCallback(async (barcode: string) => {
     try {
@@ -221,7 +236,19 @@ export default function ScanScreen() {
       return;
 
     if (phase.type === "HUNTING") {
-      // Smart photo path — handled in Task 10
+      const photo = await cameraRef.current?.takePicture();
+      if (!photo) return;
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      dispatch({ type: "SMART_PHOTO_INITIATED", imageUri: photo.uri });
+      try {
+        const result = await uploadPhotoForAnalysis(photo.uri, "auto");
+        dispatch({ type: "CLASSIFICATION_SUCCEEDED", classification: result });
+      } catch (err) {
+        dispatch({
+          type: "CLASSIFICATION_FAILED",
+          error: err instanceof Error ? err.message : "Unknown error",
+        });
+      }
       return;
     }
 
@@ -390,6 +417,18 @@ export default function ScanScreen() {
         </View>
       )}
 
+      {showConfetti && (
+        <ConfettiCannon
+          count={30}
+          origin={{ x: screenWidth / 2, y: 0 }}
+          autoStart
+          fadeOut
+          fallSpeed={2500}
+          colors={["#22c55e", "#f59e0b", "#FFFFFF", "#60a5fa"]} // hardcoded — confetti palette, not theme-able
+          onAnimationEnd={() => setShowConfetti(false)}
+        />
+      )}
+
       {/* Product chip */}
       <ProductChip
         phase={scanPhase}
@@ -427,7 +466,32 @@ export default function ScanScreen() {
           }
         }}
         onSmartPhotoConfirm={() => {
-          // Task 10: route to PhotoAnalysis or MenuScanResult
+          if (scanPhase.type !== "SMART_CONFIRMED") return;
+          const { classification, imageUri } = scanPhase;
+          const contentType = classification.contentType;
+          if (!contentType) {
+            navigation.navigate("PhotoAnalysis", {
+              imageUri,
+              intent: classification.resolvedIntent ?? "log",
+            });
+            return;
+          }
+          const gate = getPremiumGate(contentType);
+          if (gate && !isPremium) {
+            dispatch({ type: "RESET" });
+            return;
+          }
+          const route = getRouteForContentType(
+            contentType,
+            imageUri,
+            classification.resolvedIntent ?? null,
+            null,
+          );
+          if (route) {
+            navigation.navigate(route.screen as any, route.params as any);
+          } else {
+            dispatch({ type: "RESET" });
+          }
         }}
         onRetry={() => dispatch({ type: "RESET" })}
       />
