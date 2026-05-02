@@ -20,24 +20,31 @@ vi.mock("@/lib/query-client", () => ({
 
 vi.mock("@/lib/token-storage", () => ({ tokenStorage: mockTokenStorage }));
 
+const mockSpeechToText = {
+  isListening: false,
+  transcript: "",
+  isFinal: false,
+  volume: -2,
+  error: null,
+  startListening: vi.fn(),
+  stopListening: vi.fn(),
+};
+
 vi.mock("@/hooks/useSpeechToText", () => ({
-  useSpeechToText: () => ({
-    isListening: false,
-    transcript: "",
-    isFinal: false,
-    volume: -2,
-    error: null,
-    startListening: vi.fn(),
-    stopListening: vi.fn(),
-  }),
+  useSpeechToText: vi.fn(() => mockSpeechToText),
 }));
 
 vi.mock("@/hooks/useHaptics", () => ({
   useHaptics: () => ({ impact: vi.fn(), notification: vi.fn() }),
 }));
 
-beforeEach(() => {
+beforeEach(async () => {
   vi.clearAllMocks();
+  // Reset useSpeechToText factory to default values between tests
+  const { useSpeechToText } = await import("@/hooks/useSpeechToText");
+  (useSpeechToText as ReturnType<typeof vi.fn>).mockReturnValue(
+    mockSpeechToText,
+  );
   mockTokenStorage.get.mockResolvedValue("test-token");
   // Consume the frequent-items useQuery that fires on mount so it does not
   // interfere with the mock responses queued by individual tests.
@@ -231,5 +238,49 @@ describe("useQuickLogSession", () => {
     expect(result.current.parsedItems).toHaveLength(0);
     expect(result.current.parseError).toBeNull();
     expect(result.current.submitError).toBeNull();
+  });
+
+  it("auto-parses when isFinal becomes true with a transcript", async () => {
+    const { useSpeechToText } = await import("@/hooks/useSpeechToText");
+    (useSpeechToText as ReturnType<typeof vi.fn>).mockReturnValue({
+      ...mockSpeechToText,
+      isFinal: true,
+      transcript: "3 eggs",
+    });
+
+    const { wrapper } = createQueryWrapper();
+    // frequentItems pre-queued in beforeEach; parse mock next
+    mockApiRequest.mockResolvedValueOnce({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          items: [
+            {
+              name: "eggs",
+              quantity: 3,
+              unit: "large",
+              calories: 216,
+              protein: 18,
+              carbs: 1,
+              fat: 15,
+              servingSize: null,
+            },
+          ],
+        }),
+    });
+
+    const { result } = renderHook(() => useQuickLogSession(), { wrapper });
+
+    await waitFor(() => expect(result.current.parsedItems).toHaveLength(1));
+    expect(result.current.parsedItems[0].name).toBe("eggs");
+  });
+
+  it("handleVoicePress calls startListening when not listening", () => {
+    const { wrapper } = createQueryWrapper();
+    const { result } = renderHook(() => useQuickLogSession(), { wrapper });
+
+    act(() => result.current.handleVoicePress());
+
+    expect(mockSpeechToText.startListening).toHaveBeenCalledOnce();
   });
 });

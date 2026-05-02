@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Haptics from "expo-haptics";
 import { useHaptics } from "@/hooks/useHaptics";
@@ -24,6 +24,11 @@ export function useQuickLogSession({
 }: UseQuickLogSessionOptions = {}) {
   const queryClient = useQueryClient();
   const haptics = useHaptics();
+
+  const onLogSuccessRef = useRef(onLogSuccess);
+  useEffect(() => {
+    onLogSuccessRef.current = onLogSuccess;
+  }, [onLogSuccess]);
 
   const [inputText, setInputText] = useState("");
   const [parsedItems, setParsedItems] = useState<ParsedFoodItem[]>([]);
@@ -66,8 +71,7 @@ export function useQuickLogSession({
         },
       });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isFinal, transcript]);
+  }, [isFinal, transcript, isParsing, parseFoodTextMutate, haptics]);
 
   const handleTextSubmit = useCallback(() => {
     if (!inputText.trim()) return;
@@ -108,20 +112,20 @@ export function useQuickLogSession({
 
   const logAllMutation = useMutation({
     mutationFn: async (items: ParsedFoodItem[]) => {
-      const results = [];
-      for (const item of items) {
-        const res = await apiRequest("POST", "/api/scanned-items", {
-          productName: `${item.quantity} ${item.unit} ${item.name}`,
-          sourceType: "voice",
-          calories: item.calories?.toString(),
-          protein: item.protein?.toString(),
-          carbs: item.carbs?.toString(),
-          fat: item.fat?.toString(),
-          servingSize: item.servingSize,
-        });
-        results.push(await res.json());
-      }
-      return results;
+      return Promise.all(
+        items.map(async (item) => {
+          const res = await apiRequest("POST", "/api/scanned-items", {
+            productName: `${item.quantity} ${item.unit} ${item.name}`,
+            sourceType: "voice",
+            calories: item.calories?.toString(),
+            protein: item.protein?.toString(),
+            carbs: item.carbs?.toString(),
+            fat: item.fat?.toString(),
+            servingSize: item.servingSize,
+          });
+          return res.json();
+        }),
+      );
     },
     onSuccess: (_data, items) => {
       const summary: LogSummary = {
@@ -139,7 +143,7 @@ export function useQuickLogSession({
       setParsedItems([]);
       setInputText("");
       setSubmitError(null);
-      onLogSuccess?.(summary);
+      onLogSuccessRef.current?.(summary);
     },
     onError: () => {
       haptics.notification(Haptics.NotificationFeedbackType.Error);
