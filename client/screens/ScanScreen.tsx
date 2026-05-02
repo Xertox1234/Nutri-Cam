@@ -486,7 +486,7 @@ export default function ScanScreen() {
             contentType,
             imageUri,
             classification.resolvedIntent ?? null,
-            null,
+            classification.barcode ?? null,
           );
           if (route) {
             // navigate accepts a variable screen name from a discriminated union;
