@@ -27,7 +27,7 @@ Check whether this todo is eligible for execution:
 
 ## Step 3 — Research
 
-Before implementing, extract the list of affected source files from the todo's Implementation Notes and Acceptance Criteria (any bare paths like `path/to/file.ts` or backtick-quoted paths). Then spawn the `todo-researcher` subagent:
+Before implementing, extract the list of affected source files from the todo's Implementation Notes and Acceptance Criteria (any file references — including fully-qualified paths (`server/routes/cooking.ts`), bare filenames (`` `cooking.ts` ``), and paths with line ranges (`path/to/file.ts:123-145`). Extract paths exactly as they appear in the todo text). Then spawn the `todo-researcher` subagent:
 
 ```
 Agent({
@@ -37,9 +37,11 @@ Agent({
 })
 ```
 
+Replace `<filename>` with the filename portion of the todo path passed to you (e.g., if your todo is `todos/scan-confirm-null-calories-guard.md`, use `scan-confirm-null-calories-guard`).
+
 Read the research brief the agent returns. Keep it in context for Step 4 — it contains library API notes, project context, and global patterns relevant to this todo.
 
-**If the researcher fails or returns an empty response**, log "researcher unavailable" and fall back to reading local pattern docs directly using this label mapping:
+**If the Agent() call throws an error, the subagent is unreachable, or the returned text contains none of the section headers (`## Library Notes`, `## Project Context`, `## Global Patterns`)**, log "researcher unavailable" and fall back to reading local pattern docs directly using this label mapping:
 
 | Label                         | Pattern docs to read                                                                            |
 | ----------------------------- | ----------------------------------------------------------------------------------------------- |
@@ -55,7 +57,7 @@ Read the research brief the agent returns. Keep it in context for Step 4 — it 
 | `client-state`                | `docs/patterns/client-state.md`                                                                 |
 | `remix`                       | `docs/patterns/react-native.md`, `docs/patterns/design-system.md`                               |
 
-If no labels match, fall back to reading `CLAUDE.md`.
+If the researcher failed and no label matches the table above, read `CLAUDE.md` for general project guidance.
 
 **Regardless of whether the researcher succeeded or fell back**, also do:
 
@@ -286,6 +288,7 @@ EOF
 - `docs/LEARNINGS.md` — Bug post-mortems and gotchas (grep during research)
 - `.claude/agents/code-reviewer.md` — Code review subagent (invoked in Step 6)
 - `.claude/agents/pattern-codifier.md` — Pattern codification subagent (invoked in Step 9)
+- `.claude/agents/todo-researcher.md` — Research subagent (invoked in Step 3)
 - `CLAUDE.md` — Project overview, commands, architecture reference
 
 ---
