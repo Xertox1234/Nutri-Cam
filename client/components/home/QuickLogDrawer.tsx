@@ -70,7 +70,7 @@ export function QuickLogDrawer({ action }: QuickLogDrawerProps) {
     },
   });
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (session.speechError) toast.error(session.speechError);
   }, [session.speechError, toast]);
 
