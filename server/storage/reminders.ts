@@ -12,7 +12,8 @@ export async function createPendingReminder(data: {
   context: Record<string, unknown>;
   scheduledFor: Date;
 }): Promise<void> {
-  await db.insert(pendingReminders).values(data);
+  // DB unique index is the authoritative dedup guard for concurrent scheduler runs.
+  await db.insert(pendingReminders).values(data).onConflictDoNothing();
 }
 
 export async function hasPendingReminderToday(

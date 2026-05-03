@@ -117,6 +117,10 @@ export const pendingReminders = pgTable(
       table.userId,
       table.acknowledgedAt,
     ),
+    // Partial index mirrors hasPendingReminderToday() semantics: one unacknowledged reminder per user+type per calendar day.
+    userTypeDay: uniqueIndex("pending_reminders_user_type_day_idx")
+      .on(table.userId, table.type, sql`DATE(${table.scheduledFor})`)
+      .where(sql`${table.acknowledgedAt} IS NULL`),
   }),
 );
 
