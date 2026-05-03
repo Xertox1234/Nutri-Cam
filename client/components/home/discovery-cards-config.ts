@@ -81,14 +81,6 @@ export const DISCOVERY_CARDS: DiscoveryCard[] = [
     ctaLabel: "Open Pantry",
   },
   {
-    id: "voice-log",
-    eyebrow: "✨ Try this",
-    headline: "Log food hands-free — just say what you ate",
-    subtitle: "Great for cooking or eating on the go.",
-    emoji: "🎤",
-    ctaLabel: "Try Voice Log",
-  },
-  {
     id: "generate-recipe",
     eyebrow: "✨ Try this",
     headline: "Generate custom recipes tailored to your goals",
