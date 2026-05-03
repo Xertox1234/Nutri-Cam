@@ -301,6 +301,22 @@ if (cacheId) {
 - [ ] Files to modify table included in todos
 - [ ] Implementation patterns included for complex changes
 
+### 14. Accessibility
+
+- [ ] `accessibilityViewIsModal={true}` on the inner container of every modal, bottom sheet, overlay, and confirmation dialog — without this, VoiceOver/TalkBack users can navigate to elements behind the modal
+- [ ] `accessibilityLiveRegion` (Android) always paired with `AccessibilityInfo.announceForAccessibility` in a `useEffect` (iOS) — neither works cross-platform alone. Pattern: `if (message && Platform.OS === "ios") { AccessibilityInfo.announceForAccessibility(message); }`
+- [ ] `accessibilityLiveRegion="assertive"` only for errors/failures; `"polite"` for loading/progress states — assertive interrupts current speech immediately and is disruptive if used for loading spinners
+- [ ] Every `TextInput` with a validation error has `aria-invalid={true}` AND is paired with `<InlineError message={error} />` below it — NOT `accessibilityState={{ invalid: true }}` (TypeScript error: `invalid` not in `AccessibilityState`) and NOT raw `<Text style={styles.error}>` (invisible to screen readers)
+- [ ] Decorative icons inside `Pressable`/`TouchableOpacity` have `accessible={false}` — without this, VoiceOver announces each icon as a separate focus stop (e.g., "activity image", "GLP-1 Companion", "chevron-right image" for a single row)
+- [ ] Interactive elements have a minimum 44×44pt touch target (WCAG 2.5.5); use `hitSlop={{ top: N, bottom: N, left: N, right: N }}` for small visual elements where `(visual size) + top + bottom ≥ 44`
+- [ ] Role/state pairs are correct: `role="radio"` → `accessibilityState={{ selected }}`, `role="checkbox"` → `accessibilityState={{ checked }}`; mutually-exclusive option groups use `role="radiogroup"` on the container, multi-select lists use `role="list"`
+
+**Pattern Reference:**
+
+- `.claude/agents/accessibility-specialist.md` — full pattern catalog with code examples
+- `client/components/InlineError.tsx` — canonical cross-platform error announcement (`accessibilityRole="alert"`, `accessibilityLiveRegion="assertive"`, iOS `announceForAccessibility`)
+- `scripts/check-accessibility.js` — pre-commit script catches 3 categories; this checklist catches the 7 the script misses (custom wrappers, `onLongPress`-only, role/state correctness, decorative children, missing `accessibilityViewIsModal`, touch targets, missing `aria-invalid`)
+
 ---
 
 ## Review Process
