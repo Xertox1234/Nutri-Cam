@@ -15,6 +15,17 @@ Append-only history of all code audits performed on this project. Each entry lin
 
 ---
 
+## 2026-05-02 — Full Codebase Audit
+
+- **Trigger:** Periodic full audit — ~20 commits since 2026-04-28: QuickLog inline drawer (useQuickLogSession hook, QuickLogDrawer, ScanScreen confirm overlay / returnAfterLog flow), ChatStackNavigator deferred mount fix
+- **Manifest:** [docs/audits/2026-05-02-full.md](2026-05-02-full.md)
+- **Findings:** 1 critical, 5 high, 9 medium, 18 low (33 total, from 6 agents)
+- **Resolved:** 6 verified (C1, H1–H5), 27 deferred (22 todos), 0 false-positive
+- **Commit(s):** _(pending)_
+- **Note:** Key fixes: `handleConfirmDismiss` permanently blocked scanner after one dismiss — now resets `hasLockedRef` and dispatches `CAMERA_READY` (C1); camera hardware now pauses during confirm overlay with `isActive={isFocused && !confirmCard}` (H4); `confirmOverlay` padding now uses `insets.bottom + Spacing.lg` to clear home indicator on notched devices (H3); `logAllMutation.mutate` and `session.reset` destructured to stabilize two `useCallback` dep arrays (H1, H2); iOS VoiceOver error announcements added for parse/submit errors (H5). 27 items deferred to 22 todos spanning query invalidation, AbortController cleanup, scheduler UNIQUE constraints, rate limiting, memoization, accessibility, and test coverage.
+
+---
+
 ## 2026-04-28 — Full Codebase Audit
 
 - **Trigger:** Periodic full audit — 27 commits since 2026-04-26: OCR race+swap extended to front-label/receipt/menu scan flows, Coach Pro history truncation, storage decomposition, security/schema fixes

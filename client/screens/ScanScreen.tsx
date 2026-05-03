@@ -243,7 +243,8 @@ export default function ScanScreen() {
 
   const handleConfirmDismiss = useCallback(() => {
     setConfirmCard(null);
-    dispatch({ type: "RESET" });
+    hasLockedRef.current = false;
+    dispatch({ type: "CAMERA_READY" });
   }, []);
 
   const fetchProductInfo = useCallback(async (barcode: string) => {
@@ -445,7 +446,7 @@ export default function ScanScreen() {
         barcodeTypes={["ean13", "ean8", "upc_e", "code128", "code39", "qr"]}
         onBarcodeScanned={onBarcodeScanned}
         enableTorch={torchEnabled}
-        isActive={isFocused}
+        isActive={isFocused && !confirmCard}
       />
 
       <ScanReticle phase={scanPhase} reducedMotion={reducedMotion} />
@@ -605,7 +606,10 @@ export default function ScanScreen() {
         <View
           style={[
             styles.confirmOverlay,
-            { backgroundColor: withOpacity(theme.backgroundRoot, 0.95) },
+            {
+              backgroundColor: withOpacity(theme.backgroundRoot, 0.95),
+              paddingBottom: insets.bottom + Spacing.lg,
+            },
           ]}
           accessibilityViewIsModal
         >
@@ -791,7 +795,6 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     paddingHorizontal: Spacing.lg,
-    paddingBottom: Spacing.xl,
     paddingTop: Spacing.lg,
   },
   confirmLoadingRow: {

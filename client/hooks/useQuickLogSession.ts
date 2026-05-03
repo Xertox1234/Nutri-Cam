@@ -165,11 +165,13 @@ export function useQuickLogSession({
     staleTime: 5 * 60 * 1000,
   });
 
+  const { mutate: logAllMutate } = logAllMutation;
+
   const submitLog = useCallback(() => {
     if (parsedItems.length === 0) return;
     haptics.impact(Haptics.ImpactFeedbackStyle.Medium);
-    logAllMutation.mutate(parsedItems);
-  }, [parsedItems, haptics, logAllMutation]);
+    logAllMutate(parsedItems);
+  }, [parsedItems, haptics, logAllMutate]);
 
   const reset = useCallback(() => {
     setInputText("");
