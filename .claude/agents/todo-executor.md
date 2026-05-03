@@ -27,7 +27,19 @@ Check whether this todo is eligible for execution:
 
 ## Step 3 — Research
 
-Gather context before implementing. Read pattern docs based on the todo's `labels` array using this mapping:
+Before implementing, extract the list of affected source files from the todo's Implementation Notes and Acceptance Criteria (any bare paths like `path/to/file.ts` or backtick-quoted paths). Then spawn the `todo-researcher` subagent:
+
+```
+Agent({
+  description: "Research: <todo title>",
+  subagent_type: "general-purpose",
+  prompt: "You are a todo researcher. Follow .claude/agents/todo-researcher.md exactly.\n\nTodo file: todos/<filename>.md\nAffected files: <comma-separated list of source files from Implementation Notes and Acceptance Criteria>\n\nReturn a research brief."
+})
+```
+
+Read the research brief the agent returns. Keep it in context for Step 4 — it contains library API notes, project context, and global patterns relevant to this todo.
+
+**If the researcher fails or returns an empty response**, log "researcher unavailable" and fall back to reading local pattern docs directly using this label mapping:
 
 | Label                         | Pattern docs to read                                                                            |
 | ----------------------------- | ----------------------------------------------------------------------------------------------- |
@@ -43,13 +55,13 @@ Gather context before implementing. Read pattern docs based on the todo's `label
 | `client-state`                | `docs/patterns/client-state.md`                                                                 |
 | `remix`                       | `docs/patterns/react-native.md`, `docs/patterns/design-system.md`                               |
 
-If no labels match any row above, fall back to reading `CLAUDE.md` for general project guidance.
+If no labels match, fall back to reading `CLAUDE.md`.
 
-Additionally:
+**Regardless of whether the researcher succeeded or fell back**, also do:
 
-- **Grep `docs/LEARNINGS.md`** for mentions of affected files or the domain area (e.g., if the todo modifies `server/routes/cooking.ts`, grep for "cooking").
-- **Grep `todos/archive/`** for prior art — previous todos that touched the same files or domain. Read any relevant archived todos to avoid repeating mistakes or duplicating solved work.
-- **Read the full source files** listed in the todo's Implementation Notes or Acceptance Criteria. Understand the current state before modifying anything.
+- **Grep `docs/LEARNINGS.md`** for mentions of the affected files or domain area.
+- **Grep `todos/archive/`** for prior todos that touched the same files.
+- **Read the full source files** listed in Implementation Notes or Acceptance Criteria to understand the current state before modifying anything.
 
 ---
 
