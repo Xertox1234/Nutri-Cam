@@ -5,6 +5,7 @@ import ChatScreen from "@/screens/ChatScreen";
 import CoachProScreen from "@/screens/CoachProScreen";
 import { useScreenOptions } from "@/hooks/useScreenOptions";
 import { usePremiumFeature } from "@/hooks/usePremiumFeatures";
+import { usePremiumContext } from "@/context/PremiumContext";
 
 export type ChatStackParamList = {
   ChatList: undefined;
@@ -16,7 +17,13 @@ const Stack = createNativeStackNavigator<ChatStackParamList>();
 
 export default function ChatStackNavigator() {
   const screenOptions = useScreenOptions();
+  const { isLoading: isPremiumLoading } = usePremiumContext();
   const isCoachPro = usePremiumFeature("coachPro");
+
+  // Don't mount the navigator until premium status is resolved — initialRouteName
+  // is only evaluated once at mount time, so rendering with the default free-tier
+  // value (coachPro: false) would permanently route Pro users to ChatList.
+  if (isPremiumLoading) return null;
 
   return (
     <Stack.Navigator
