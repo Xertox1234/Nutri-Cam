@@ -51,5 +51,6 @@ export function computeFastProgress(
   elapsedMinutes: number,
   targetHours: number,
 ): number {
+  if (targetHours <= 0) return 0;
   return Math.min(1, elapsedMinutes / (targetHours * 60));
 }

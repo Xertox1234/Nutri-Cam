@@ -149,4 +149,9 @@ describe("computeFastProgress", () => {
   it("returns 0 at start", () => {
     expect(computeFastProgress(0, 16)).toBe(0);
   });
+
+  it("returns 0 when targetHours is 0 or negative", () => {
+    expect(computeFastProgress(60, 0)).toBe(0);
+    expect(computeFastProgress(60, -1)).toBe(0);
+  });
 });
