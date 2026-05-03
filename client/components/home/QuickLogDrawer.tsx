@@ -1,5 +1,7 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
+  AccessibilityInfo,
+  Platform,
   Pressable,
   StyleSheet,
   TextInput,
@@ -11,6 +13,7 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
+  cancelAnimation,
 } from "react-native-reanimated";
 import { useNavigation } from "@react-navigation/native";
 import * as Haptics from "expo-haptics";
@@ -48,6 +51,10 @@ export function QuickLogDrawer({ action }: QuickLogDrawerProps) {
   const { reducedMotion } = useAccessibility();
 
   const [isOpen, setIsOpen] = useState(false);
+  const isOpenRef = useRef(false);
+  useEffect(() => {
+    isOpenRef.current = isOpen;
+  }, [isOpen]);
   const chevronRotation = useSharedValue(0);
   const { animatedStyle, onContentLayout } = useCollapsibleHeight(
     isOpen,
@@ -67,9 +74,23 @@ export function QuickLogDrawer({ action }: QuickLogDrawerProps) {
     if (session.speechError) toast.error(session.speechError);
   }, [session.speechError, toast]);
 
+  useEffect(() => {
+    if (Platform.OS === "ios" && session.parseError) {
+      AccessibilityInfo.announceForAccessibility(session.parseError);
+    }
+  }, [session.parseError]);
+
+  useEffect(() => {
+    if (Platform.OS === "ios" && session.submitError) {
+      AccessibilityInfo.announceForAccessibility(session.submitError);
+    }
+  }, [session.submitError]);
+
+  const { reset: sessionReset } = session;
+
   const handleToggle = useCallback(() => {
     const next = !isOpen;
-    if (!next) session.reset();
+    if (!next) sessionReset();
     setIsOpen(next);
     haptics.impact(Haptics.ImpactFeedbackStyle.Light);
     if (reducedMotion) {
@@ -80,7 +101,7 @@ export function QuickLogDrawer({ action }: QuickLogDrawerProps) {
         next ? expandTimingConfig : collapseTimingConfig,
       );
     }
-  }, [isOpen, session, haptics, chevronRotation, reducedMotion]);
+  }, [isOpen, sessionReset, haptics, chevronRotation, reducedMotion]);
 
   const handleCameraPress = useCallback(() => {
     haptics.impact(Haptics.ImpactFeedbackStyle.Light);
@@ -90,9 +111,10 @@ export function QuickLogDrawer({ action }: QuickLogDrawerProps) {
   // Keep chevron in sync if reducedMotion changes while open
   useEffect(() => {
     if (reducedMotion) {
-      chevronRotation.value = isOpen ? 90 : 0;
+      cancelAnimation(chevronRotation);
+      chevronRotation.value = isOpenRef.current ? 90 : 0;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- shared value is stable ref
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- shared value + isOpenRef are stable refs
   }, [reducedMotion]);
 
   const chevronStyle = useAnimatedStyle(() => ({
