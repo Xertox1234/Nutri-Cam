@@ -5,8 +5,6 @@ import {
   TextInput,
   View,
   ActivityIndicator,
-  AccessibilityInfo,
-  Platform,
 } from "react-native";
 import { Feather } from "@expo/vector-icons";
 import Animated, {
@@ -19,6 +17,7 @@ import { useNavigation } from "@react-navigation/native";
 import * as Haptics from "expo-haptics";
 
 import { ThemedText } from "@/components/ThemedText";
+import { InlineError } from "@/components/InlineError";
 import { useTheme } from "@/hooks/useTheme";
 import { useHaptics } from "@/hooks/useHaptics";
 import { useAccessibility } from "@/hooks/useAccessibility";
@@ -118,9 +117,6 @@ export function WeightLogDrawer({ action }: WeightLogDrawerProps) {
     if (!weightInput || isNaN(parsed) || parsed <= 0 || parsed > 999) {
       const msg = "Enter a weight between 0 and 999 kg";
       setInputError(msg);
-      if (Platform.OS === "ios") {
-        AccessibilityInfo.announceForAccessibility(msg);
-      }
       return;
     }
 
@@ -142,9 +138,6 @@ export function WeightLogDrawer({ action }: WeightLogDrawerProps) {
           haptics.notification(Haptics.NotificationFeedbackType.Error);
           const msg = (err as Error).message || "Failed to log weight";
           setInputError(msg);
-          if (Platform.OS === "ios") {
-            AccessibilityInfo.announceForAccessibility(msg);
-          }
         },
       },
     );
@@ -333,14 +326,7 @@ export function WeightLogDrawer({ action }: WeightLogDrawerProps) {
             </View>
           </View>
 
-          {inputError && (
-            <ThemedText
-              style={[styles.errorText, { color: theme.error }]}
-              accessibilityLiveRegion="polite"
-            >
-              {inputError}
-            </ThemedText>
-          )}
+          {inputError && <InlineError message={inputError} />}
 
           {/* Log button */}
           <Pressable
@@ -489,7 +475,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   unitText: { fontSize: 14, fontFamily: FontFamily.medium, fontWeight: "600" },
-  errorText: { fontSize: 12, fontFamily: FontFamily.regular },
   logButton: {
     borderRadius: BorderRadius.xs,
     paddingVertical: Spacing.sm,
