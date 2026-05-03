@@ -86,6 +86,10 @@ export function QuickLogDrawer({ action }: QuickLogDrawerProps) {
     }
   }, [session.submitError]);
 
+  useEffect(() => {
+    if (session.capWarning) toast.info(session.capWarning);
+  }, [session.capWarning, toast]);
+
   const { reset: sessionReset } = session;
 
   const handleToggle = useCallback(() => {

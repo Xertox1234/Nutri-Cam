@@ -9,6 +9,8 @@ import { QUERY_KEYS } from "@/lib/query-keys";
 
 export type { ParsedFoodItem };
 
+export const MAX_LOG_ITEMS = 10;
+
 export interface LogSummary {
   itemCount: number;
   totalCalories: number;
@@ -34,6 +36,7 @@ export function useQuickLogSession({
   const [parsedItems, setParsedItems] = useState<ParsedFoodItem[]>([]);
   const [parseError, setParseError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [capWarning, setCapWarning] = useState<string | null>(null);
 
   const {
     isListening,
@@ -112,8 +115,15 @@ export function useQuickLogSession({
 
   const logAllMutation = useMutation({
     mutationFn: async (items: ParsedFoodItem[]) => {
+      setCapWarning(null);
+      const capped = items.slice(0, MAX_LOG_ITEMS);
+      if (items.length > MAX_LOG_ITEMS) {
+        setCapWarning(
+          `Only the first ${MAX_LOG_ITEMS} items were logged. Please log the rest separately.`,
+        );
+      }
       return Promise.all(
-        items.map(async (item) => {
+        capped.map(async (item) => {
           const res = await apiRequest("POST", "/api/scanned-items", {
             productName: `${item.quantity} ${item.unit} ${item.name}`,
             sourceType: "voice",
@@ -128,13 +138,14 @@ export function useQuickLogSession({
       );
     },
     onSuccess: (_data, items) => {
+      const loggedItems = items.slice(0, MAX_LOG_ITEMS);
       const summary: LogSummary = {
-        itemCount: items.length,
-        totalCalories: items.reduce(
+        itemCount: loggedItems.length,
+        totalCalories: loggedItems.reduce(
           (sum, item) => sum + (item.calories ?? 0),
           0,
         ),
-        firstName: items[0]?.name ?? "Food",
+        firstName: loggedItems[0]?.name ?? "Food",
       };
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.dailySummary });
       queryClient.invalidateQueries({ queryKey: QUERY_KEYS.scannedItems });
@@ -178,6 +189,7 @@ export function useQuickLogSession({
     setParsedItems([]);
     setParseError(null);
     setSubmitError(null);
+    setCapWarning(null);
   }, []);
 
   return {
@@ -189,6 +201,7 @@ export function useQuickLogSession({
     parsedItems,
     parseError,
     submitError,
+    capWarning,
     isSubmitting: logAllMutation.isPending,
     speechError,
     handleTextSubmit,

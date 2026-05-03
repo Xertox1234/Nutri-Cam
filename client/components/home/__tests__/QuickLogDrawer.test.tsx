@@ -15,6 +15,7 @@ const mockSession = {
   frequentItems: [{ productName: "Coffee" }, { productName: "Eggs" }],
   parseError: null,
   submitError: null,
+  capWarning: null,
   isSubmitting: false,
   speechError: null,
   handleTextSubmit: vi.fn(),
