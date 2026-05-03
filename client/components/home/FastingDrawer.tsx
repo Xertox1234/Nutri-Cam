@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import { Pressable, StyleSheet, View, ActivityIndicator } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 import { Feather } from "@expo/vector-icons";
@@ -56,6 +56,10 @@ export function FastingDrawer({ action }: FastingDrawerProps) {
   const { reducedMotion } = useAccessibility();
 
   const [isOpen, setIsOpen] = useState(false);
+  const isOpenRef = useRef(false);
+  useEffect(() => {
+    isOpenRef.current = isOpen;
+  }, [isOpen]);
   const chevronRotation = useSharedValue(0);
   const { animatedStyle, onContentLayout } = useCollapsibleHeight(
     isOpen,
@@ -99,9 +103,9 @@ export function FastingDrawer({ action }: FastingDrawerProps) {
   useEffect(() => {
     if (reducedMotion) {
       cancelAnimation(chevronRotation);
-      chevronRotation.value = isOpen ? 90 : 0;
+      chevronRotation.value = isOpenRef.current ? 90 : 0;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- shared value is stable ref
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- shared value + isOpenRef are stable refs
   }, [reducedMotion]);
 
   const chevronStyle = useAnimatedStyle(() => ({

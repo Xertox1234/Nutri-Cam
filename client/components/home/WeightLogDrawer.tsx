@@ -59,6 +59,10 @@ export function WeightLogDrawer({ action }: WeightLogDrawerProps) {
   const { reducedMotion } = useAccessibility();
 
   const [isOpen, setIsOpen] = useState(false);
+  const isOpenRef = useRef(false);
+  useEffect(() => {
+    isOpenRef.current = isOpen;
+  }, [isOpen]);
   const [weightInput, setWeightInput] = useState("");
   const [inputError, setInputError] = useState<string | null>(null);
   const [justLogged, setJustLogged] = useState(false);
@@ -102,9 +106,9 @@ export function WeightLogDrawer({ action }: WeightLogDrawerProps) {
   useEffect(() => {
     if (reducedMotion) {
       cancelAnimation(chevronRotation);
-      chevronRotation.value = isOpen ? 90 : 0;
+      chevronRotation.value = isOpenRef.current ? 90 : 0;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- shared value is stable ref
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- shared value + isOpenRef are stable refs
   }, [reducedMotion]);
 
   const chevronStyle = useAnimatedStyle(() => ({
