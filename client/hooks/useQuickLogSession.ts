@@ -110,9 +110,13 @@ export function useQuickLogSession({
     [haptics],
   );
 
+  interface PartialLogError extends Error {
+    failedIndices?: number[];
+  }
+
   const logAllMutation = useMutation({
     mutationFn: async (items: ParsedFoodItem[]) => {
-      return Promise.all(
+      const results = await Promise.allSettled(
         items.map(async (item) => {
           const res = await apiRequest("POST", "/api/scanned-items", {
             productName: `${item.quantity} ${item.unit} ${item.name}`,
@@ -126,6 +130,16 @@ export function useQuickLogSession({
           return res.json();
         }),
       );
+      const failedIndices = results
+        .map((r, i) => (r.status === "rejected" ? i : -1))
+        .filter((i) => i !== -1);
+      if (failedIndices.length > 0) {
+        // Surface the failed indices so onError can remove successfully-logged items
+        const err: PartialLogError = new Error("Some items failed to log");
+        err.failedIndices = failedIndices;
+        throw err;
+      }
+      return results.map((r) => (r as PromiseFulfilledResult<unknown>).value);
     },
     onSuccess: (_data, items) => {
       const summary: LogSummary = {
@@ -145,8 +159,21 @@ export function useQuickLogSession({
       setSubmitError(null);
       onLogSuccessRef.current?.(summary);
     },
-    onError: () => {
+    onError: (error) => {
       haptics.notification(Haptics.NotificationFeedbackType.Error);
+      // Remove items that were successfully logged so a retry won't re-submit them
+      const failedIndices =
+        error instanceof Error
+          ? ((error as PartialLogError).failedIndices ?? [])
+          : [];
+      if (failedIndices.length > 0) {
+        const failedSet = new Set(failedIndices);
+        setParsedItems((prev) => prev.filter((_, i) => failedSet.has(i)));
+        // Invalidate queries for the items that did succeed
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.dailySummary });
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.scannedItems });
+        queryClient.invalidateQueries({ queryKey: QUERY_KEYS.frequentItems });
+      }
       setSubmitError("Failed to log some items. Please try again.");
     },
   });
