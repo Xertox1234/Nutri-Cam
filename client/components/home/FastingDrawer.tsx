@@ -6,6 +6,7 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
+  cancelAnimation,
 } from "react-native-reanimated";
 import { useNavigation } from "@react-navigation/native";
 import * as Haptics from "expo-haptics";
@@ -97,6 +98,7 @@ export function FastingDrawer({ action }: FastingDrawerProps) {
   // Keep chevron in sync when reducedMotion changes while open
   useEffect(() => {
     if (reducedMotion) {
+      cancelAnimation(chevronRotation);
       chevronRotation.value = isOpen ? 90 : 0;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- shared value is stable ref
@@ -214,7 +216,7 @@ export function FastingDrawer({ action }: FastingDrawerProps) {
 
             {/* Phase / ready description */}
             <View style={styles.phaseBlock}>
-              {isFasting && currentPhase ? (
+              {isFasting && currentPhase && (
                 <>
                   <ThemedText
                     style={[styles.phaseName, { color: theme.text }]}
@@ -229,7 +231,8 @@ export function FastingDrawer({ action }: FastingDrawerProps) {
                     {currentPhase.description}
                   </ThemedText>
                 </>
-              ) : (
+              )}
+              {!isFasting && (
                 <>
                   <ThemedText style={[styles.phaseName, { color: theme.text }]}>
                     Ready to fast?
