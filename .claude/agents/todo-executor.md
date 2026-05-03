@@ -204,7 +204,52 @@ EOF
 
 ---
 
-## Step 10 — Report
+## Step 10 — Create PR
+
+Rename the worktree branch to a meaningful slug, push it, and open a GitHub PR targeting the base branch passed in your spawn prompt.
+
+1. **Determine the todo slug**: strip the `.md` extension from the todo filename. Example: `scan-confirm-null-calories-guard.md` → `scan-confirm-null-calories-guard`.
+
+2. **Rename the branch and push**:
+
+```bash
+git branch -m todo/<todo-slug>
+git push -u origin todo/<todo-slug>
+```
+
+3. **Create the PR** using the GitHub MCP tool — call `mcp__github__create_pull_request` with:
+   - `owner`: `xertox1234`
+   - `repo`: `OCRecipes`
+   - `title`: `<todo title from frontmatter>`
+   - `head`: `todo/<todo-slug>`
+   - `base`: `<base branch from your spawn prompt>`
+   - `body`: use the template below
+
+**PR body template** — fill each placeholder from the todo file and the files you changed:
+
+```
+## Summary
+<todo title>
+
+<Content of the todo's Summary section. If no Summary section exists, use the first 2 sentences of the Background section.>
+
+## Changes
+<Bullet list of every source file modified during implementation — from the list you tracked in Step 4.>
+
+## Resolves
+Todo: `todos/<filename>.md` (archived in this commit)
+
+## Test plan
+<Copy the todo's Acceptance Criteria items here as a markdown checklist.>
+
+🤖 Implemented by Claude Code /todo skill
+```
+
+4. **If `mcp__github__create_pull_request` fails** for any reason (network error, auth error, branch push failed, PR already exists, etc.): log `PR_URL: null`, do not retry, and continue to Step 11. The code is already committed and the PR can be opened manually.
+
+---
+
+## Step 11 — Report
 
 Return a structured result to the orchestrator.
 
@@ -213,9 +258,10 @@ Return a structured result to the orchestrator.
 ```
 STATUS: success
 COMMIT: <commit hash>
+PR_URL: <GitHub PR URL, or "null" if PR creation failed>
 CODIFICATION_COMMIT: <commit hash> | none
 FILES_CHANGED: <list of modified files>
-REVIEW_ROUNDS: <1 or 2>
+REVIEW_ROUNDS: <0, 1, or 2>
 ```
 
 **On failure:**
@@ -276,7 +322,7 @@ EOF
 )"
 ```
 
-4. **Report** as failed (see Step 10).
+4. **Report** as failed (see Step 11).
 
 ---
 
