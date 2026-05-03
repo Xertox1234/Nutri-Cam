@@ -17,10 +17,21 @@ Establish a green baseline before touching any code.
    ```
 2. Record the **test count** (e.g., "1327 tests passed"), the **type-check result** (e.g., "0 errors"), and the **lint result** (e.g., "0 warnings, 0 errors").
 3. **Capture the base branch** before creating any worktrees:
+
    ```bash
    git branch --show-current
    ```
-   Store this value as `BASE_BRANCH` (e.g., `feat/nutrition-inline-drawers` or `main`). Pass it to every executor spawn in Phase 4 via the `Base branch:` line in the prompt.
+
+   If the output is empty (detached HEAD state), fall back to:
+
+   ```bash
+   git rev-parse --abbrev-ref HEAD
+   ```
+
+   If that also returns `HEAD`, stop immediately and report "cannot determine base branch — HEAD is detached. Please check out a named branch before running /todo." Do not proceed to Phase 2.
+
+   Store the branch name as `BASE_BRANCH` (e.g., `feat/nutrition-inline-drawers` or `main`). Pass it to every executor spawn in Phase 4 via the `Base branch:` line in the prompt.
+
 4. **If ANY command fails, stop immediately.** Report the failure to the user and exit — do not proceed to Phase 2. The codebase must be green before batch processing begins.
 
 ## Phase 2 — Triage
@@ -79,6 +90,8 @@ Work through the execution plan batch by batch.
 
 For each batch marked parallel, spawn one `todo-executor` agent per todo, each in an **isolated worktree**.
 
+Substitute the actual branch name you recorded in Phase 1 (e.g., `feat/nutrition-inline-drawers`) for `<BASE_BRANCH>` in the prompt string. Never pass the literal text `<BASE_BRANCH>`.
+
 Use the Agent tool with these parameters:
 
 ```
@@ -96,6 +109,10 @@ Launch all agents in the batch simultaneously (up to 4). Wait for all to complet
 
 For each batch marked sequential, spawn a **single** `todo-executor` agent.
 
+Substitute the actual branch name you recorded in Phase 1 (e.g., `feat/nutrition-inline-drawers`) for `<BASE_BRANCH>` in the prompt string. Never pass the literal text `<BASE_BRANCH>`.
+
+Run one at a time. Wait for each to complete before starting the next.
+
 Use the Agent tool with these parameters:
 
 ```
@@ -106,8 +123,6 @@ Agent({
   prompt: "You are a todo executor agent. Follow the instructions in .claude/agents/todo-executor.md exactly.\n\nYour todo file: todos/<filename>.md\nBase branch: <BASE_BRANCH>\n\nExecute all 11 steps and report the result."
 })
 ```
-
-Run one at a time. Wait for each to complete before starting the next.
 
 ### After Each Batch
 
