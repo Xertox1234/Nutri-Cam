@@ -5,6 +5,11 @@ import { requireAuth, type AuthenticatedRequest } from "../middleware/auth";
 import { handleRouteError } from "./_helpers";
 import { sendError } from "../lib/api-errors";
 import { ErrorCode } from "@shared/constants/error-codes";
+import {
+  remindersPendingRateLimit,
+  remindersAcknowledgeRateLimit,
+  remindersMutesRateLimit,
+} from "./_rate-limiters";
 import type { ReminderMutes } from "@shared/types/reminders";
 
 const mutesSchema = z
@@ -20,6 +25,7 @@ export function register(app: Express): void {
   app.get(
     "/api/reminders/pending",
     requireAuth,
+    remindersPendingRateLimit,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const hasPending = await storage.hasPendingReminders(req.userId);
@@ -34,6 +40,7 @@ export function register(app: Express): void {
   app.post(
     "/api/reminders/acknowledge",
     requireAuth,
+    remindersAcknowledgeRateLimit,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const coachContext = await storage.acknowledgeReminders(req.userId);
@@ -48,6 +55,7 @@ export function register(app: Express): void {
   app.patch(
     "/api/reminders/mutes",
     requireAuth,
+    remindersMutesRateLimit,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const parsed = mutesSchema.safeParse(req.body);
