@@ -133,6 +133,7 @@ export default function ScanScreen() {
     calories: number | null;
     isLoading: boolean;
     isLogging: boolean;
+    isError: boolean;
   } | null>(null);
 
   const cameraRef = useRef<CameraRef>(null);
@@ -220,6 +221,7 @@ export default function ScanScreen() {
         calories: null,
         isLoading: true,
         isLogging: false,
+        isError: false,
       });
       const controller = new AbortController();
       apiRequest("GET", `/api/nutrition/barcode/${barcode}`, undefined, {
@@ -233,6 +235,7 @@ export default function ScanScreen() {
             calories: data.calories ?? null,
             isLoading: false,
             isLogging: false,
+            isError: false,
           });
         })
         .catch((err: unknown) => {
@@ -243,6 +246,7 @@ export default function ScanScreen() {
             calories: null,
             isLoading: false,
             isLogging: false,
+            isError: true,
           });
         });
       return () => controller.abort();
@@ -261,7 +265,7 @@ export default function ScanScreen() {
   }, [scanPhase, navigation, refreshScanCount, reducedMotion, returnAfterLog]);
 
   const handleConfirmLog = useCallback(async () => {
-    if (!confirmCard || confirmCard.isLogging) return;
+    if (!confirmCard || confirmCard.isLogging || confirmCard.isError) return;
     setConfirmCard((prev) => prev && { ...prev, isLogging: true });
     try {
       await apiRequest("POST", "/api/scanned-items", {
@@ -703,14 +707,29 @@ export default function ScanScreen() {
               ]}
             >
               <View style={styles.confirmInfo}>
-                <ThemedText
-                  type="body"
-                  style={{ color: theme.text, fontFamily: FontFamily.semiBold }}
-                  numberOfLines={2}
-                >
-                  {confirmCard.name}
-                </ThemedText>
-                {confirmCard.calories !== null && (
+                {confirmCard.isError ? (
+                  <ThemedText
+                    type="body"
+                    style={{
+                      color: theme.textSecondary,
+                      fontFamily: FontFamily.semiBold,
+                    }}
+                  >
+                    Nutrition data unavailable
+                  </ThemedText>
+                ) : (
+                  <ThemedText
+                    type="body"
+                    style={{
+                      color: theme.text,
+                      fontFamily: FontFamily.semiBold,
+                    }}
+                    numberOfLines={2}
+                  >
+                    {confirmCard.name}
+                  </ThemedText>
+                )}
+                {!confirmCard.isError && confirmCard.calories !== null && (
                   <ThemedText style={{ color: theme.link, fontSize: 14 }}>
                     {confirmCard.calories} cal
                   </ThemedText>
@@ -738,17 +757,26 @@ export default function ScanScreen() {
                 </Pressable>
                 <Pressable
                   onPress={handleConfirmLog}
-                  disabled={confirmCard.isLogging}
+                  disabled={confirmCard.isLogging || confirmCard.isError}
                   style={({ pressed }) => [
                     styles.confirmLogButton,
                     {
-                      backgroundColor: theme.link,
+                      backgroundColor: confirmCard.isError
+                        ? withOpacity(theme.link, 0.4)
+                        : theme.link,
                       opacity: pressed || confirmCard.isLogging ? 0.7 : 1,
                     },
                   ]}
-                  accessibilityLabel="Log it"
+                  accessibilityLabel={
+                    confirmCard.isError
+                      ? "Log It (unavailable — nutrition data missing)"
+                      : "Log it"
+                  }
                   accessibilityRole="button"
-                  accessibilityState={{ busy: confirmCard.isLogging }}
+                  accessibilityState={{
+                    busy: confirmCard.isLogging,
+                    disabled: confirmCard.isError,
+                  }}
                 >
                   {confirmCard.isLogging ? (
                     <ActivityIndicator size="small" color={theme.buttonText} />
