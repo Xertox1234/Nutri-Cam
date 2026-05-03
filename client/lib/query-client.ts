@@ -37,6 +37,7 @@ export async function apiRequest(
   method: string,
   route: string,
   data?: unknown | undefined,
+  init?: RequestInit,
 ): Promise<Response> {
   const baseUrl = getApiUrl();
   const url = new URL(route, baseUrl);
@@ -55,6 +56,7 @@ export async function apiRequest(
     method,
     headers,
     body: data ? JSON.stringify(data) : undefined,
+    ...init,
   });
 
   await throwIfResNotOk(res);
