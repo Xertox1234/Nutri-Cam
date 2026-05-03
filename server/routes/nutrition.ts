@@ -26,9 +26,16 @@ const nullishString = z
 
 // Extended schema for scanned items with string coercion for numeric fields
 const scannedItemInputSchema = insertScannedItemSchema.extend({
+  barcode: z
+    .string()
+    .regex(/^\d+$/, "Barcode must contain only digits")
+    .max(50, "Barcode must not exceed 50 characters")
+    .optional()
+    .nullable(),
   productName: z
     .string()
     .min(1, "Product name is required")
+    .max(200, "Product name must not exceed 200 characters")
     .default("Unknown Product"),
   brandName: nullishString,
   servingSize: nullishString,

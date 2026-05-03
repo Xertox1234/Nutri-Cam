@@ -329,6 +329,37 @@ describe("Nutrition Routes", () => {
       expect(res.status).toBe(400);
     });
 
+    it("returns 400 for non-numeric barcode", async () => {
+      const res = await request(app)
+        .post("/api/scanned-items")
+        .set("Authorization", "Bearer token")
+        .send({ productName: "Test Item", barcode: "abc123", calories: 100 });
+
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 400 for barcode exceeding 50 chars", async () => {
+      const res = await request(app)
+        .post("/api/scanned-items")
+        .set("Authorization", "Bearer token")
+        .send({
+          productName: "Test Item",
+          barcode: "1".repeat(51),
+          calories: 100,
+        });
+
+      expect(res.status).toBe(400);
+    });
+
+    it("returns 400 for productName exceeding 200 chars", async () => {
+      const res = await request(app)
+        .post("/api/scanned-items")
+        .set("Authorization", "Bearer token")
+        .send({ productName: "x".repeat(201), calories: 100 });
+
+      expect(res.status).toBe(400);
+    });
+
     it("returns 500 when storage throws", async () => {
       vi.mocked(storage.createScannedItemWithLog).mockRejectedValue(
         new Error("Storage error"),
