@@ -16,7 +16,12 @@ Establish a green baseline before touching any code.
    npm run lint
    ```
 2. Record the **test count** (e.g., "1327 tests passed"), the **type-check result** (e.g., "0 errors"), and the **lint result** (e.g., "0 warnings, 0 errors").
-3. **If ANY command fails, stop immediately.** Report the failure to the user and exit — do not proceed to Phase 2. The codebase must be green before batch processing begins.
+3. **Capture the base branch** before creating any worktrees:
+   ```bash
+   git branch --show-current
+   ```
+   Store this value as `BASE_BRANCH` (e.g., `feat/nutrition-inline-drawers` or `main`). Pass it to every executor spawn in Phase 4 via the `Base branch:` line in the prompt.
+4. **If ANY command fails, stop immediately.** Report the failure to the user and exit — do not proceed to Phase 2. The codebase must be green before batch processing begins.
 
 ## Phase 2 — Triage
 
@@ -81,7 +86,7 @@ Agent({
   description: "Execute todo: <todo title>",
   subagent_type: "general-purpose",
   isolation: "worktree",
-  prompt: "You are a todo executor agent. Follow the instructions in .claude/agents/todo-executor.md exactly.\n\nYour todo file: todos/<filename>.md\n\nExecute all 10 steps and report the result."
+  prompt: "You are a todo executor agent. Follow the instructions in .claude/agents/todo-executor.md exactly.\n\nYour todo file: todos/<filename>.md\nBase branch: <BASE_BRANCH>\n\nExecute all 11 steps and report the result."
 })
 ```
 
@@ -89,7 +94,7 @@ Launch all agents in the batch simultaneously (up to 4). Wait for all to complet
 
 ### Sequential Batches
 
-For each batch marked sequential, spawn a **single** `todo-executor` agent (no worktree isolation needed).
+For each batch marked sequential, spawn a **single** `todo-executor` agent.
 
 Use the Agent tool with these parameters:
 
@@ -97,7 +102,8 @@ Use the Agent tool with these parameters:
 Agent({
   description: "Execute todo: <todo title>",
   subagent_type: "general-purpose",
-  prompt: "You are a todo executor agent. Follow the instructions in .claude/agents/todo-executor.md exactly.\n\nYour todo file: todos/<filename>.md\n\nExecute all 10 steps and report the result."
+  isolation: "worktree",
+  prompt: "You are a todo executor agent. Follow the instructions in .claude/agents/todo-executor.md exactly.\n\nYour todo file: todos/<filename>.md\nBase branch: <BASE_BRANCH>\n\nExecute all 11 steps and report the result."
 })
 ```
 
