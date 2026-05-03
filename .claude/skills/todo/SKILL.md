@@ -127,18 +127,12 @@ Agent({
 ### After Each Batch
 
 1. **Collect results** from all agents in the batch. Each reports one of: `success`, `failed`, `blocked`, `skipped`.
-2. **Record commit hashes** from successful executions.
-3. **Merge worktree branches.** For each completed worktree agent, the worktree's branch is automatically returned by the Agent tool. Merge each branch into the current branch:
+2. **Record PR URLs and commit hashes** from successful executions. Each successful executor reports `PR_URL` (may be `null` if PR creation failed) and `COMMIT`.
+3. **Run a post-batch type check** on the base branch to confirm it was not corrupted by the worktree setup:
    ```bash
-   git merge <worktree-branch> --no-edit
-   ```
-   If a merge conflict occurs, mark the conflicting todo as `failed` with reason "merge conflict with concurrent todo", revert the merge with `git merge --abort`, and proceed to the next branch.
-4. **Run a post-merge sanity check** after all merges complete:
-   ```bash
-   npm run test:run
    npm run check:types
    ```
-   If either fails, investigate and fix before continuing to the next batch.
+   Run this on the BASE branch (not inside any worktree). If it fails, halt the session immediately and report to the user. Do not start the next batch.
 
 ## Phase 5 — Session Summary
 
@@ -156,17 +150,17 @@ After all batches have been executed (or after early termination):
 
 3. **Print the summary table:**
 
-   | #   | Todo                                  | Status  | Commit    | Review Rounds | Notes                           |
-   | --- | ------------------------------------- | ------- | --------- | ------------- | ------------------------------- |
-   | 1   | Extract suggestion generation service | success | `a1b2c3d` | 1             | —                               |
-   | 2   | Storage facade re-exports             | success | `d4e5f6a` | 2             | Medium review finding deferred  |
-   | 3   | Remix screen reader announcements     | blocked | —         | 0             | Depends on remix-carousel-badge |
-   | 4   | Fix useCollapsible height test        | failed  | —         | 1             | Type error in mock setup        |
+   | #   | Todo                                  | Status  | PR                   | Review Rounds | Notes                           |
+   | --- | ------------------------------------- | ------- | -------------------- | ------------- | ------------------------------- |
+   | 1   | Extract suggestion generation service | success | github.com/…/pull/42 | 1             | —                               |
+   | 2   | Storage facade re-exports             | success | github.com/…/pull/43 | 2             | Medium review finding deferred  |
+   | 3   | Remix screen reader announcements     | blocked | —                    | 0             | Depends on remix-carousel-badge |
+   | 4   | Fix useCollapsible height test        | failed  | —                    | 1             | Type error in mock setup        |
 
 4. **Print tallies:**
 
    ```
-   Completed: N
+   Completed: N (list PR URLs; note "PR pending manual creation" for any where PR_URL is null)
    Blocked:   M
    Skipped:   S
    Failed:    F
