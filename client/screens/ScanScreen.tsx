@@ -12,12 +12,14 @@ import Animated, {
 } from "react-native-reanimated";
 import ConfettiCannon from "react-native-confetti-cannon";
 import {
+  AccessibilityInfo,
   StyleSheet,
   View,
   TouchableOpacity,
   Text,
   Pressable,
   Linking,
+  Platform,
   useWindowDimensions,
   ActivityIndicator,
 } from "react-native";
@@ -270,6 +272,23 @@ export default function ScanScreen() {
     hasLockedRef.current = false;
     dispatch({ type: "CAMERA_READY" });
   }, []);
+
+  // Announce loading state transitions to screen readers (iOS VoiceOver only —
+  // Android TalkBack is handled by accessibilityLiveRegion on the loading view).
+  const confirmIsLoading = confirmCard?.isLoading;
+  const confirmIsError = confirmCard?.isError;
+  const confirmName = confirmCard?.name;
+  useEffect(() => {
+    if (confirmIsLoading === undefined) return; // confirmCard is null
+    if (Platform.OS !== "ios") return;
+    if (confirmIsLoading) {
+      AccessibilityInfo.announceForAccessibility("Identifying food");
+    } else if (confirmIsError) {
+      AccessibilityInfo.announceForAccessibility("Nutrition data unavailable");
+    } else if (confirmName) {
+      AccessibilityInfo.announceForAccessibility(confirmName);
+    }
+  }, [confirmIsLoading, confirmIsError, confirmName]);
 
   const fetchProductInfo = useCallback(async (barcode: string) => {
     try {
@@ -666,7 +685,10 @@ export default function ScanScreen() {
           accessibilityViewIsModal
         >
           {confirmCard.isLoading ? (
-            <View style={styles.confirmLoadingRow}>
+            <View
+              style={styles.confirmLoadingRow}
+              accessibilityLiveRegion="polite"
+            >
               <ActivityIndicator color={theme.link} />
               <ThemedText
                 style={{ color: theme.textSecondary, marginLeft: Spacing.sm }}
@@ -693,6 +715,7 @@ export default function ScanScreen() {
                         color: theme.textSecondary,
                         fontFamily: FontFamily.semiBold,
                       }}
+                      accessibilityLiveRegion="polite"
                     >
                       Nutrition data unavailable
                     </ThemedText>
@@ -710,6 +733,7 @@ export default function ScanScreen() {
                       fontFamily: FontFamily.semiBold,
                     }}
                     numberOfLines={2}
+                    accessibilityLiveRegion="polite"
                   >
                     {confirmCard.name}
                   </ThemedText>
@@ -733,6 +757,7 @@ export default function ScanScreen() {
                   ]}
                   accessibilityLabel="Dismiss"
                   accessibilityRole="button"
+                  accessibilityState={{ disabled: confirmCard.isLogging }}
                 >
                   <ThemedText
                     style={{ color: theme.textSecondary, fontSize: 14 }}
