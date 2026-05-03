@@ -6,6 +6,9 @@ import { useSpeechToText } from "@/hooks/useSpeechToText";
 import { useParseFoodText, type ParsedFoodItem } from "@/hooks/useFoodParse";
 import { apiRequest } from "@/lib/query-client";
 import { QUERY_KEYS } from "@/lib/query-keys";
+import type { ScannedItem } from "@shared/schema";
+
+type ScannedItemResponse = ScannedItem;
 
 export type { ParsedFoodItem };
 
@@ -133,11 +136,11 @@ export function useQuickLogSession({
             fat: item.fat?.toString(),
             servingSize: item.servingSize,
           });
-          return res.json();
+          return res.json() as Promise<ScannedItemResponse>;
         }),
       );
     },
-    onSuccess: (_data, items) => {
+    onSuccess: (_data: ScannedItemResponse[], items) => {
       const loggedItems = items.slice(0, MAX_LOG_ITEMS);
       const summary: LogSummary = {
         itemCount: loggedItems.length,
