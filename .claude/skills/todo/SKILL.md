@@ -134,6 +134,8 @@ Agent({
    ```
    Run this on the BASE branch (not inside any worktree). If it fails, halt the session immediately and report to the user. Do not start the next batch.
 
+If the type check passes, proceed to the next batch in the execution plan.
+
 ## Phase 5 — Session Summary
 
 After all batches have been executed (or after early termination):
@@ -150,12 +152,13 @@ After all batches have been executed (or after early termination):
 
 3. **Print the summary table:**
 
-   | #   | Todo                                  | Status  | PR                   | Review Rounds | Notes                           |
-   | --- | ------------------------------------- | ------- | -------------------- | ------------- | ------------------------------- |
-   | 1   | Extract suggestion generation service | success | github.com/…/pull/42 | 1             | —                               |
-   | 2   | Storage facade re-exports             | success | github.com/…/pull/43 | 2             | Medium review finding deferred  |
-   | 3   | Remix screen reader announcements     | blocked | —                    | 0             | Depends on remix-carousel-badge |
-   | 4   | Fix useCollapsible height test        | failed  | —                    | 1             | Type error in mock setup        |
+   | #   | Todo                                  | Status  | PR                      | Review Rounds | Notes                               |
+   | --- | ------------------------------------- | ------- | ----------------------- | ------------- | ----------------------------------- |
+   | 1   | Extract suggestion generation service | success | github.com/…/pull/42    | 1             | —                                   |
+   | 2   | Storage facade re-exports             | success | github.com/…/pull/43    | 2             | Medium review finding deferred      |
+   | 3   | Remix screen reader announcements     | blocked | —                       | 0             | Depends on remix-carousel-badge     |
+   | 4   | Fix useCollapsible height test        | failed  | —                       | 1             | Type error in mock setup            |
+   | 5   | Fix calorie rounding utility          | success | pending manual creation | 1             | PR creation failed — push succeeded |
 
 4. **Print tallies:**
 
@@ -181,7 +184,7 @@ After all batches have been executed (or after early termination):
 - **Baseline must be green.** Never start batch processing on a broken codebase.
 - **Max 4 parallel agents.** Respect the limit to avoid overwhelming system resources and context.
 - **Sequential when scope is unknown.** If a todo mentions no files, it runs alone — never assume it is safe to parallelize.
-- **Verify after merging parallel work.** Tests and types must pass before starting the next batch.
+- **Verify after each batch.** Run `npm run check:types` on the base branch before starting the next batch. The full test suite runs only in Phase 5 — never run `npm run test:run` between batches.
 - **The executor agent does the work.** This orchestrator only triages, dispatches, and summarizes. Never implement todo changes directly.
 - **Archive happens in the executor.** Completed todos are moved to `todos/archive/` by the executor agent, not by this orchestrator.
 - **Report everything.** Every todo in the queue must appear in the final summary table, even if skipped or blocked.
