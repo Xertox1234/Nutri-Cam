@@ -265,7 +265,7 @@ describe("handleOCRResult integration", () => {
     // Advance past original debounce window — timer was cancelled, so no false notification
     vi.advanceTimersByTime(400);
 
-    expect(onTextDetected).not.toHaveBeenCalledWith(false);
+    expect(onTextDetected).not.toHaveBeenCalled();
   });
 
   it("enabled=false resets haptic flag, isTextDetectedRef, and latestOCRResult", () => {

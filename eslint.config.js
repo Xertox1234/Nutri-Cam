@@ -11,6 +11,9 @@ module.exports = defineConfig([
     ignores: ["dist/*", "server_dist/*", ".claude/worktrees/**"],
   },
   {
+    // Native RN packages resolved at link time (not by Node) produce false-positive
+    // import/no-unresolved errors even when TypeScript resolves them correctly.
+    // Add packages here only when they have valid TS types but non-standard entry points.
     rules: {
       "import/no-unresolved": [
         "error",
