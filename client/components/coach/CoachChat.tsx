@@ -502,11 +502,6 @@ export default function CoachChat({
     [hasVoice, isListening, volume, handleMicPress],
   );
 
-  // Auto-scroll when new messages arrive (streaming scroll handled in onChunk callback)
-  useEffect(() => {
-    listRef.current?.scrollToEnd({ animated: false });
-  }, [messages]);
-
   const limitBanner = isAtDailyLimit ? (
     <View style={styles.limitBanner}>
       <Text style={[styles.limitText, { color: theme.textSecondary }]}>
