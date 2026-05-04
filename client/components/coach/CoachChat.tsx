@@ -93,7 +93,7 @@ export default function CoachChat({
   const activeConvIdRef = useRef<number | null>(null);
   const usedQuickRepliesRef = useRef<Set<string>>(new Set());
   const [quickReplyVersion, setQuickReplyVersion] = useState(0);
-  const acceptedCommitmentsRef = useRef<Set<number>>(new Set());
+  const acceptedCommitmentsRef = useRef<Set<number | string>>(new Set());
   const [commitmentVersion, setCommitmentVersion] = useState(0);
 
   const {
@@ -393,15 +393,18 @@ export default function CoachChat({
   const handleCommitmentAccept = useCallback(
     async (
       notebookEntryId: number | undefined,
-      _title: string,
-      _followUpDate: string,
+      title: string,
+      followUpDate: string,
     ) => {
-      if (!notebookEntryId) return;
+      // Use notebookEntryId if available, otherwise a string key for local tracking
+      const key: number | string =
+        notebookEntryId ?? `${title}::${followUpDate}`;
       acceptedCommitmentsRef.current = new Set([
         ...acceptedCommitmentsRef.current,
-        notebookEntryId,
+        key,
       ]);
       setCommitmentVersion((v) => v + 1);
+      if (!notebookEntryId) return;
       try {
         await apiRequest(
           "POST",
@@ -462,9 +465,11 @@ export default function CoachChat({
                 }
                 isUsed={usedQuickRepliesRef.current.has(`${msg.id}-${i}`)}
                 isCommitmentAccepted={
-                  block.type === "commitment_card" &&
-                  block.notebookEntryId !== undefined
-                    ? acceptedCommitmentsRef.current.has(block.notebookEntryId)
+                  block.type === "commitment_card"
+                    ? acceptedCommitmentsRef.current.has(
+                        block.notebookEntryId ??
+                          `${block.title}::${block.followUpDate}`,
+                      )
                     : undefined
                 }
               />
@@ -515,6 +520,8 @@ export default function CoachChat({
       lastAssistantMessageId,
       messageBlocks,
       streamBlocks,
+      streamingContent,
+      statusText,
       theme.textSecondary,
       quickReplyVersion,
       commitmentVersion,
@@ -562,7 +569,7 @@ export default function CoachChat({
       </Text>
       <Pressable
         // TODO: wire up when subscription screen added
-        onPress={() => navigation.navigate("Subscription" as never)}
+        onPress={undefined}
         accessibilityRole="button"
         accessibilityLabel="Upgrade to Coach Pro"
       >

@@ -214,6 +214,7 @@ export function useCoachStream({
                     displayedLengthRef.current = 0;
                     firstCharDrainedRef.current = false;
                     fullTextRef.current = data.safety_override;
+                    setStreamingContent("");
                     bufferRef.current = data.safety_override;
                   }
                   if (data.blocks && Array.isArray(data.blocks)) {
@@ -221,9 +222,11 @@ export function useCoachStream({
                   }
                   if (data.done) {
                     isDoneRef.current = true;
-                    fullTextRef.current = stripCoachBlocksFence(
-                      accumulatedRef.current,
-                    );
+                    if (accumulatedRef.current) {
+                      fullTextRef.current = stripCoachBlocksFence(
+                        accumulatedRef.current,
+                      );
+                    }
                   }
                 } catch {
                   // Ignore incomplete JSON chunks

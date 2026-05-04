@@ -34,6 +34,14 @@ export function registerCoachCommitmentsRoutes(app: Express): void {
             ErrorCode.NOT_FOUND,
           );
         }
+        if (entry.type !== "commitment") {
+          return sendError(
+            res,
+            400,
+            "Entry is not a commitment",
+            ErrorCode.VALIDATION_ERROR,
+          );
+        }
         await storage.updateNotebookEntryStatus(
           notebookEntryId,
           req.userId,
