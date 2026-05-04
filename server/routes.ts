@@ -48,6 +48,7 @@ import { register as registerPushTokens } from "./routes/push-tokens";
 import { register as registerReminders } from "./routes/reminders";
 import { initSearchIndex } from "./services/recipe-search";
 import { startNotificationScheduler } from "./services/notification-scheduler";
+import { startPromotionJob } from "./services/canonical-promotion";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Public API (separate namespace, registered first to avoid auth conflicts)
@@ -108,6 +109,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Start push notification scheduler (daily 09:00 commitment reminders)
   startNotificationScheduler();
+
+  // Start canonical recipe promotion job (every 6 hours)
+  startPromotionJob();
 
   // Multer error handler - returns 400 for file validation errors instead of 500
   app.use(
