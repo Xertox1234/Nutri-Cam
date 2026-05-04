@@ -9,6 +9,7 @@ import {
 } from "@shared/schema";
 import { TIER_FEATURES, isValidSubscriptionTier } from "@shared/types/premium";
 import { fireAndForget } from "../lib/fire-and-forget";
+import { incrementRecipePopularity } from "./canonical-recipes";
 
 export async function toggleFavouriteRecipe(
   userId: string,
@@ -84,6 +85,12 @@ export async function toggleFavouriteRecipe(
       await tx
         .insert(favouriteRecipes)
         .values({ userId, recipeId, recipeType });
+      if (recipeType === "community") {
+        fireAndForget(
+          "favourite recipe popularity increment",
+          incrementRecipePopularity(recipeId, "favorite"),
+        );
+      }
       return true;
     } catch (err: unknown) {
       if (

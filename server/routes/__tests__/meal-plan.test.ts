@@ -54,6 +54,10 @@ vi.mock("../../services/pantry-meal-plan", () => ({
   generateMealPlanFromPantry: vi.fn(),
 }));
 
+vi.mock("../../storage/canonical-recipes", () => ({
+  incrementRecipePopularity: vi.fn().mockResolvedValue(undefined),
+}));
+
 function createApp() {
   const app = express();
   app.use(express.json());
