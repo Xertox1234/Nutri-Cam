@@ -218,7 +218,10 @@ export default function ScanScreen() {
         isLoading: true,
         isLogging: false,
       });
-      apiRequest("GET", `/api/nutrition/barcode/${barcode}`)
+      const controller = new AbortController();
+      apiRequest("GET", `/api/nutrition/barcode/${barcode}`, undefined, {
+        signal: controller.signal,
+      })
         .then((res) => res.json())
         .then((data: { productName?: string; calories?: number }) => {
           setConfirmCard({
@@ -229,7 +232,8 @@ export default function ScanScreen() {
             isLogging: false,
           });
         })
-        .catch(() => {
+        .catch((err: unknown) => {
+          if (err instanceof Error && err.name === "AbortError") return;
           setConfirmCard({
             barcode,
             name: "Food item",
@@ -238,7 +242,7 @@ export default function ScanScreen() {
             isLogging: false,
           });
         });
-      return;
+      return () => controller.abort();
     }
 
     const timer = setTimeout(() => {
