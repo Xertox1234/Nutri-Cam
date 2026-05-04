@@ -13,7 +13,11 @@ interface StreamingBubbleProps {
   streamBlocks: CoachBlock[];
   onBlockAction: (action: Record<string, unknown>) => void;
   onQuickReply: (message: string) => void;
-  onCommitmentAccept: (title: string, followUpDate: string) => void;
+  onCommitmentAccept: (
+    notebookEntryId: number | undefined,
+    title: string,
+    followUpDate: string,
+  ) => void;
 }
 
 const StreamingBubble = memo(function StreamingBubble({

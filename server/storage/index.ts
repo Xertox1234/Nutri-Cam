@@ -312,6 +312,7 @@ export const storage = {
   getActiveNotebookEntries: coachNotebook.getActiveNotebookEntries,
   createNotebookEntry: coachNotebook.createNotebookEntry,
   createNotebookEntries: coachNotebook.createNotebookEntries,
+  getNotebookEntryById: coachNotebook.getNotebookEntryById,
   updateNotebookEntryStatus: coachNotebook.updateNotebookEntryStatus,
   getCommitmentsWithDueFollowUp: coachNotebook.getCommitmentsWithDueFollowUp,
   archiveOldEntries: coachNotebook.archiveOldEntries,

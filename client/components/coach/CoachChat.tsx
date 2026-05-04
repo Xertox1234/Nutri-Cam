@@ -41,6 +41,7 @@ import {
 import { useCoachStream } from "@/hooks/useCoachStream";
 import { FLATLIST_DEFAULTS } from "@/constants/performance";
 import StreamingBubble from "@/components/coach/StreamingBubble";
+import { apiRequest } from "@/lib/query-client";
 import type { useCoachWarmUp } from "@/hooks/useCoachWarmUp";
 import type {
   CoachChatNavigationProp,
@@ -90,6 +91,8 @@ export default function CoachChat({
   const activeConvIdRef = useRef<number | null>(null);
   const usedQuickRepliesRef = useRef<Set<string>>(new Set());
   const [quickReplyVersion, setQuickReplyVersion] = useState(0);
+  const acceptedCommitmentsRef = useRef<Set<number>>(new Set());
+  const [commitmentVersion, setCommitmentVersion] = useState(0);
 
   const {
     isListening,
@@ -363,9 +366,25 @@ export default function CoachChat({
   );
 
   const handleCommitmentAccept = useCallback(
-    (_title: string, _followUpDate: string) => {
-      // Commitment is tracked via notebook extraction from the conversation
-      // The accept UI state is already managed by CommitmentCard component
+    async (
+      notebookEntryId: number | undefined,
+      _title: string,
+      _followUpDate: string,
+    ) => {
+      if (!notebookEntryId) return;
+      acceptedCommitmentsRef.current = new Set([
+        ...acceptedCommitmentsRef.current,
+        notebookEntryId,
+      ]);
+      setCommitmentVersion((v) => v + 1);
+      try {
+        await apiRequest(
+          "POST",
+          `/api/chat/commitments/${notebookEntryId}/accept`,
+        );
+      } catch {
+        // Non-fatal — local state already updated
+      }
     },
     [],
   );
@@ -413,8 +432,16 @@ export default function CoachChat({
                 onQuickReply={(message) =>
                   handleQuickReply(message, `${msg.id}-${i}`)
                 }
-                onCommitmentAccept={handleCommitmentAccept}
+                onCommitmentAccept={(notebookEntryId, title, followUpDate) =>
+                  handleCommitmentAccept(notebookEntryId, title, followUpDate)
+                }
                 isUsed={usedQuickRepliesRef.current.has(`${msg.id}-${i}`)}
+                isCommitmentAccepted={
+                  block.type === "commitment_card" &&
+                  block.notebookEntryId !== undefined
+                    ? acceptedCommitmentsRef.current.has(block.notebookEntryId)
+                    : undefined
+                }
               />
             ))}
             {isRetryTarget && (
@@ -465,6 +492,7 @@ export default function CoachChat({
       streamBlocks,
       theme.textSecondary,
       quickReplyVersion,
+      commitmentVersion,
     ],
   );
 
