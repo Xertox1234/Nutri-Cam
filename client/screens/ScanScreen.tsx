@@ -708,15 +708,22 @@ export default function ScanScreen() {
             >
               <View style={styles.confirmInfo}>
                 {confirmCard.isError ? (
-                  <ThemedText
-                    type="body"
-                    style={{
-                      color: theme.textSecondary,
-                      fontFamily: FontFamily.semiBold,
-                    }}
-                  >
-                    Nutrition data unavailable
-                  </ThemedText>
+                  <>
+                    <ThemedText
+                      type="body"
+                      style={{
+                        color: theme.textSecondary,
+                        fontFamily: FontFamily.semiBold,
+                      }}
+                    >
+                      Nutrition data unavailable
+                    </ThemedText>
+                    <ThemedText
+                      style={{ color: theme.textSecondary, fontSize: 12 }}
+                    >
+                      Barcode: {confirmCard.barcode}
+                    </ThemedText>
+                  </>
                 ) : (
                   <ThemedText
                     type="body"
@@ -770,7 +777,7 @@ export default function ScanScreen() {
                   accessibilityLabel={
                     confirmCard.isError
                       ? "Log It (unavailable — nutrition data missing)"
-                      : "Log it"
+                      : "Log It"
                   }
                   accessibilityRole="button"
                   accessibilityState={{
