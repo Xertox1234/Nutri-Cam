@@ -51,12 +51,18 @@ export default function InlineChart({ block }: Props) {
   }
 
   if (block.chartType === "stat_row") {
+    const statSummary = block.data
+      .map((d) => `${d.label}: ${d.value}`)
+      .join(", ");
+
     return (
       <View
         style={[
           styles.container,
           { backgroundColor: theme.backgroundSecondary },
         ]}
+        accessibilityLabel={`${block.title}. ${statSummary}`}
+        accessible={true}
       >
         <Text style={[styles.title, { color: theme.text }]}>{block.title}</Text>
         <View style={styles.statRow}>
