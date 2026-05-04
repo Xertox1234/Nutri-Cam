@@ -119,7 +119,11 @@ export async function getCuratedRecipeById(
     .select()
     .from(communityRecipes)
     .where(
-      and(eq(communityRecipes.id, id), eq(communityRecipes.isCanonical, true)),
+      and(
+        eq(communityRecipes.id, id),
+        eq(communityRecipes.isCanonical, true),
+        eq(communityRecipes.isPublic, true),
+      ),
     )
     .limit(1);
   return recipe ?? null;
