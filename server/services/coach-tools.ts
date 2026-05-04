@@ -496,7 +496,10 @@ export async function executeToolCall(
       if (!result) {
         return notFound(`No nutrition data found for "${parsed.data.query}"`);
       }
-      return result;
+      // Trim to fields the model needs — full result has micronutrients and source
+      // metadata that inflate the token budget unnecessarily.
+      const { name, calories, protein, carbs, fat, servingSize } = result;
+      return { name, calories, protein, carbs, fat, servingSize };
     }
 
     case "search_recipes": {
