@@ -36,7 +36,7 @@ export async function toggleFavouriteRecipe(
     if (!recipe) return false;
   }
 
-  return db.transaction(async (tx) => {
+  const result = await db.transaction(async (tx) => {
     // Serialize concurrent toggles for the same user to prevent limit bypass.
     // hashtextextended returns a 64-bit bigint, eliminating the ~65k-user
     // birthday-collision risk of the 32-bit hashtext() form (L31).
@@ -85,12 +85,6 @@ export async function toggleFavouriteRecipe(
       await tx
         .insert(favouriteRecipes)
         .values({ userId, recipeId, recipeType });
-      if (recipeType === "community") {
-        fireAndForget(
-          "favourite recipe popularity increment",
-          incrementRecipePopularity(recipeId, "favorite"),
-        );
-      }
       return true;
     } catch (err: unknown) {
       if (
@@ -113,6 +107,14 @@ export async function toggleFavouriteRecipe(
       throw err;
     }
   });
+
+  if (result === true && recipeType === "community") {
+    fireAndForget(
+      "favourite recipe popularity increment",
+      incrementRecipePopularity(recipeId, "favorite"),
+    );
+  }
+  return result;
 }
 
 export async function getUserFavouriteRecipeIds(
