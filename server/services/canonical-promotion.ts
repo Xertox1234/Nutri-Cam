@@ -21,35 +21,48 @@ const log = createServiceLogger("canonical-promotion");
 const PROMOTION_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
 const ENRICHMENT_CONCURRENCY = 2;
 
+// Module-level limiter — persists between runs so concurrent enrichments across
+// overlapping intervals are also bounded.
+const enrichLimit = pLimit(ENRICHMENT_CONCURRENCY);
+
+// Overlap guard — prevents a second run from starting while one is still active.
+let isRunning = false;
+
 /**
  * Query eligible recipes, mark each canonical, and fire-and-forget enrichment.
  * Exported for testing and manual invocation.
  */
 export async function runPromotionJob(): Promise<void> {
-  const eligible = await storage.getEligibleForPromotion(10);
+  if (isRunning) {
+    log.warn("canonical-promotion: skipping run — previous run still active");
+    return;
+  }
+  isRunning = true;
+  try {
+    const eligible = await storage.getEligibleForPromotion(10);
 
-  if (eligible.length === 0) return;
+    if (eligible.length === 0) return;
 
-  log.info(
-    { count: eligible.length },
-    "canonical-promotion: promoting recipes",
-  );
+    log.info(
+      { count: eligible.length },
+      "canonical-promotion: promoting recipes",
+    );
 
-  const limit = pLimit(ENRICHMENT_CONCURRENCY);
+    // Step 1: mark all canonical (cheap DB writes, no throttle needed)
+    await Promise.all(eligible.map((r) => storage.markCanonical(r.id)));
 
-  await Promise.all(
-    eligible.map((recipe) =>
-      limit(async () => {
-        await storage.markCanonical(recipe.id);
-        enrichRecipe(recipe.id).catch((err) => {
-          log.error(
-            { err: toError(err), recipeId: recipe.id },
-            "canonical-promotion: enrichment failed for recipe",
-          );
-        });
-      }),
-    ),
-  );
+    // Step 2: fire enrichments rate-limited (max 2 concurrent)
+    for (const recipe of eligible) {
+      enrichLimit(() => enrichRecipe(recipe.id)).catch((err) =>
+        log.error(
+          { err: toError(err), recipeId: recipe.id },
+          "canonical-promotion: enrichment failed for recipe",
+        ),
+      );
+    }
+  } finally {
+    isRunning = false;
+  }
 }
 
 /**

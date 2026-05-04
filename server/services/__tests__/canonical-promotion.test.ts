@@ -32,6 +32,10 @@ describe("runPromotionJob", () => {
     ]);
     await runPromotionJob();
     expect(storage.markCanonical).toHaveBeenCalledTimes(2);
+    expect(storage.markCanonical).toHaveBeenCalledWith(1);
+    expect(storage.markCanonical).toHaveBeenCalledWith(2);
     expect(enrichRecipe).toHaveBeenCalledTimes(2);
+    expect(enrichRecipe).toHaveBeenCalledWith(1);
+    expect(enrichRecipe).toHaveBeenCalledWith(2);
   });
 });
