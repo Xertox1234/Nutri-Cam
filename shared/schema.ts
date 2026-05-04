@@ -950,6 +950,10 @@ export const chatConversations = pgTable(
       table.userId,
       table.updatedAt,
     ),
+    titleTrgmIdx: index("chat_conversations_title_trgm_idx").using(
+      "gin",
+      table.title.op("gin_trgm_ops"),
+    ),
   }),
 );
 
@@ -1560,6 +1564,13 @@ export const coachNotebook = pgTable(
     dedupeKeyUniqueIdx: uniqueIndex("coach_notebook_turn_fingerprint_idx")
       .on(table.dedupeKey)
       .where(sql`${table.dedupeKey} IS NOT NULL`),
+    dueCommitmentsIdx: index("coach_notebook_due_commitments_idx")
+      .on(table.followUpDate)
+      .where(sql`${table.type} = 'commitment' AND ${table.status} = 'active'`),
+    userStatusIdx: index("coach_notebook_user_status_idx").on(
+      table.userId,
+      table.status,
+    ),
     typeCheck: check(
       "coach_notebook_type_check",
       sql`${table.type} IN ('insight', 'commitment', 'preference', 'goal', 'motivation', 'emotional_context', 'conversation_summary', 'coaching_strategy')`,
