@@ -164,6 +164,7 @@ export default function HomeScreen() {
         contentContainerStyle={scrollContentContainerStyle}
         scrollIndicatorInsets={{ bottom: insets.bottom }}
         scrollEventThrottle={16}
+        keyboardShouldPersistTaps="handled"
         onScroll={scrollHandler}
         refreshControl={
           <RefreshControl refreshing={isRefetching} onRefresh={handleRefresh} />
