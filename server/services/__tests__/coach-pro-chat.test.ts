@@ -373,6 +373,26 @@ describe("handleCoachChat", () => {
       expect(generateCoachResponse).toHaveBeenCalled();
       expect(generateCoachProResponse).not.toHaveBeenCalled();
     });
+
+    it("yields safety_override event when generateCoachResponse emits the sentinel", async () => {
+      const SENTINEL = "\x00SAFETY_OVERRIDE\x00";
+      vi.mocked(generateCoachResponse).mockReturnValue(
+        (async function* () {
+          yield "Some unsafe content";
+          yield SENTINEL;
+        })(),
+      );
+
+      const params = makeParams({ isCoachPro: false });
+      const events = await collectEvents(handleCoachChat(params));
+
+      const overrideEvents = events.filter((e) => e.type === "safety_override");
+      expect(overrideEvents).toHaveLength(1);
+      expect(
+        (overrideEvents[0] as { type: "safety_override"; message: string })
+          .message,
+      ).toContain("careful");
+    });
   });
 
   // ── Notebook injection into context ───────────────────────
