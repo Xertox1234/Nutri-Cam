@@ -49,7 +49,9 @@ import { ProductChip } from "@/camera/components/ProductChip";
 import { ScanFlashOverlay } from "@/camera/components/ScanFlashOverlay";
 import { ScanSonarRing } from "@/camera/components/ScanSonarRing";
 import { getCoachMessage } from "@/camera/components/CoachHint-utils";
+import { useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/query-client";
+import { QUERY_KEYS } from "@/lib/query-keys";
 import { uploadPhotoForAnalysis } from "@/lib/photo-upload";
 import {
   getPremiumGate,
@@ -78,6 +80,7 @@ export default function ScanScreen() {
   const { reducedMotion } = useAccessibility();
   const { isPremium, remainingScans } = usePremiumCamera();
   const { refreshScanCount } = usePremiumContext();
+  const queryClient = useQueryClient();
 
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
@@ -267,6 +270,8 @@ export default function ScanScreen() {
         sourceType: "scan",
         calories: confirmCard.calories?.toString(),
       });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.dailySummary });
+      queryClient.invalidateQueries({ queryKey: QUERY_KEYS.scannedItems });
       refreshScanCount();
       toast.success(
         `Logged! ${confirmCard.name}${confirmCard.calories ? ` · ${confirmCard.calories} cal` : ""}`,
@@ -276,7 +281,7 @@ export default function ScanScreen() {
       setConfirmCard((prev) => prev && { ...prev, isLogging: false });
       toast.error("Failed to log item. Please try again.");
     }
-  }, [confirmCard, navigation, toast, refreshScanCount]);
+  }, [confirmCard, navigation, toast, refreshScanCount, queryClient]);
 
   const handleConfirmDismiss = useCallback(() => {
     setConfirmCard(null);
