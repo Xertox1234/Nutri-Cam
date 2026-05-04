@@ -8,7 +8,15 @@ module.exports = defineConfig([
   expoConfig,
   eslintPluginPrettierRecommended,
   {
-    ignores: ["dist/*", "server_dist/*"],
+    ignores: ["dist/*", "server_dist/*", ".claude/worktrees/**"],
+  },
+  {
+    rules: {
+      "import/no-unresolved": [
+        "error",
+        { ignore: ["react-native-vision-camera-ocr-plus"] },
+      ],
+    },
   },
   {
     files: ["server/**/*.ts"],
