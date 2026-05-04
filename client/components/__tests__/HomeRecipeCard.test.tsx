@@ -49,6 +49,19 @@ const baseRecipe = {
   isPublic: true,
   remixedFromId: null,
   remixedFromTitle: null,
+  popularityFavorites: 0,
+  popularityMealPlans: 0,
+  popularityCookSessions: 0,
+  popularityScore: 0,
+  isCanonical: false,
+  canonicalizedAt: null,
+  canonicalEnrichedAt: null,
+  canonicalImages: [],
+  instructionDetails: [],
+  toolsRequired: [],
+  chefTips: [],
+  cuisineOrigin: null,
+  videoUrl: null,
 };
 
 describe("HomeRecipeCard", () => {
