@@ -79,6 +79,7 @@ export default function CoachChat({
   const [inputText, setInputText] = useState("");
   const [streamBlocks, setStreamBlocks] = useState<CoachBlock[]>([]);
   const [streamingError, setStreamingError] = useState<string | null>(null);
+  const [isAtDailyLimit, setIsAtDailyLimit] = useState(false);
   const [optimisticMessage, setOptimisticMessage] = useState<string | null>(
     null,
   );
@@ -122,7 +123,11 @@ export default function CoachChat({
       }
     },
     onError: (message) => {
-      setStreamingError(message);
+      if (message.startsWith("429")) {
+        setIsAtDailyLimit(true);
+      } else {
+        setStreamingError(message);
+      }
       setOptimisticMessage(null);
     },
   });
@@ -210,6 +215,7 @@ export default function CoachChat({
       setOptimisticMessage(content);
       setStreamBlocks([]);
       setStreamingError(null);
+      setIsAtDailyLimit(false);
       ttsStop();
 
       let convId = conversationId;
@@ -502,6 +508,24 @@ export default function CoachChat({
     listRef.current?.scrollToEnd({ animated: false });
   }, [messages]);
 
+  const limitBanner = isAtDailyLimit ? (
+    <View style={styles.limitBanner}>
+      <Text style={[styles.limitText, { color: theme.textSecondary }]}>
+        {"You've reached today’s coaching limit."}
+      </Text>
+      <Pressable
+        // TODO: wire up when subscription screen added
+        onPress={() => navigation.navigate("Subscription" as never)}
+        accessibilityRole="button"
+        accessibilityLabel="Upgrade to Coach Pro"
+      >
+        <Text style={[styles.limitCta, { color: theme.link }]}>
+          Upgrade to Coach Pro
+        </Text>
+      </Pressable>
+    </View>
+  ) : null;
+
   return (
     <CoachChatBase
       inputText={inputText}
@@ -511,6 +535,7 @@ export default function CoachChat({
       inputAdornment={micAdornment}
       keyboardVerticalOffset={90}
       streamingError={streamingError}
+      inlineBanner={limitBanner}
       inputBarStyle={inputBarStyle}
     >
       <FlatList
@@ -540,4 +565,11 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   retryText: { fontSize: 12 },
+  limitBanner: {
+    padding: Spacing.md,
+    alignItems: "center" as const,
+    gap: 4,
+  },
+  limitText: { fontSize: 14, textAlign: "center" as const },
+  limitCta: { fontSize: 14, fontWeight: "600" as const },
 });
