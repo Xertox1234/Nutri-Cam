@@ -41,7 +41,11 @@ export async function incrementRecipePopularity(
 export async function markCanonical(recipeId: number): Promise<void> {
   await db
     .update(communityRecipes)
-    .set({ isCanonical: true, canonicalizedAt: new Date() })
+    .set({
+      isCanonical: true,
+      canonicalizedAt: new Date(),
+      updatedAt: new Date(),
+    })
     .where(eq(communityRecipes.id, recipeId));
 }
 
@@ -58,7 +62,11 @@ export async function markEnriched(
 ): Promise<void> {
   await db
     .update(communityRecipes)
-    .set({ ...enrichment, canonicalEnrichedAt: new Date() })
+    .set({
+      ...enrichment,
+      canonicalEnrichedAt: new Date(),
+      updatedAt: new Date(),
+    })
     .where(eq(communityRecipes.id, recipeId));
 }
 
