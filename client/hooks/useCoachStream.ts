@@ -210,10 +210,10 @@ export function useCoachStream({
                   }
                   // Handle safety override: clear buffered content and replace with safe message
                   if (typeof data.safety_override === "string") {
-                    bufferRef.current = "";
                     accumulatedRef.current = "";
                     displayedLengthRef.current = 0;
                     firstCharDrainedRef.current = false;
+                    fullTextRef.current = data.safety_override;
                     bufferRef.current = data.safety_override;
                   }
                   if (data.blocks && Array.isArray(data.blocks)) {
