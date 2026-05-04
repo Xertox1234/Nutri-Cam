@@ -412,6 +412,9 @@ export async function* handleCoachChat(
 
   // ── Coach Pro: inject notebook context ──────────────
   if (isCoachPro) {
+    // Always provide blocks formatting instructions for Pro responses
+    context.blocksPrompt = BLOCKS_SYSTEM_PROMPT;
+
     const notebookEntries = await storage.getActiveNotebookEntries(userId);
     if (notebookEntries.length > 0) {
       // Include updatedAt so the budget formatter can attach recency labels
@@ -426,15 +429,12 @@ export async function* handleCoachChat(
         sanitized,
         DEFAULT_NOTEBOOK_MAX_CHARS,
       );
-      // Delimiter block frames the (untrusted) notebook content inside the
-      // system prompt so the model treats it as data, not instructions.
-      context.notebookSummary =
-        joined.length > 0
-          ? `${joined}\n\n${BLOCKS_SYSTEM_PROMPT}`
-          : BLOCKS_SYSTEM_PROMPT;
-    } else {
-      context.notebookSummary = BLOCKS_SYSTEM_PROMPT;
+      if (joined.length > 0) {
+        context.notebookSummary = joined;
+      }
+      // If truncation produces empty string, omit notebook section entirely
     }
+    // When no entries exist, notebookSummary stays unset — no confusing preamble
   }
 
   let messageHistory: {

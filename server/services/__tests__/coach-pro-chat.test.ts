@@ -420,7 +420,8 @@ describe("handleCoachChat", () => {
         .calls[0][1];
       expect(passedContext.notebookSummary).toContain("User likes salads");
       expect(passedContext.notebookSummary).toContain("Lose 5kg by summer");
-      expect(passedContext.notebookSummary).toContain("[BLOCKS_SYSTEM_PROMPT]");
+      // BLOCKS_SYSTEM_PROMPT is now in blocksPrompt, not notebookSummary
+      expect(passedContext.blocksPrompt).toContain("[BLOCKS_SYSTEM_PROMPT]");
     });
 
     it("sets only BLOCKS_SYSTEM_PROMPT when notebook entries are empty (CoachPro)", async () => {
@@ -432,7 +433,9 @@ describe("handleCoachChat", () => {
 
       const passedContext = vi.mocked(generateCoachProResponse).mock
         .calls[0][1];
-      expect(passedContext.notebookSummary).toBe("[BLOCKS_SYSTEM_PROMPT]");
+      // When no entries exist, notebookSummary is undefined and BLOCKS_SYSTEM_PROMPT is in blocksPrompt
+      expect(passedContext.notebookSummary).toBeUndefined();
+      expect(passedContext.blocksPrompt).toContain("[BLOCKS_SYSTEM_PROMPT]");
     });
 
     it("does not inject notebook context when isCoachPro is false", async () => {
