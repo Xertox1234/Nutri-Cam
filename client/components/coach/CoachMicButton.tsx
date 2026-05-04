@@ -32,6 +32,7 @@ export default function CoachMicButton({
   const { theme } = useTheme();
   const reducedMotion = useReducedMotion();
   const scale = useSharedValue(1);
+  const isFirstRender = React.useRef(true);
 
   React.useEffect(() => {
     if (isListening && !reducedMotion) {
@@ -43,6 +44,10 @@ export default function CoachMicButton({
   }, [isListening, volume, reducedMotion, scale]);
 
   React.useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
     if (Platform.OS === "ios") {
       AccessibilityInfo.announceForAccessibility(
         isListening ? "Listening" : "Stopped listening",
@@ -55,7 +60,7 @@ export default function CoachMicButton({
   }));
 
   return (
-    <View accessibilityLiveRegion="polite" importantForAccessibility="yes">
+    <View accessibilityLiveRegion="polite">
       {/* Hidden text for Android TalkBack — announces when isListening changes */}
       <Text
         style={{
@@ -65,7 +70,7 @@ export default function CoachMicButton({
           overflow: "hidden",
         }}
         importantForAccessibility="yes"
-        accessibilityElementsHidden={false}
+        accessibilityElementsHidden={Platform.OS === "ios"}
       >
         {isListening ? "Listening" : ""}
       </Text>
