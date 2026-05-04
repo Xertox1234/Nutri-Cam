@@ -241,6 +241,7 @@ export function register(app: Express): void {
           content: z.string().min(1).max(2000),
           screenContext: z.string().max(1500).optional(),
           warmUpId: z.string().max(100).optional(),
+          turnKey: z.string().uuid().optional(),
         });
         const parsed = schema.safeParse(req.body);
         if (!parsed.success)
@@ -475,6 +476,7 @@ export function register(app: Express): void {
               content: sanitizedContent,
               screenContext: parsed.data.screenContext,
               warmUpId: parsed.data.warmUpId,
+              turnKey: parsed.data.turnKey,
               isCoachPro: !!features.coachPro,
               user: {
                 dailyCalorieGoal: user.dailyCalorieGoal,

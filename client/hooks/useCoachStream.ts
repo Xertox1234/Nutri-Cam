@@ -248,7 +248,11 @@ export function useCoachStream({
 
           startDrain();
 
-          const body: Record<string, unknown> = { content: userMessage };
+          const turnKey = crypto.randomUUID();
+          const body: Record<string, unknown> = {
+            content: userMessage,
+            turnKey,
+          };
           if (extras?.warmUpId) body.warmUpId = extras.warmUpId;
           if (extras?.screenContext) body.screenContext = extras.screenContext;
           xhr.send(JSON.stringify(body));

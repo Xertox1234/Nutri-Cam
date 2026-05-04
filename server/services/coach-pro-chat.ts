@@ -30,6 +30,7 @@ import {
   containsDangerousDietaryAdvice,
 } from "../lib/ai-safety";
 import { fireAndForget } from "../lib/fire-and-forget";
+import { logger } from "../lib/logger";
 import { consumeWarmUp } from "./coach-warm-up";
 import { calculateWeeklyRate } from "./weight-trend";
 import {
@@ -159,6 +160,7 @@ export interface CoachChatParams {
   screenContext?: string;
   warmUpId?: string;
   isCoachPro: boolean;
+  turnKey?: string;
   user: {
     dailyCalorieGoal: number | null;
     dailyProteinGoal: number | null;
@@ -338,6 +340,7 @@ export async function* handleCoachChat(
     content,
     screenContext,
     warmUpId,
+    turnKey,
     isCoachPro,
     user,
     isAborted,
@@ -551,18 +554,6 @@ export async function* handleCoachChat(
       fullResponse += chunk;
       yield { type: "content", content: chunk };
     }
-
-    if (questionHash && fullResponse && !isAborted()) {
-      fireAndForget(
-        "coach-cache-response",
-        storage.setCoachCachedResponse(
-          userId,
-          questionHash,
-          content,
-          fullResponse,
-        ),
-      );
-    }
   }
 
   // Parse blocks from response for Coach Pro
@@ -575,12 +566,47 @@ export async function* handleCoachChat(
   }
 
   if (fullResponse && !isAborted()) {
-    await storage.createChatMessage(
-      conversationId,
-      userId,
-      "assistant",
-      textContent,
-      blocks.length > 0 ? { blocks } : null,
+    if (turnKey) {
+      const existing = await storage.getChatMessageByTurnKey(
+        conversationId,
+        turnKey,
+      );
+      if (existing) {
+        logger.info(
+          { turnKey },
+          "assistant message already persisted, skipping duplicate write",
+        );
+      } else {
+        await storage.createChatMessage(
+          conversationId,
+          userId,
+          "assistant",
+          textContent,
+          blocks.length > 0 ? { blocks } : null,
+          turnKey,
+        );
+      }
+    } else {
+      await storage.createChatMessage(
+        conversationId,
+        userId,
+        "assistant",
+        textContent,
+        blocks.length > 0 ? { blocks } : null,
+      );
+    }
+  }
+
+  // Cache write after DB write (ordering fix: cache should only exist for persisted messages)
+  if (questionHash && fullResponse && !isAborted()) {
+    fireAndForget(
+      "coach-cache-response",
+      storage.setCoachCachedResponse(
+        userId,
+        questionHash,
+        content,
+        fullResponse,
+      ),
     );
   }
 
