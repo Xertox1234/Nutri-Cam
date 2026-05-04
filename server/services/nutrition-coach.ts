@@ -16,6 +16,13 @@ import {
 
 const log = createServiceLogger("nutrition-coach");
 
+/**
+ * Sentinel yielded by generateCoachResponse when the safety check fires after
+ * streaming has already begun. The caller (handleCoachChat) converts this to a
+ * safety_override SSE event so the client can reset and display the safe message.
+ */
+export const SAFETY_OVERRIDE_SENTINEL = "\x00SAFETY_OVERRIDE\x00";
+
 export interface CoachContext {
   goals: {
     calories: number;
@@ -238,6 +245,7 @@ export async function* generateCoachResponse(
       const delta = chunk.choices[0]?.delta?.content;
       if (delta) {
         fullResponse += delta;
+        yield delta; // stream each token to the caller as it arrives
       }
     }
   } catch (error) {
@@ -247,11 +255,11 @@ export async function* generateCoachResponse(
   }
 
   if (containsUnsafeCoachAdvice(fullResponse)) {
-    yield "I need to be careful here. I can't provide unsafe diet instructions or diagnose medical conditions. Please consult a registered dietitian or healthcare provider who can assess your individual needs.";
+    // Deltas already sent — signal caller to replace content client-side
+    yield SAFETY_OVERRIDE_SENTINEL;
     return;
   }
-
-  yield fullResponse;
+  // No final yield — individual deltas are already in the caller's buffer
 }
 
 /**

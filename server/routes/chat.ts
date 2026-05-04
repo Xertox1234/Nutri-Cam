@@ -485,7 +485,9 @@ export function register(app: Express): void {
                   ? { content: event.content }
                   : event.type === "status"
                     ? { status: event.label }
-                    : { blocks: event.blocks },
+                    : event.type === "safety_override"
+                      ? { safety_override: event.message }
+                      : { blocks: event.blocks },
               );
               responseBytes += eventJson.length;
               if (responseBytes > SSE_MAX_RESPONSE_BYTES) {

@@ -208,6 +208,14 @@ export function useCoachStream({
                     displayedLengthRef.current = stripped.length;
                     bufferRef.current += newChars;
                   }
+                  // Handle safety override: clear buffered content and replace with safe message
+                  if (typeof data.safety_override === "string") {
+                    bufferRef.current = "";
+                    accumulatedRef.current = "";
+                    displayedLengthRef.current = 0;
+                    firstCharDrainedRef.current = false;
+                    bufferRef.current = data.safety_override;
+                  }
                   if (data.blocks && Array.isArray(data.blocks)) {
                     blocksRef.current = filterValidBlocks(data.blocks);
                   }

@@ -20,6 +20,7 @@ import {
   generateCoachResponse,
   generateCoachProResponse,
   getSystemPromptTemplateVersion,
+  SAFETY_OVERRIDE_SENTINEL,
   type CoachContext,
 } from "./nutrition-coach";
 import { parseBlocksFromContent, BLOCKS_SYSTEM_PROMPT } from "./coach-blocks";
@@ -129,7 +130,11 @@ export function buildMealPatternSummary(
 export type CoachChatEvent =
   | { type: "content"; content: string }
   | { type: "blocks"; blocks: CoachBlock[] }
-  | { type: "status"; label: string };
+  | { type: "status"; label: string }
+  | { type: "safety_override"; message: string };
+
+const STANDARD_SAFETY_MESSAGE =
+  "I need to be careful here. I can't provide unsafe diet instructions or diagnose medical conditions. Please consult a registered dietitian or healthcare provider who can assess your individual needs.";
 
 const TOOL_STATUS_LABELS: Record<string, string> = {
   lookup_nutrition: "Looking up nutrition…",
@@ -538,6 +543,11 @@ export async function* handleCoachChat(
       abortSignal,
     )) {
       if (isAborted()) break;
+      if (chunk === SAFETY_OVERRIDE_SENTINEL) {
+        fullResponse = STANDARD_SAFETY_MESSAGE;
+        yield { type: "safety_override", message: STANDARD_SAFETY_MESSAGE };
+        break;
+      }
       fullResponse += chunk;
       yield { type: "content", content: chunk };
     }
