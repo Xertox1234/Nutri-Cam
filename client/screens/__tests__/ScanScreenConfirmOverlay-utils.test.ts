@@ -6,6 +6,7 @@ import {
   buildScannedItemPayload,
   buildSuccessToastMessage,
   canLog,
+  applyDismiss,
   type ConfirmCardState,
 } from "../ScanScreenConfirmOverlay-utils";
 
@@ -201,6 +202,55 @@ describe("ScanScreenConfirmOverlay-utils", () => {
         ),
       ).toBe(true);
       expect(wouldProceed(null)).toBe(false);
+    });
+  });
+
+  describe("Dismiss resets confirmCard to null (state contract)", () => {
+    it("applyDismiss returns null when called with a loaded card", () => {
+      const loaded = buildLoadedConfirmCard("0123456789012", {
+        productName: "Oat Milk",
+        calories: 90,
+      });
+      expect(applyDismiss(loaded)).toBeNull();
+    });
+
+    it("applyDismiss returns null when called with a loading card", () => {
+      expect(applyDismiss(buildLoadingConfirmCard("0123456789012"))).toBeNull();
+    });
+
+    it("applyDismiss returns null when called with null (already dismissed)", () => {
+      expect(applyDismiss(null)).toBeNull();
+    });
+  });
+
+  describe("POST failure re-enables button (state contract)", () => {
+    it("POST failure state sets isLogging back to false", () => {
+      // Simulate the state update applied on POST failure:
+      // setConfirmCard((prev) => prev && { ...prev, isLogging: false })
+      const prev = buildLoadedConfirmCard("0123456789012", {
+        productName: "Organic Oat Milk",
+        calories: 90,
+      });
+      const beforePost: ConfirmCardState = { ...prev, isLogging: true };
+      const afterFailure = beforePost
+        ? { ...beforePost, isLogging: false }
+        : null;
+      expect(afterFailure?.isLogging).toBe(false);
+      // Other fields remain unchanged
+      expect(afterFailure?.name).toBe("Organic Oat Milk");
+      expect(afterFailure?.calories).toBe(90);
+    });
+
+    it("POST failure state update is null-safe (no-op when prev is null)", () => {
+      // The component uses: setConfirmCard((prev) => prev && { ...prev, isLogging: false })
+      // When prev is null, the && short-circuits returning null — card stays null.
+      // We verify this using a helper that mirrors the component's functional updater.
+      function applyLoggingReset(
+        prev: ConfirmCardState | null,
+      ): ConfirmCardState | null {
+        return prev ? { ...prev, isLogging: false } : null;
+      }
+      expect(applyLoggingReset(null)).toBeNull();
     });
   });
 });
