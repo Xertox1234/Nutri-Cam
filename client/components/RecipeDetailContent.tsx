@@ -1,6 +1,11 @@
-import React, { useCallback, useMemo, useState, useEffect } from "react";
+import React, {
+  useCallback,
+  useMemo,
+  useState,
+  useEffect,
+  useRef,
+} from "react";
 import {
-  FlatList,
   Image,
   Pressable,
   ScrollView,
@@ -97,16 +102,22 @@ export function RecipeDetailContent(props: RecipeDetailContentProps) {
     }
   }, [props.isCanonical]);
 
-  const handleStepLongPress = useCallback(
-    (index: number) => {
-      setExpandedStep((prev) => (prev === index ? null : index));
-      if (!hasShownHint) {
-        setHasShownHint(true);
-        AsyncStorage.setItem(CURATED_STEP_HINT_KEY, "1");
-      }
-    },
-    [hasShownHint],
-  );
+  useEffect(() => {
+    setExpandedStep(null);
+  }, [props.recipeId]);
+
+  const hasShownHintRef = useRef(hasShownHint);
+  useEffect(() => {
+    hasShownHintRef.current = hasShownHint;
+  }, [hasShownHint]);
+
+  const handleStepLongPress = useCallback((index: number) => {
+    setExpandedStep((prev) => (prev === index ? null : index));
+    if (!hasShownHintRef.current) {
+      setHasShownHint(true);
+      AsyncStorage.setItem(CURATED_STEP_HINT_KEY, "1");
+    }
+  }, []); // stable reference — reads hasShownHint via ref
 
   const {
     servingCount,
@@ -194,21 +205,21 @@ export function RecipeDetailContent(props: RecipeDetailContentProps) {
       >
         {/* 1. Hero Image / Gallery */}
         {props.isCanonical && (props.canonicalImages?.length ?? 0) > 0 ? (
-          <FlatList
-            data={props.canonicalImages}
-            keyExtractor={(url, i) => `img-${i}`}
+          <ScrollView
             horizontal
             pagingEnabled
             showsHorizontalScrollIndicator={false}
-            renderItem={({ item }) => (
+          >
+            {props.canonicalImages!.map((url, i) => (
               <Image
-                source={{ uri: resolveImageUrl(item) ?? undefined }}
+                key={`img-${i}`}
+                source={{ uri: resolveImageUrl(url) ?? undefined }}
                 style={{ width: screenWidth, height: HERO_IMAGE_HEIGHT }}
                 resizeMode="cover"
                 accessibilityLabel={`Photo of ${props.title}`}
               />
-            )}
-          />
+            ))}
+          </ScrollView>
         ) : (
           <FallbackImage
             source={{ uri: props.imageUrl ?? undefined }}
@@ -405,7 +416,11 @@ export function RecipeDetailContent(props: RecipeDetailContentProps) {
                     key={i}
                     onPress={
                       tool.affiliateUrl
-                        ? () => WebBrowser.openBrowserAsync(tool.affiliateUrl!)
+                        ? () => {
+                            WebBrowser.openBrowserAsync(
+                              tool.affiliateUrl!,
+                            ).catch(() => {});
+                          }
                         : undefined
                     }
                     style={styles.toolRow}
