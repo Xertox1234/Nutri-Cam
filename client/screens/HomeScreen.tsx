@@ -11,6 +11,7 @@ import { Feather } from "@expo/vector-icons";
 import { DailySummaryHeader } from "@/components/home/DailySummaryHeader";
 import { ThemedText } from "@/components/ThemedText";
 import { RecipeCarousel } from "@/components/home/RecipeCarousel";
+import { CuratedRecipeCarousel } from "@/components/home/CuratedRecipeCarousel";
 import { RecentActionsRow } from "@/components/home/RecentActionsRow";
 import { DiscoveryCarousel } from "@/components/home/DiscoveryCarousel";
 import { CollapsibleSection } from "@/components/home/CollapsibleSection";
@@ -192,6 +193,14 @@ export default function HomeScreen() {
           }
         >
           <RecipeCarousel />
+        </Animated.View>
+
+        <Animated.View
+          entering={
+            reducedMotion ? undefined : FadeInDown.delay(150).duration(400)
+          }
+        >
+          <CuratedRecipeCarousel />
         </Animated.View>
 
         {SECTIONS.map(({ key, title, delay }) => (
