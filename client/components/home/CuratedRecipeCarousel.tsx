@@ -114,7 +114,7 @@ export const CuratedRecipeCarousel = React.memo(
 
     const getItemLayout = useCallback(
       (_: unknown, index: number) => ({
-        length: CURATED_CARD_WIDTH,
+        length: SNAP_INTERVAL,
         offset: SNAP_INTERVAL * index,
         index,
       }),

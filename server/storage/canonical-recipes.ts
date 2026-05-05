@@ -5,7 +5,7 @@ import { communityRecipes, type CommunityRecipe } from "@shared/schema";
 const PROMOTION_THRESHOLD = {
   favorites: 5,
   mealPlans: 3,
-  cookSessions: 1,
+  cookSessions: 1, // intentionally lenient during early growth; raise without schema change
 } as const;
 
 type PopularityEvent = "favorite" | "mealPlan" | "cookSession";
