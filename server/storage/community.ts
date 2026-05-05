@@ -253,6 +253,19 @@ export const FEATURED_COLUMNS = {
   remixedFromTitle: communityRecipes.remixedFromTitle,
   createdAt: communityRecipes.createdAt,
   updatedAt: communityRecipes.updatedAt,
+  popularityFavorites: communityRecipes.popularityFavorites,
+  popularityMealPlans: communityRecipes.popularityMealPlans,
+  popularityCookSessions: communityRecipes.popularityCookSessions,
+  popularityScore: communityRecipes.popularityScore,
+  isCanonical: communityRecipes.isCanonical,
+  canonicalizedAt: communityRecipes.canonicalizedAt,
+  canonicalEnrichedAt: communityRecipes.canonicalEnrichedAt,
+  canonicalImages: communityRecipes.canonicalImages,
+  instructionDetails: communityRecipes.instructionDetails,
+  toolsRequired: communityRecipes.toolsRequired,
+  chefTips: communityRecipes.chefTips,
+  cuisineOrigin: communityRecipes.cuisineOrigin,
+  videoUrl: communityRecipes.videoUrl,
 } as const;
 
 export type FeaturedRecipe = Omit<

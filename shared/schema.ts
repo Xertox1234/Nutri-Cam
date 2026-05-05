@@ -562,6 +562,31 @@ export const communityRecipes = pgTable(
       .default(sql`CURRENT_TIMESTAMP`)
       .notNull(),
     sourceMessageId: integer("source_message_id"),
+
+    // Popularity tracking
+    popularityFavorites: integer("popularity_favorites").default(0).notNull(),
+    popularityMealPlans: integer("popularity_meal_plans").default(0).notNull(),
+    popularityCookSessions: integer("popularity_cook_sessions")
+      .default(0)
+      .notNull(),
+    popularityScore: integer("popularity_score").default(0).notNull(),
+
+    // Promotion state
+    isCanonical: boolean("is_canonical").default(false).notNull(),
+    canonicalizedAt: timestamp("canonicalized_at"),
+    canonicalEnrichedAt: timestamp("canonical_enriched_at"),
+
+    // Canonical content (only populated after enrichment)
+    canonicalImages: jsonb("canonical_images").$type<string[]>().default([]),
+    instructionDetails: jsonb("instruction_details")
+      .$type<(string | null)[]>()
+      .default([]),
+    toolsRequired: jsonb("tools_required")
+      .$type<{ name: string; affiliateUrl?: string }[]>()
+      .default([]),
+    chefTips: jsonb("chef_tips").$type<string[]>().default([]),
+    cuisineOrigin: text("cuisine_origin"),
+    videoUrl: text("video_url"),
   },
   (table) => ({
     barcodeIdx: index("community_recipes_barcode_idx").on(table.barcode),
@@ -601,6 +626,12 @@ export const communityRecipes = pgTable(
     sourceMessageIdUniqueIdx: uniqueIndex("community_recipes_source_msg_idx")
       .on(table.sourceMessageId)
       .where(sql`${table.sourceMessageId} IS NOT NULL`),
+    isCanonicalIdx: index("community_recipes_is_canonical_idx").on(
+      table.isCanonical,
+    ),
+    popularityScoreIdx: index("community_recipes_popularity_score_idx").on(
+      table.popularityScore,
+    ),
   }),
 );
 
