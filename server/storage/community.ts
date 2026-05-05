@@ -314,6 +314,7 @@ export async function getAllPublicCommunityRecipes(): Promise<
       carbsPerServing: communityRecipes.carbsPerServing,
       fatPerServing: communityRecipes.fatPerServing,
       imageUrl: communityRecipes.imageUrl,
+      isCanonical: communityRecipes.isCanonical,
       createdAt: communityRecipes.createdAt,
     })
     .from(communityRecipes)
