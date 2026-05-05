@@ -4,11 +4,13 @@ import { requireAuth, type AuthenticatedRequest } from "../middleware/auth";
 import { handleRouteError, parsePositiveIntParam } from "./_helpers";
 import { sendError } from "../lib/api-errors";
 import { ErrorCode } from "@shared/constants/error-codes";
+import { crudRateLimit } from "./_rate-limiters";
 
 export function registerCoachCommitmentsRoutes(app: Express): void {
   app.post(
     "/api/chat/commitments/:notebookEntryId/accept",
     requireAuth,
+    crudRateLimit,
     async (req: AuthenticatedRequest, res: Response) => {
       try {
         const notebookEntryId = parsePositiveIntParam(
