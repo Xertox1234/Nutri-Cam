@@ -114,7 +114,7 @@ const addToGroceryListSchema = z.object({
       z.object({
         name: z.string(),
         quantity: z.string().optional(),
-        unit: z.string().optional(),
+        category: z.string().optional(),
       }),
     )
     .optional(),
@@ -659,7 +659,7 @@ export async function executeToolCall(
         items: (parsed.data.items ?? []).map((i) => ({
           name: i.name,
           quantity: i.quantity ?? null,
-          unit: i.unit ?? null,
+          category: i.category ?? null,
         })),
         message:
           "Here are the items I'd add to your grocery list. Please confirm below.",
