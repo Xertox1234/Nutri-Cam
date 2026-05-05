@@ -101,6 +101,7 @@ export default function HomeScreen() {
     queryClient.invalidateQueries({
       queryKey: ["/api/carousel"],
     });
+    queryClient.invalidateQueries({ queryKey: ["/api/curated-recipes"] });
     refetch().then(() => haptics.impact());
   }, [queryClient, refetch, haptics]);
 
