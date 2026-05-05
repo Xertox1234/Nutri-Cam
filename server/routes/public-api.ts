@@ -89,6 +89,39 @@ function serializePaidResponse(row: BarcodeVerification): PaidProductResponse {
   };
 }
 
+/** Serialize a CommunityRecipe to the public API response shape */
+function serializeCuratedRecipe(row: CommunityRecipe): CuratedRecipeResponse {
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description ?? null,
+    cuisineOrigin: row.cuisineOrigin ?? null,
+    difficulty: row.difficulty ?? null,
+    timeEstimate: row.timeEstimate ?? null,
+    servings: row.servings ?? null,
+    dietTags: (row.dietTags as string[]) ?? [],
+    mealTypes: (row.mealTypes as string[]) ?? [],
+    caloriesPerServing: toNum(row.caloriesPerServing),
+    protein: toNum(row.proteinPerServing),
+    carbs: toNum(row.carbsPerServing),
+    fat: toNum(row.fatPerServing),
+    ingredients:
+      (row.ingredients as {
+        name: string;
+        quantity: string;
+        unit: string;
+      }[]) ?? [],
+    instructions: (row.instructions as string[]) ?? [],
+    instructionDetails: (row.instructionDetails as (string | null)[]) ?? [],
+    toolsRequired:
+      (row.toolsRequired as { name: string; affiliateUrl?: string }[]) ?? [],
+    chefTips: (row.chefTips as string[]) ?? [],
+    canonicalImages: (row.canonicalImages as string[]) ?? [],
+    videoUrl: row.videoUrl ?? null,
+    canonicalizedAt: row.canonicalizedAt?.toISOString() ?? null,
+  };
+}
+
 export function register(app: Express): void {
   const router = Router();
 
@@ -158,39 +191,6 @@ export function register(app: Express): void {
   // ---------------------------------------------------------------------------
   // Recipe catalogue endpoints
   // ---------------------------------------------------------------------------
-
-  /** Serialize a CommunityRecipe to the public API response shape */
-  function serializeCuratedRecipe(row: CommunityRecipe): CuratedRecipeResponse {
-    return {
-      id: row.id,
-      title: row.title,
-      description: row.description ?? null,
-      cuisineOrigin: row.cuisineOrigin ?? null,
-      difficulty: row.difficulty ?? null,
-      timeEstimate: row.timeEstimate ?? null,
-      servings: row.servings ?? null,
-      dietTags: (row.dietTags as string[]) ?? [],
-      mealTypes: (row.mealTypes as string[]) ?? [],
-      caloriesPerServing: toNum(row.caloriesPerServing),
-      protein: toNum(row.proteinPerServing),
-      carbs: toNum(row.carbsPerServing),
-      fat: toNum(row.fatPerServing),
-      ingredients:
-        (row.ingredients as {
-          name: string;
-          quantity: string;
-          unit: string;
-        }[]) ?? [],
-      instructions: (row.instructions as string[]) ?? [],
-      instructionDetails: (row.instructionDetails as (string | null)[]) ?? [],
-      toolsRequired:
-        (row.toolsRequired as { name: string; affiliateUrl?: string }[]) ?? [],
-      chefTips: (row.chefTips as string[]) ?? [],
-      canonicalImages: (row.canonicalImages as string[]) ?? [],
-      videoUrl: row.videoUrl ?? null,
-      canonicalizedAt: row.canonicalizedAt?.toISOString() ?? null,
-    };
-  }
 
   /** GET /api/v1/recipes — paginated list of curated recipes */
   router.get("/recipes", async (req, res) => {

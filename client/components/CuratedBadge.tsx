@@ -48,6 +48,5 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "600",
     letterSpacing: 0.2,
-    marginLeft: Spacing.xs,
   },
 });
