@@ -573,7 +573,7 @@ export default function RecipeBrowserScreen() {
           contentContainerStyle={styles.filterRow}
         >
           <Chip
-            label="⭐ Curated"
+            label="Curated"
             variant="filter"
             selected={curatedOnly}
             onPress={() => {
