@@ -55,10 +55,10 @@ export interface EditorialInput {
 // ---------------------------------------------------------------------------
 
 const UNIT_NORMALIZATION_MAP: Record<string, string> = {
-  tbs: "tablespoon",
-  tbsp: "tablespoon",
-  tsp: "teaspoon",
-  ts: "teaspoon",
+  tbs: "tablespoons",
+  tbsp: "tablespoons",
+  tsp: "teaspoons",
+  ts: "teaspoons",
   oz: "ounce",
   fl: "fluid ounce",
   lb: "pound",
@@ -76,8 +76,12 @@ const UNIT_NORMALIZATION_MAP: Record<string, string> = {
 };
 
 function normalizeUnit(unit: string): string {
-  const lower = unit.toLowerCase().trim().replace(/s$/, ""); // naive de-plural
-  return UNIT_NORMALIZATION_MAP[lower] ?? unit;
+  const lower = unit.toLowerCase().trim();
+  return (
+    UNIT_NORMALIZATION_MAP[lower] ??
+    UNIT_NORMALIZATION_MAP[lower.replace(/s$/, "")] ??
+    unit
+  );
 }
 
 function normalizeIngredients(
@@ -188,24 +192,15 @@ async function generateSingleImage(
 }
 
 /**
- * Generate all 3 canonical images (hero, plated, ingredients).
+ * Generate all 3 canonical images (hero, plated, ingredients) sequentially
+ * (one at a time) to avoid rate-limit bursts.
  * Individual failures are skipped gracefully — returns only successful URLs.
  */
 async function generateCanonicalImages(title: string): Promise<string[]> {
-  const results = await Promise.allSettled(
-    IMAGE_SHOTS.map((shot) => generateSingleImage(title, shot)),
-  );
-
   const urls: string[] = [];
-  for (const [i, result] of results.entries()) {
-    if (result.status === "fulfilled" && result.value) {
-      urls.push(result.value);
-    } else if (result.status === "rejected") {
-      log.warn(
-        { shot: IMAGE_SHOTS[i].label, err: toError(result.reason) },
-        "canonical image generation shot failed",
-      );
-    }
+  for (const shot of IMAGE_SHOTS) {
+    const url = await generateSingleImage(title, shot);
+    if (url) urls.push(url);
   }
   return urls;
 }
@@ -304,8 +299,15 @@ export async function generateEditorialContent(
       cuisineOrigin: string;
     };
 
+    // Pad instructionDetails to match the number of instruction steps so
+    // callers indexing by step position always get string | null, not undefined.
+    const padded: (string | null)[] = Array.from(
+      { length: input.instructions.length },
+      (_, i) => data.instructionDetails[i] ?? null,
+    );
+
     return {
-      instructionDetails: data.instructionDetails,
+      instructionDetails: padded,
       toolsRequired: data.toolsRequired.map((t) => ({
         name: t.name,
         affiliateUrl: t.affiliateUrl ?? undefined,
@@ -338,6 +340,12 @@ export async function enrichRecipe(recipeId: number): Promise<void> {
   const recipe = await storage.getRecipeById(recipeId);
   if (!recipe) {
     throw new Error(`Recipe ${recipeId} not found`);
+  }
+
+  // Idempotency guard — don't re-enrich already-enriched recipes
+  if (recipe.canonicalEnrichedAt !== null) {
+    log.info({ recipeId }, "recipe already enriched, skipping");
+    return;
   }
 
   // 2. Generate 3 HQ images (hero, plated, ingredients)
