@@ -87,9 +87,14 @@ export default function InlineChart({ block }: Props) {
   const pct = datum?.target
     ? Math.min((datum.value / datum.target) * 100, 100)
     : 0;
+  const progressLabel = datum
+    ? `${block.title}. ${datum.value} of ${datum.target ?? "?"}`
+    : block.title;
   return (
     <View
       style={[styles.container, { backgroundColor: theme.backgroundSecondary }]}
+      accessibilityLabel={`${progressLabel}${block.summary ? `. ${block.summary}` : ""}`}
+      accessible={true}
     >
       <Text style={[styles.title, { color: theme.text }]}>{block.title}</Text>
       <View style={[styles.progressTrack, { backgroundColor: theme.border }]}>

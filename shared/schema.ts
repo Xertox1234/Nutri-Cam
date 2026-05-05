@@ -982,7 +982,7 @@ export const chatMessages = pgTable(
       table.createdAt,
     ),
     turnKeyUniqueIdx: uniqueIndex("chat_messages_turn_key_idx")
-      .on(table.turnKey)
+      .on(table.conversationId, table.turnKey)
       .where(sql`${table.turnKey} IS NOT NULL`),
   }),
 );

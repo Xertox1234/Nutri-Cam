@@ -251,6 +251,7 @@ describe("Coach Tools Service", () => {
     )) as { items: { name: string; category: string | null }[] };
     expect(result.items[0]).toMatchObject({
       name: "chicken breast",
+      quantity: "500g",
       category: "meat",
     });
   });
